@@ -54,6 +54,7 @@ import hashlib
 import hmac
 import ipaddress
 import logging
+from core.ports import address_in_use
 import os
 import secrets
 import socket
@@ -365,12 +366,27 @@ class DownloaderEgressGuard:
                 return
             host = _LOOPBACK
             port = self._bind_port()
-            self._server = await asyncio.start_server(
-                self._handle_client,
-                host=host,
-                port=port,
-                limit=16 * 1024,
-            )
+            try:
+                self._server = await asyncio.start_server(
+                    self._handle_client,
+                    host=host,
+                    port=port,
+                    limit=16 * 1024,
+                )
+            except OSError as exc:
+                # Another program holds its usual port: one the operating
+                # system chooses instead (core.ports). Every job asks the
+                # guard for its address (_proxy_url), so nothing else moves.
+                if not port or not address_in_use(exc):
+                    raise
+                logger.warning("Downloader egress guard: port %s is in use on %s by another program; "
+                               "using one the system chooses", port, host)
+                self._server = await asyncio.start_server(
+                    self._handle_client,
+                    host=host,
+                    port=0,
+                    limit=16 * 1024,
+                )
             sockets = list(self._server.sockets or ())
             if not sockets:
                 self._server.close()

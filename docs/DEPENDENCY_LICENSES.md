@@ -484,6 +484,20 @@ name and link; neither collection names the individual creator of these two
 icons. These licences cover only the collections' own contribution: the MEGA and Real-Debrid marks belong to their owners and are
 not licensed by them.
 
+## Language flags
+
+The flag beside each language in the language list
+(`frontend/static/icons/flags/<region>.svg`, 19 files, drawn by
+`frontend/static/ui-language-picker.js`) is the waved flag of Noto's
+region-flags, copied unchanged from `third_party/region-flags/waved-svg/` of
+googlefonts/noto-emoji at commit `b3e3051a088047d19fd4d49b1c3ac42fb8c3aaf8`,
+<https://github.com/googlefonts/noto-emoji> (each file named
+`emoji_u<code points>.svg` there, renamed to its region code here). Those flags
+were taken from Wikimedia Commons and checked to be in the public domain or
+otherwise exempt from copyright ([licence text](../licenses/noto-region-flags-public-domain.txt)).
+They are shown as artwork so a flag is drawn the same on every platform: an
+emoji flag is not (Windows shows its two letters).
+
 ## Colour palettes
 
 The alternative interface palettes (`frontend/static/ui-theme-palettes.css`;

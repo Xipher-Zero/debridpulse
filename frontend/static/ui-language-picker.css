@@ -2,11 +2,14 @@
    language is chosen: My Account's language view and the Default Language
    dialog. Layout only; the rows take the theme picker's row treatment. */
 
-/* A language as it is shown: its flag, then its own name. */
+/* A language as it is shown: its flag (waved artwork, icons/flags/), then its own name. */
 .dp-language-flag {
   flex: 0 0 auto;
-  font-size: 16px;
-  line-height: 1;
+  display: block;
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  user-select: none;
 }
 .dp-language-name {
   min-width: 0;

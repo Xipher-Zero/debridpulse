@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from core.logging_utils import sanitize_log_value
+from core.ports import loopback_port
 from executors.aria2.client import Aria2Service
 from executors.process_ownership import output_lines
 from core.processes import WINDOWLESS
@@ -24,8 +25,18 @@ logger = logging.getLogger("alldebrid.aria2")
 # restart and recovery here, and every client built here, share it, while a
 # new process starts its own daemon under a new one. No other local program
 # can drive the daemon by knowing DebridPulse's source.
+# Its port is RPC_PORT when that is free, else one the operating system chooses
+# (core.ports): another program may already listen on 6800, and a taken port
+# must not stop the executor. The port is chosen again at every start; clients
+# follow it (rpc_url). The daemon's identity in persisted handles is RPC_IDENTITY,
+# its address under the original fixed port, so handles keep matching wherever
+# it listens: it is always this application's own daemon, never another.
 RPC_PORT = 6800
+RPC_IDENTITY = f"http://127.0.0.1:{RPC_PORT}/jsonrpc"
 RPC_SECRET = secrets.token_urlsafe(32)
+# The port the running daemon was started on; None while none runs (its
+# address is then the usual one).
+_rpc_port: int | None = None
 
 
 def _canonical_aria2_options(cfg):
@@ -44,12 +55,14 @@ def _canonical_aria2_options(cfg):
 
 
 def rpc_url() -> str:
-    return f"http://127.0.0.1:{RPC_PORT}/jsonrpc"
+    """The address the daemon listens at now (its port: chosen at its start)."""
+    return f"http://127.0.0.1:{_rpc_port or RPC_PORT}/jsonrpc"
 
 
 def rpc_service(options) -> Aria2Service:
-    """The RPC client for the daemon DebridPulse runs; the one construction site."""
-    return Aria2Service(rpc_url(), RPC_SECRET, options.operation_timeout_seconds)
+    """The RPC client for the daemon DebridPulse runs; the one construction site.
+    It follows the daemon's current address and is identified as RPC_IDENTITY."""
+    return Aria2Service(rpc_url, RPC_SECRET, options.operation_timeout_seconds, identity=RPC_IDENTITY)
 
 
 # Executor-local native queue width. DebridPulse's own global admission is the
@@ -321,7 +334,7 @@ class Aria2Runtime:
             "aria2c",
             "--enable-rpc=true",
             "--rpc-listen-all=false",
-            f"--rpc-listen-port={RPC_PORT}",
+            f"--rpc-listen-port={_rpc_port or RPC_PORT}",
             f"--rpc-secret={RPC_SECRET}",
             "--rpc-allow-origin-all=false",
             f"--dir={download_dir}",
@@ -388,6 +401,11 @@ class Aria2Runtime:
                 env = dict(_os.environ)
                 env["MALLOC_ARENA_MAX"] = "1"
                 env["MALLOC_TRIM_THRESHOLD_"] = "65536"
+                # Its usual port when free, else a free one (core.ports): chosen
+                # at every start, so a start refused by a taken port is followed
+                # by one on another.
+                global _rpc_port
+                _rpc_port = loopback_port(RPC_PORT, name="aria2 RPC")
                 command = self._command()
                 self._log_size_at_start = self._log_size()
                 # This start's own output only: never a previous daemon's.
@@ -449,6 +467,8 @@ class Aria2Runtime:
                 await self._cancel_drain_tasks()
                 if self._process is None or self._process.returncode is not None:
                     self._clear_session()       # what the stopped daemon saved on its way out
+                    global _rpc_port
+                    _rpc_port = None            # no daemon: its address is the usual one until a start
             except Exception as exc:
                 self._last_error = str(exc)
                 logger.warning("aria2 stop failed: %s", exc)
@@ -561,6 +581,8 @@ class Aria2Runtime:
 
     async def _cleanup_failed_start(self) -> None:
         """Roll back every resource allocated by an unsuccessful start attempt."""
+        global _rpc_port
+        _rpc_port = None                                    # no daemon: the next start chooses again
         process = self._process
         if process is not None and process.returncode is None:
             try:

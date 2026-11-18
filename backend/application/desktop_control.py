@@ -60,7 +60,8 @@ LIFECYCLE = frozenset({"transfer.accepted", "transfer.queued", "transfer.transfe
                        "transfer.completed", "transfer.failed", "transfer.cancelled"})
 _FIELDS = {"status": {"id", "op"}, "events": {"id", "op", "after", "limit"},
            "pause": {"id", "op"}, "resume": {"id", "op"},
-           "saves": {"id", "op"}, "saved": {"id", "op", "save", "path"}, "frame": {"id", "op"}}
+           "saves": {"id", "op"}, "saved": {"id", "op", "save", "path"}, "frame": {"id", "op"},
+           "locale": {"id", "op"}}
 # How long a desktop save waits for its destination: the supervisor's next
 # look (its loop) and the person's own time in the dialog.
 DESTINATION_WAIT_SECONDS = 600
@@ -182,6 +183,13 @@ async def answer(application, request) -> dict:
         return {"id": ident, "ok": bool(result.get("ok")), "paused": bool(result.get("paused"))}
     if op == "frame":
         return {"id": ident, "frame": dict(_frame) if _frame else None}
+    if op == "locale":
+        # The language the desktop application's interface is shown in: its one person is the default
+        # Admin (it is always Standalone), so that account's own choice, else the installation's
+        # default -- what the page shows. The tray and notices follow it while the application runs.
+        from auth.accounts import DEFAULT_ADMIN_ID
+        from services.account_appearance import load_locale
+        return {"id": ident, "locale": (await load_locale(DEFAULT_ADMIN_ID))["locale"]}
     if op == "saves":
         waiting = [(number, entry) for number, entry in sorted(_saves.items()) if not entry[2]]
         for _number, entry in waiting:

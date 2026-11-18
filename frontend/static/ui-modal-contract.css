@@ -87,7 +87,9 @@ body.light #overlay {
   margin: 0;
   border: 1px solid transparent !important;
   border-radius: var(--dp-radius-lg) !important;
-  background: var(--dp-panel-surface) !important;
+  /* Every dialog takes the theme picker's surface (ui-theme-picker.css), which
+     each palette sets; the panel gradient is each palette's near-black. */
+  background: var(--dp-surface-overlay) !important;
   box-shadow:
     var(--dp-panel-shadow),
     0 24px 70px rgba(0, 0, 12, .42) !important;
@@ -163,6 +165,8 @@ body.light #modal.dp-detail-modal {
 
 #modal .dp-detail-section-card {
   margin: 0 0 14px;
+  /* A card a step above its dialog, in every palette: the raised surface. */
+  background: var(--dp-surface-2) !important;
 }
 #modal .dp-detail-section-card:last-child {
   margin-bottom: 0;
@@ -258,7 +262,7 @@ body.light .dp-modal-overlay {
   overflow: hidden;
   border: 1px solid var(--dp-border-subtle);
   border-radius: var(--dp-radius-lg);
-  background: var(--dp-panel-surface);
+  background: var(--dp-surface-overlay);   /* the theme picker's surface, as #modal.dp-detail-modal */
   box-shadow: var(--dp-panel-shadow), 0 24px 70px rgba(0, 0, 12, .42);
 }
 

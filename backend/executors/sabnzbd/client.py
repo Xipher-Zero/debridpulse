@@ -78,7 +78,9 @@ class SabApiError(Exception):
 
 @dataclass(frozen=True)
 class SabEndpoint:
-    base_url: str
+    # The address, or a function answering the service's current one (its
+    # port may move between starts: core.ports).
+    base_url: Any
     api_key: str
     timeout_seconds: int = 15
 
@@ -110,7 +112,8 @@ class SabnzbdClient:
         the bundled service), so nothing is given up by refusing the query
         string entirely.
         """
-        parts = urlsplit(self.endpoint.base_url)
+        base = self.endpoint.base_url
+        parts = urlsplit(base() if callable(base) else base)
         return urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/") + "/api", "", ""))
 
     def _form(self, params: dict[str, Any]) -> bytes:

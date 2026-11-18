@@ -259,7 +259,10 @@ class Aria2Executor:
         self.egress = egress or downloader_egress_guard
         self.runtime = runtime
         self._redactions = runtime.redactions if runtime is not None else OrderedDict()
-        self.binding = execution_binding(configuration.local_root, getattr(client, "url", ""))
+        # The daemon's durable identity (Aria2Service.identity), never its live
+        # address: the port it listens on may move between starts (core.ports).
+        self.binding = execution_binding(configuration.local_root,
+                                         getattr(client, "identity", None) or getattr(client, "url", ""))
         # address -> (expiry, the address it was last observed answering at
         # under another authority); see ``_start_address``.
         self._moved: OrderedDict[str, tuple[float, str]] = OrderedDict()

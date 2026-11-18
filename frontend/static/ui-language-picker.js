@@ -11,17 +11,21 @@
  * order -- never a `planned` or pseudo one. The server decides which language
  * an account is shown in (GET /api/account/locale); the list only offers.
  * A flag is a display mark beside the name, fixed per tag, never a region
- * choice; it is hidden from assistive technology, so a row is named by its
+ * choice: the waved flag artwork of Noto's region-flags (icons/flags/<region>.svg,
+ * public domain; docs/DEPENDENCY_LICENSES.md), drawn the same on every
+ * platform -- an emoji flag is not (Windows draws two letters). It is the one
+ * place a flag is drawn, hidden from assistive technology, so a row is named by its
  * language alone, and a name is its own language run (lang, dir), so an
  * Arabic name reads right to left inside a left-to-right list.
  */
 (function () {
   'use strict';
 
+  // The region whose flag stands beside each language (its file in icons/flags/).
   const FLAGS = Object.freeze({
-    en: '🇺🇸', de: '🇩🇪', fr: '🇫🇷', es: '🇪🇸', it: '🇮🇹', nl: '🇳🇱', 'pt-BR': '🇧🇷', 'pt-PT': '🇵🇹',
-    pl: '🇵🇱', ru: '🇷🇺', uk: '🇺🇦', tr: '🇹🇷', id: '🇮🇩', hi: '🇮🇳', ja: '🇯🇵', ko: '🇰🇷',
-    'zh-Hans': '🇨🇳', 'zh-Hant': '🇹🇼', ar: '🇸🇦',
+    en: 'us', de: 'de', fr: 'fr', es: 'es', it: 'it', nl: 'nl', 'pt-BR': 'br', 'pt-PT': 'pt',
+    pl: 'pl', ru: 'ru', uk: 'ua', tr: 'tr', id: 'id', hi: 'in', ja: 'jp', ko: 'kr',
+    'zh-Hans': 'cn', 'zh-Hant': 'tw', ar: 'sa',
   });
   const OFFERED = new Set(['canonical', 'supported']);
   const CHECK = '<svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 6 9 17l-5-5"/></svg>';
@@ -53,10 +57,17 @@
   /* A language as it is shown: its flag, then its own name as its own run. */
   function face(language) {
     const fragment = document.createDocumentFragment();
-    const flag = document.createElement('span');
+    const region = FLAGS[language.tag];
+    const flag = document.createElement(region ? 'img' : 'span');
     flag.className = 'dp-language-flag';
     flag.setAttribute('aria-hidden', 'true');
-    flag.textContent = FLAGS[language.tag] || '';
+    if (region) {
+      flag.src = `/icons/flags/${region}.svg`;
+      flag.alt = '';
+      flag.decoding = 'async';
+      flag.loading = 'lazy';
+      flag.draggable = false;
+    }
     const name = document.createElement('span');
     name.className = 'dp-language-name';
     name.lang = language.tag;

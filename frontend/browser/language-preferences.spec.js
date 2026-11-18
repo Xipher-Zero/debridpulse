@@ -13,17 +13,17 @@ const { test, expect } = require('@playwright/test');
  * default Admin; synthetic values only. Each case leaves the account with no
  * language of its own and the default English. */
 
-// [tag, flag, native name, direction], in the manifest's order.
+// [tag, flag (its region's artwork, icons/flags/<region>.svg), native name, direction], in the manifest's order.
 const LANGUAGES = [
-  ['en', '🇺🇸', 'English', 'ltr'], ['es', '🇪🇸', 'Español', 'ltr'], ['fr', '🇫🇷', 'Français', 'ltr'],
-  ['de', '🇩🇪', 'Deutsch', 'ltr'], ['it', '🇮🇹', 'Italiano', 'ltr'], ['pt-BR', '🇧🇷', 'Português (Brasil)', 'ltr'],
-  ['nl', '🇳🇱', 'Nederlands', 'ltr'], ['pt-PT', '🇵🇹', 'Português (Portugal)', 'ltr'], ['pl', '🇵🇱', 'Polski', 'ltr'],
-  ['tr', '🇹🇷', 'Türkçe', 'ltr'], ['ru', '🇷🇺', 'Русский', 'ltr'], ['uk', '🇺🇦', 'Українська', 'ltr'],
-  ['id', '🇮🇩', 'Bahasa Indonesia', 'ltr'], ['hi', '🇮🇳', 'हिन्दी', 'ltr'], ['ja', '🇯🇵', '日本語', 'ltr'],
-  ['ko', '🇰🇷', '한국어', 'ltr'], ['zh-Hans', '🇨🇳', '简体中文', 'ltr'], ['zh-Hant', '🇹🇼', '繁體中文', 'ltr'],
-  ['ar', '🇸🇦', 'العربية', 'rtl']];
+  ['en', 'us', 'English', 'ltr'], ['es', 'es', 'Español', 'ltr'], ['fr', 'fr', 'Français', 'ltr'],
+  ['de', 'de', 'Deutsch', 'ltr'], ['it', 'it', 'Italiano', 'ltr'], ['pt-BR', 'br', 'Português (Brasil)', 'ltr'],
+  ['nl', 'nl', 'Nederlands', 'ltr'], ['pt-PT', 'pt', 'Português (Portugal)', 'ltr'], ['pl', 'pl', 'Polski', 'ltr'],
+  ['tr', 'tr', 'Türkçe', 'ltr'], ['ru', 'ru', 'Русский', 'ltr'], ['uk', 'ua', 'Українська', 'ltr'],
+  ['id', 'id', 'Bahasa Indonesia', 'ltr'], ['hi', 'in', 'हिन्दी', 'ltr'], ['ja', 'jp', '日本語', 'ltr'],
+  ['ko', 'kr', '한국어', 'ltr'], ['zh-Hans', 'cn', '简体中文', 'ltr'], ['zh-Hant', 'tw', '繁體中文', 'ltr'],
+  ['ar', 'sa', 'العربية', 'rtl']];
 const listed = (checked = null) => LANGUAGES.map(([tag, flag, native, dir]) =>
-  ({value: tag, checked: tag === checked, text: `${flag}${native}`, lang: tag, dir}));
+  ({value: tag, checked: tag === checked, text: native, flag: `/icons/flags/${flag}.svg`, lang: tag, dir}));
 
 const ownLocale = page => page.evaluate(() => fetch('/api/account/locale').then(response => response.json()));
 const defaultLocale = page => page.evaluate(() => fetch('/api/settings/default-locale').then(response => response.json()));
@@ -54,8 +54,9 @@ async function reset(page) {
 
 const rows = page => page.locator('.dp-language-list [role="radio"]').evaluateAll(nodes =>
   nodes.map(node => ({value: node.dataset.value, checked: node.getAttribute('aria-checked') === 'true', text: node.textContent.trim(),
+    flag: node.querySelector('img.dp-language-flag')?.getAttribute('src'),
     lang: node.querySelector('.dp-language-name')?.lang, dir: node.querySelector('.dp-language-name')?.dir})));
-const withoutRun = list => list.map(({value, checked, text}) => ({value, checked, text}));
+const withoutRun = list => list.map(({value, checked, text, flag}) => ({value, checked, text, flag}));
 
 // A two-part control drawn as one (Easy | Advanced, the handheld theme toggle and its chevron): read in
 // screen order, its outer corners are round and its shared edge square, in either reading direction,
@@ -82,7 +83,8 @@ test('LP01: My Account shows the language as a flag and its name, and its list i
   const button = account(page).locator('[data-account-language]');
   await expect(button).toHaveAccessibleName('Language: English');
   await expect(button.locator('.dp-language-flag')).toHaveAttribute('aria-hidden', 'true');
-  await expect(button).toHaveText('🇺🇸English');
+  await expect(button).toHaveText('English');
+  await expect(button.locator('img.dp-language-flag')).toHaveAttribute('src', '/icons/flags/us.svg');
   expect(await ownLocale(page)).toEqual({locale: 'en', preference: null, default: 'en'});
 
   await button.click();
@@ -95,7 +97,7 @@ test('LP01: My Account shows the language as a flag and its name, and its list i
   await expect(page.getByRole('radiogroup', {name: 'Language'})).toBeVisible();
   // Use system default, then English and the 18 supported targets: 19 languages, no pseudo locale.
   const shown = await rows(page);
-  expect(withoutRun(shown.slice(0, 1))).toEqual([{value: '', checked: true, text: 'Use system default🇺🇸English'}]);
+  expect(withoutRun(shown.slice(0, 1))).toEqual([{value: '', checked: true, text: 'Use system defaultEnglish', flag: '/icons/flags/us.svg'}]);
   expect(shown.slice(1)).toEqual(listed());
   expect(shown.map(row => row.value)).not.toContain('en-XA');
   expect(shown.map(row => row.value)).not.toContain('ar-XB');
@@ -305,7 +307,8 @@ test('LP06: German chosen in My Account switches the page after the save, keeps 
   await expect(account(page).locator('[data-account-view="profile"]')).toBeVisible();
   await expect(account(page).locator('.dp-modal-title')).toHaveText(german['account.title']);
   await expect(account(page).locator('[data-modal-accept]')).toHaveText(german['common.save']);
-  await expect(account(page).locator('[data-account-language]')).toHaveText('🇩🇪Deutsch');
+  await expect(account(page).locator('[data-account-language]')).toHaveText('Deutsch');
+  await expect(account(page).locator('[data-account-language] img.dp-language-flag')).toHaveAttribute('src', '/icons/flags/de.svg');
   await expect(account(page).locator('[data-account-language]')).toBeFocused();
   await expect(name).toHaveValue(draft);
   expect(await ownLocale(page)).toEqual({locale: 'de', preference: 'de', default: 'en'});
@@ -347,7 +350,8 @@ test('LP07: a saved Arabic is the first paint at 320px -- right to left and veil
   expect(await segmented(page, '.topbar-theme-control .theme-toggle', '.topbar-theme-control .dp-theme-picker-trigger'))
     .toEqual({outerRound: true, seamSquare: true, meet: 0, seamLines: 1});
   await page.locator('#topbar-account-button').click();
-  await expect(account(page).locator('[data-account-language]')).toHaveText('🇸🇦العربية');
+  await expect(account(page).locator('[data-account-language]')).toHaveText('العربية');
+  await expect(account(page).locator('[data-account-language] img.dp-language-flag')).toHaveAttribute('src', '/icons/flags/sa.svg');
   expect(await segmented(page, '.dp-account-dialog .dp-presentation-option:first-of-type', '.dp-account-dialog .dp-presentation-option:last-of-type'))
     .toEqual({outerRound: true, seamSquare: true, meet: -1, seamLines: 2});
   // ... in reading order: Easy at the start (the right), Advanced at its end.

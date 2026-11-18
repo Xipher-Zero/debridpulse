@@ -47,7 +47,7 @@ def test_details_modal_consumes_canonical_card_primitives() -> None:
     assert 'class="modal-body dp-card__body"' in index
     assert 'class="btn modal-close dp-detail-close"' in index
     assert 'M18 6 6 18' in index
-    assert "background: var(--dp-panel-surface) !important;" in modal
+    assert "background: var(--dp-surface-overlay) !important;" in modal      # the theme picker's surface
     assert "background: var(--dp-panel-header-surface);" in modal
     assert "var(--dp-panel-shadow)" in modal
 

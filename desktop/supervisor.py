@@ -571,17 +571,28 @@ class Channel:
 # ── words ──────────────────────────────────────────────────────────────────
 
 class Words:
-    """The tray's and notices' words, from DebridPulse's own catalogs in the
-    installation's default language (English when none is chosen)."""
+    """The tray's and notices' words, from DebridPulse's own catalogs: at
+    start the installation's default language (English when none is chosen),
+    then the language the interface is shown in (op ``locale``), followed
+    while the application runs (``choose``)."""
 
     def __init__(self, config_path: Path):
         from core import localization
         self._message = localization.message
+        self._tags = localization.locale_tags()
         try:
             tag = json.loads(config_path.read_text(encoding="utf-8")).get("default_locale")
         except (OSError, ValueError):
             tag = None
-        self.tag = tag if tag in localization.locale_tags() else localization.DEFAULT_LOCALE
+        self.tag = tag if tag in self._tags else localization.DEFAULT_LOCALE
+
+    def choose(self, tag) -> bool:
+        """Show the words in ``tag`` from now on; True when that is a change
+        (an unknown tag changes nothing)."""
+        if tag not in self._tags or tag == self.tag:
+            return False
+        self.tag = tag
+        return True
 
     def __call__(self, key: str, **params) -> str:
         return self._message(key, self.tag, **params)
@@ -1341,6 +1352,7 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
     or Linux's ``SessionBus``); the window is always the shell's."""
     cursor = (await channel.ask("events"))["cursor"]
     status = (await channel.ask("status")).get("status")
+    words.choose((await channel.ask("locale")).get("locale"))       # the interface's language from the first draw
     await native.tray(tray_menu(status, words))
     # Local Port taken at launch: said once, as the window opens.
     if (unavailable := local_port_notice(status, words)) is not None:
@@ -1406,7 +1418,9 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
             for title, body in notices(batch.get("events") or [], words):
                 await native.notice(title, body)
             current = (await channel.ask("status")).get("status")
-            if current != status or not native.tray_shown:
+            # The tray in the language the interface is shown in: a change there is redrawn now.
+            relabel = words.choose((await channel.ask("locale")).get("locale"))
+            if current != status or relabel or not native.tray_shown:
                 status = current
                 await native.tray(tray_menu(status, words))
             # The window frame in the page's theme, whenever the page says a new one.

@@ -247,6 +247,8 @@ async function openLogged(page, view, width = 1100) {
   await page.addInitScript(() => {
     window.__index = [];
     window.__ready = [];
+    // The page's own time of the pointer's last move: a dwell starts there.
+    document.addEventListener('pointermove', () => { window.__moved = performance.now(); }, true);
     new MutationObserver(records => {
       for (const record of records) {
         if (record.oldValue !== null && !record.target.hasAttribute('data-tooltip-busy')) window.__ready.push(performance.now());
@@ -307,8 +309,8 @@ for (const {view, label} of PAGES) {
     // 6. Shown, then a meaningful move: gone at once ...
     await page.mouse.move(p.x + 20, p.y);
     await page.waitForFunction(() => window.__indexOn === false, null, {timeout: 500});
-    // 4. ... and back only a full dwell after the pointer stops.
-    t0 = await now(page);
+    // 4. ... and back only a full dwell after the pointer stops (its last move, as the page saw it).
+    t0 = await page.evaluate(() => window.__moved);
     await indexShown(page);
     expect((await appeared(page, t0))[0], 'after a move, a fresh dwell').toBeGreaterThanOrEqual(DWELL - 50);
     // 7. Leaving during the wait: no late appearance.

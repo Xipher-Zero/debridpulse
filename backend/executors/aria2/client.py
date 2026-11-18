@@ -132,8 +132,13 @@ class Aria2Service:
     application settings itself.
     """
 
-    def __init__(self, url: str, secret: str = "", timeout_seconds: int = 15):
-        self.url = url.strip()
+    def __init__(self, url, secret: str = "", timeout_seconds: int = 15, *, identity: str | None = None):
+        # ``url`` is the address, or a function answering the daemon's current
+        # one (its port may move: core.ports). ``identity`` is the daemon as
+        # durable handle identity (execution_binding), which never moves; a
+        # client given a fixed address is identified by it.
+        self._url = url if callable(url) else str(url).strip()
+        self.identity = identity if identity is not None else (None if callable(url) else self._url)
         self.secret = secret.strip()
         self.timeout = aiohttp.ClientTimeout(total=max(5, int(timeout_seconds or 15)))
         self._request_id = 0
@@ -144,6 +149,11 @@ class Aria2Service:
         self._rpc_multicall_requests = 0
         self._rpc_total_seconds = 0.0
 
+
+    @property
+    def url(self) -> str:
+        """The address the daemon answers at now."""
+        return (self._url() if callable(self._url) else self._url).strip()
     async def test(self) -> Dict[str, Any]:
         version = await self._call("aria2.getVersion")
         return {

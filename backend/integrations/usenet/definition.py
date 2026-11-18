@@ -217,7 +217,7 @@ def build(options: UsenetOptions, environment):
         operation_timeout_seconds=options.operation_timeout_seconds,
     ))
     client = SabnzbdClient(SabEndpoint(
-        base_url=service_runtime.service_url(),
+        base_url=service_runtime.service_url,         # the live address: its port may move between starts
         api_key=service_runtime.internal_api_key(),
         timeout_seconds=options.operation_timeout_seconds,
     ))

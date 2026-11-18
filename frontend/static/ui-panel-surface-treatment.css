@@ -8,7 +8,8 @@
  */
 
 /* Shared treatment for the large card families reviewed across Dashboard,
-   Downloads, Activity Log, Help, Statistics and Details. dp-large-panel-surface
+   Downloads, Activity Log, Help and Statistics (Details' cards are their
+   dialog's raised surface, ui-modal-contract.css). dp-large-panel-surface
    is the reusable standard-strength opt-in for equivalent nested content cards. */
 :is(
   #view-dashboard .dp-dashboard-quick-add,
@@ -19,7 +20,6 @@
   #view-stats > .card,
   #view-stats > .scard,
   #view-stats > .list-card,
-  #modal .dp-detail-section-card,
   .dp-large-panel-surface
 ) {
   background:
@@ -54,7 +54,6 @@ body.light :is(
   #view-stats > .card,
   #view-stats > .scard,
   #view-stats > .list-card,
-  #modal .dp-detail-section-card,
   .dp-large-panel-surface
 ) {
   background:

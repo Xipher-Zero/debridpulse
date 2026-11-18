@@ -22,15 +22,21 @@ from typing import Any, Dict
 import configobj
 
 from db.database import DB_PATH
+from core.ports import loopback_port
 from executors.process_ownership import output_lines
 from core.processes import WINDOWLESS
 
 logger = logging.getLogger("debridpulse.usenet")
 
 # Loopback only: the service is reachable from the DebridPulse process and
-# from nowhere else. Nothing publishes this port.
+# from nowhere else. Nothing publishes this port. It is SERVICE_PORT when that
+# is free, else one the operating system chooses (core.ports), chosen again at
+# every start: another program may already listen on 8090, and a taken port
+# must not stop the executor. Its handles carry only the service's job id.
 SERVICE_HOST = "127.0.0.1"
 SERVICE_PORT = 8090
+# The port the running service was started on; None while none runs.
+_service_port: int | None = None
 # Where the service keeps its own configuration/state: beside DebridPulse's
 # database, as every data-root default (/app/data/usenet in the container).
 CONFIG_ROOT = Path(os.environ.get("USENET_CONFIG_DIR", str(DB_PATH.parent / "usenet")))
@@ -52,7 +58,8 @@ _api_key = ""
 
 
 def service_url() -> str:
-    return f"http://{SERVICE_HOST}:{SERVICE_PORT}"
+    """The address the service listens at now (its port: chosen at its start)."""
+    return f"http://{SERVICE_HOST}:{_service_port or SERVICE_PORT}"
 
 
 def internal_api_key() -> str:
@@ -114,7 +121,7 @@ def _write_bootstrap_ini(download_root: str) -> None:
     misc = {
         "api_key": internal_api_key(),
         "host": SERVICE_HOST,
-        "port": str(SERVICE_PORT),
+        "port": str(_service_port or SERVICE_PORT),
         # No operator ever sees this service, so it needs no web credentials
         # and must never offer a login surface of its own.
         "username": "",
@@ -208,7 +215,7 @@ class UsenetRuntime:
                    else [sys.executable, str(binary)])
         return [
             *command,
-            "--server", f"{SERVICE_HOST}:{SERVICE_PORT}",
+            "--server", f"{SERVICE_HOST}:{_service_port or SERVICE_PORT}",
             "--config-file", str(CONFIG_ROOT / "sabnzbd.ini"),
             "--logging", "1",
             "--browser", "0",
@@ -229,6 +236,10 @@ class UsenetRuntime:
                 logger.warning("usenet start skipped: %s", self._last_error)
                 return await self.status()
             try:
+                # Its usual port when free, else a free one (core.ports), before
+                # the configuration and command that name it.
+                global _service_port
+                _service_port = loopback_port(SERVICE_PORT, name="Usenet service", host=SERVICE_HOST)
                 _write_bootstrap_ini(self._config.download_root)
                 self._engine_started = asyncio.Event()
                 self._process = await asyncio.create_subprocess_exec(
@@ -269,6 +280,9 @@ class UsenetRuntime:
                         self._process.kill()
                 self._started_at = 0.0
                 await self._cancel_drains()
+                if self._process is None or self._process.returncode is not None:
+                    global _service_port
+                    _service_port = None         # no service: its address is the usual one until a start
             except Exception as exc:
                 self._last_error = str(exc)
                 logger.warning("usenet stop failed: %s", exc)
@@ -385,6 +399,8 @@ class UsenetRuntime:
                 pass
         self._process = None
         self._started_at = 0.0
+        global _service_port
+        _service_port = None                     # no service: the next start chooses again
         await self._cancel_drains()
 
 

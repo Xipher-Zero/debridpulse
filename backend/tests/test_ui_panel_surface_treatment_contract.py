@@ -13,7 +13,7 @@ def read(name: str) -> str:
 def test_panel_surface_treatment_loads_after_page_geometry() -> None:
     entry = read("style.css")
     downloads = entry.index("/ui-downloads-page.css?v=30")
-    treatment = entry.index("/ui-panel-surface-treatment.css?v=23")
+    treatment = entry.index("/ui-panel-surface-treatment.css?v=24")
     transfer = entry.index("/ui-transfer-contract.css?v=33")
     assert downloads < treatment < transfer
 
@@ -25,7 +25,8 @@ def test_treatment_targets_large_content_surfaces_only() -> None:
     assert "#view-torrents > .card" in css
     assert "#view-events > .dp-activity-card" in css
     assert "#view-help .help-panel.active > .card" in css
-    assert "#modal .dp-detail-section-card" in css
+    # Details' cards are their dialog's raised surface instead (ui-modal-contract.css).
+    assert "#modal .dp-detail-section-card" not in css
     assert ".dash-hero-stat" not in css
     assert ".dp-downloads-bulk-card" not in css
 
@@ -49,3 +50,17 @@ def test_light_surface_remains_clean_but_is_no_longer_barely_visible() -> None:
     assert "var(--dp-accent-purple) 4.6%" in css
     assert "rgba(105, 90, 145, .040)" in css
     assert "rgba(255,255,255,.62)" in css
+
+
+def test_every_dialog_takes_the_theme_pickers_surface_and_details_cards_the_raised_one() -> None:
+    """The panel gradient is each palette's near-black; a dialog is the theme
+    picker's surface (--dp-surface-overlay, which every palette sets), and the
+    Details cards inside it a step above it (--dp-surface-2)."""
+    modal = read("ui-modal-contract.css")
+    detail = modal[modal.index("#modal.dp-detail-modal {"):modal.index("}", modal.index("#modal.dp-detail-modal {"))]
+    assert "background: var(--dp-surface-overlay) !important;" in detail
+    dialog = modal[modal.index(".dp-modal-dialog {"):modal.index("}", modal.index(".dp-modal-dialog {"))]
+    assert "background: var(--dp-surface-overlay);" in dialog
+    card = modal[modal.index("#modal .dp-detail-section-card {"):modal.index("}", modal.index("#modal .dp-detail-section-card {"))]
+    assert "background: var(--dp-surface-2) !important;" in card
+    assert "background: var(--dp-surface-overlay);" in read("ui-theme-picker.css")
