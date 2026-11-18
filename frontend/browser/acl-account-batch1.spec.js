@@ -258,7 +258,8 @@ test('User Accounts: name opens Account Details, Remove is in Edit User, Merge i
     const details = page.locator('.dp-modal-dialog.dp-account-details-dialog');
     await expect(details.locator('.dp-account-details-profile dt')).toHaveText(['Display Name', 'Actual Name', 'Email']);
     await expect(details.locator('.dp-account-details-profile dd')).toHaveText([ann.name, 'Not set', 'None provided']);
-    await expect(details.locator('.dp-account-details-heading')).toHaveText('Activity');
+    // Activity, then the person's Connected browsers (WS-S1: an Admin may disconnect them).
+    await expect(details.locator('.dp-account-details-heading')).toHaveText(['Activity', 'Connected browsers']);
     await details.locator('[data-modal-cancel]').click();
 
     // Remove: Edit User's impact confirmation, with the server's figures;

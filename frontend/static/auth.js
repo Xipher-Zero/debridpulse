@@ -465,7 +465,7 @@
       const from = view;
       view = next;
       Object.entries(views).forEach(([name, node]) => { node.hidden = name !== next; });
-      ['password', 'clear', 'browsers'].forEach(id => handle.setActionHidden(id, next !== 'profile'));
+      ['password', 'clear'].forEach(id => handle.setActionHidden(id, next !== 'profile'));
       // Clear Password's view is destructive: the red treatment, and its own accept.
       handle.setTone(next === 'clear' ? 'danger' : '');
       handle.setAcceptLabel(said(next === 'clear' ? 'account.action.clear_password' : 'common.save'));
@@ -481,7 +481,8 @@
       if (next === 'profile') {
         // Secrets never outlive their view.
         ['current', 'next', 'confirm', 'clear_current'].forEach(name => { if (fields[name]) fields[name].value = ''; });
-        (returnTo || (from === 'language' ? language.button : null) || fields.display_name).focus();
+        (returnTo || (from === 'language' ? language.button : from === 'browsers' ? browsers.button : null)
+          || fields.display_name).focus();
       } else if (next === 'language') {
         language.open();
       } else if (next === 'browsers') {
@@ -567,12 +568,16 @@
      * name, when it was connected and last used, and Disconnect. The server's
      * list is the only truth shown; a Disconnect re-reads it. */
     const browsers = {
-      slot: null, handle: null,
+      slot: null, handle: null, button: null,
       escape: value => String(value ?? '').replace(/[&<>"']/g, ch => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch])),
       mount(body, handle) {
         this.handle = handle;
         this.slot = body.querySelector('[data-account-browsers-list]');
+        // Opened from the profile, as the language view is: never a footer
+        // action, so the footer stays the profile's own acts at every width.
+        this.button = body.querySelector('[data-account-browsers-open]');
+        this.button?.addEventListener('click', () => show('browsers', handle));
       },
       async read() {
         try {
@@ -657,7 +662,6 @@
     if (passwordAction) actions.push({id: 'password', placement: 'leading',
       label: said(passwordAction === 'change' ? 'account.action.change_password' : 'account.action.set_password')});
     if (clearable) actions.push({id: 'clear', label: said('account.action.clear_password'), tone: 'danger', placement: 'leading'});
-    if (connectsBrowsers) actions.push({id: 'browsers', label: said('account.action.browsers'), placement: 'leading'});
 
     // The header's far end: My Account's Help, then Easy | Advanced for every
     // account that owns a presentation. Help explains what this dialog offers
@@ -684,7 +688,7 @@
       className: 'dp-account-dialog',
       actions,
       onAction(id) {
-        if (id === 'password' || id === 'clear' || id === 'browsers') show(id, this.handle);
+        if (id === 'password' || id === 'clear') show(id, this.handle);
       },
       mount(body, handle) {
         this.handle = handle;
@@ -702,7 +706,10 @@
             <div class="dp-account-email-row">
               <div class="dp-modal-field dp-account-email" data-account-email></div>${localeState ? `
               <button type="button" class="btn dp-language-button dp-account-language" data-account-language></button>` : ''}
-            </div>${setupWizard ? `
+            </div>${connectsBrowsers ? `
+            <div class="dp-account-browsers-entry">
+              <button type="button" class="btn dp-account-browsers-open" data-account-browsers-open data-i18n="account.action.browsers"></button>
+            </div>` : ''}${setupWizard ? `
             <div class="dp-account-setup">
               <h3 class="dp-account-setup-title" data-i18n="account.setup.title"></h3>
               <p class="dp-account-setup-hint" data-i18n="account.setup.hint.review"></p>

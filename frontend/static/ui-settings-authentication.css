@@ -2274,6 +2274,18 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     height: min(656px, calc(100dvh - 24px));
   }
 }
+/* A person who may connect browsers has one more profile row (Connected
+   browsers: a 36px control after the view's 12px gap, 4px above it), and the
+   fixed size grows by exactly that row, so the profile still fits without
+   scrolling; every other account and view keeps its size. */
+.dp-modal-dialog.dp-account-dialog:has(.dp-account-browsers-entry) {
+  height: min(553px, calc(100dvh - 48px));
+}
+@media (max-width: 620px) {
+  .dp-modal-dialog.dp-account-dialog:has(.dp-account-browsers-entry) {
+    height: min(708px, calc(100dvh - 24px));
+  }
+}
 
 /* The account-impact confirmation (its own dialog, or Edit User's other
    view): the consequence, centred; the server's figures; the qualifier
@@ -2428,6 +2440,10 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 .dp-account-browsers-empty {
   color: var(--dp-text-muted);
   font-size: 13px;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-browsers-entry {
+  display: flex;
+  margin-top: 4px;
 }
 .dp-account-details-browsers-section {
   margin-top: 12px;
