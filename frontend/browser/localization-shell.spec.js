@@ -301,9 +301,15 @@ test('L12-WS3a: a focused Download Activity row action keeps focus across a lang
     current_source_identity: {kind: 'link'}};
   await page.route('**/api/torrents?*', route => route.fulfill({status: 200, contentType: 'application/json',
     body: JSON.stringify({items: [row], total: 1})}));
+  // The list is focused only once it is painted from its answer: a slower page
+  // paints it again when that answer lands, and a repaint is not a language change.
+  const listed = page.waitForResponse(response => response.url().includes('/api/torrents?'));
   await boot(page);
+  await listed;
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const pause = page.locator('#dash-tbody tr[data-torrent-id="77"] button[onclick*="pauseT(77"]');
   await pause.focus();
+  await expect(pause).toBeFocused();
   expect(await page.evaluate(() => window.DPI18n.setLocale('en-XA'))).toBe('en-XA');
   expect(await page.evaluate(() => document.activeElement.getAttribute('onclick'))).toContain('pauseT(77');
   await expect(pause).toBeFocused();

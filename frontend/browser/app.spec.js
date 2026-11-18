@@ -85,8 +85,10 @@ async function installLegacyMutationWatch(page) {
 }
 
 async function expectCanonicalShell(page) {
-  const views = await page.locator('#sidebar .nav-item[data-view]').evaluateAll(nodes => nodes.map(node => node.dataset.view));
-  expect(views).toEqual(canonicalViews.map(([id]) => id));
+  // Views an account's capabilities admit (Activity Log, Settings) join the
+  // sidebar once its authority is read: the shell is read when composed.
+  await expect.poll(() => page.locator('#sidebar .nav-item[data-view]').evaluateAll(nodes => nodes.map(node => node.dataset.view)))
+    .toEqual(canonicalViews.map(([id]) => id));
   for (const id of retiredIds) await expect(page.locator(`#${id}`)).toHaveCount(0);
 }
 

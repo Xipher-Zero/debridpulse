@@ -59,3 +59,16 @@ def test_the_loop_redraws_the_tray_when_the_language_changes():
     assert 'words.choose((await channel.ask("locale")).get("locale"))       # the interface\'s language' in source
     assert 'relabel = words.choose((await channel.ask("locale")).get("locale"))' in source
     assert "if current != status or relabel or not native.tray_shown:" in source
+    # macOS: the application menu (its Quit, Cmd+Q) is set again in the new language.
+    assert 'if relabel and sys.platform == "darwin":\n' in source
+    relabelled = source[source.index('if relabel and sys.platform == "darwin":'):]
+    assert relabelled.index('await _window(shell, "window.setMainMenu", main_menu(words))') < 200
+
+
+def test_the_macos_application_menu_is_drawn_in_the_chosen_language(tmp_path):
+    config = tmp_path / "config.json"
+    config.write_text("{}", encoding="utf-8")
+    words = supervisor.Words(config)
+    assert supervisor.main_menu(words)[0]["menuItems"][0]["text"] == "Quit DebridPulse"
+    assert words.choose("de")
+    assert supervisor.main_menu(words)[0]["menuItems"][0]["text"] == "DebridPulse beenden"

@@ -1423,6 +1423,9 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
             if current != status or relabel or not native.tray_shown:
                 status = current
                 await native.tray(tray_menu(status, words))
+            if relabel and sys.platform == "darwin":
+                # macOS: the application menu (its Quit) speaks the new language too.
+                await _window(shell, "window.setMainMenu", main_menu(words))
             # The window frame in the page's theme, whenever the page says a new one.
             frame = (await channel.ask("frame")).get("frame")
             if frame and frame != applied_frame:
