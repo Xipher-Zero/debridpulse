@@ -5435,7 +5435,14 @@
       clearWidths();
       tables.forEach(table => table.querySelectorAll('.dp-settings-users-token-name[data-tooltip]').forEach(name => name.removeAttribute('data-tooltip')));
       const count = tables.length ? steps(tables[0], '--dp-tokens-fit-steps') : 0;
-      if (!count) return;
+      if (!count) {
+        // From 780px a token's name shows at most two lines (CSS clamps it);
+        // a name cut there carries its whole self as the tooltip.
+        tables.forEach(table => table.querySelectorAll('.dp-settings-users-token-name').forEach(name => {
+          if (name.scrollHeight > name.clientHeight + 1) name.setAttribute('data-tooltip', name.textContent);
+        }));
+        return;
+      }
       let most = 0;
       for (let step = 0; step < count; step += 1) {
         setStage(step);

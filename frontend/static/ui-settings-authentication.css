@@ -1243,7 +1243,14 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   #view-settings .dp-settings-users-tokens > thead > tr > th:nth-child(4) {
     width: 9rem;
   }
+  /* A token's name: at most two lines, then its end is cut (its whole
+     name is then its tooltip, fitIntegrationAccounts). */
   #view-settings .dp-settings-users-tokens .dp-settings-users-token-name {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
     overflow-wrap: anywhere;
   }
 }

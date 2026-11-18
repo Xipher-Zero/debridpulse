@@ -22,6 +22,7 @@ async function adminPage(browser) {
   const errors = [];
   page.on('pageerror', error => errors.push(String(error.message)));
   await adminSession.signIn(page);
+  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.fetch));
   return {context, page, errors};
 }
 
@@ -179,7 +180,8 @@ test('from 780px every token table in Integration Accounts lines its columns up'
   const admin = await adminPage(browser);
   try {
     // Two Integration accounts with tokens of different lengths, and a connected browser.
-    for (const [name, labels] of [[`Short ${run}`, ['A']], [`Suite ${run}`, ['Sonarr instance on the media server', 'Lidarr']]]) {
+    for (const [name, labels] of [[`Short ${run}`, ['A']], [`Suite ${run}`, ['Sonarr instance on the media server', 'Lidarr',
+      'A very long token name for the automation on the second media server in the basement rack, nightly, with retries']]]) {
       const created = await admin.page.evaluate(async (displayName) => (await (await window.debridPulseAuth.fetch('/api/accounts', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({kind: 'integration', display_name: displayName})})).json()), name);
@@ -202,6 +204,33 @@ test('from 780px every token table in Integration Accounts lines its columns up'
         '.dp-settings-users-integrations-card .dp-settings-users-tokens')].map((table) =>
         [...table.querySelectorAll('thead th')].map((th) => Math.round(th.getBoundingClientRect().left))));
       for (const table of columns.slice(1)) expect(table, `${width}px`).toEqual(columns[0]);
+      // A token's name: at most two lines, its end cut; a cut name's tooltip is the whole name.
+      await expect.poll(() => admin.page.evaluate(() => [...document.querySelectorAll(
+        '.dp-settings-users-integrations-card .dp-settings-users-token-name')].map((name) => {
+        const line = parseFloat(getComputedStyle(name).lineHeight) || 20;
+        return {lines: Math.round(name.getBoundingClientRect().height / line), cut: name.scrollHeight > name.clientHeight + 1,
+          tooltip: name.getAttribute('data-tooltip') === name.textContent, long: name.textContent.startsWith('A very long')};
+      })), {message: `${width}px`}).toEqual(expect.arrayContaining([expect.objectContaining(
+        width === 780 ? {long: true, lines: 2, cut: true, tooltip: true} : {long: true})]));
+      const all = await admin.page.evaluate(() => [...document.querySelectorAll(
+        '.dp-settings-users-integrations-card .dp-settings-users-token-name')].map((name) => ({
+        twoAtMost: name.getBoundingClientRect().height <= 2 * (parseFloat(getComputedStyle(name).lineHeight) || 20) + 1,
+        tooltipOnlyIfCut: name.hasAttribute('data-tooltip') === (name.scrollHeight > name.clientHeight + 1)})));
+      expect(all.every((item) => item.twoAtMost && item.tooltipOnlyIfCut), `${width}px`).toBe(true);
+    }
+    // Below 780px, where the Issued date moves under the name, the name keeps one line, its end cut, its tooltip whole.
+    for (const width of [600, 320]) {
+      await admin.page.setViewportSize({width, height: 900});
+      await expect.poll(() => admin.page.evaluate(() => [...document.querySelectorAll(
+        '.dp-settings-users-integrations-card .dp-settings-users-tokens tbody tr')].map((row) => {
+        const name = row.querySelector('.dp-settings-users-token-name');
+        const issued = row.querySelector('.dp-settings-users-token-issued');
+        const relocated = Boolean(issued && issued.getClientRects().length);
+        const line = parseFloat(getComputedStyle(name).lineHeight) || 20;
+        const cut = name.scrollWidth > name.clientWidth + 1;
+        return !relocated || (name.getBoundingClientRect().height <= line + 1
+          && getComputedStyle(name).textOverflow === 'ellipsis' && (!cut || name.getAttribute('data-tooltip') === name.textContent));
+      }).every(Boolean)), {message: `${width}px`}).toBe(true);
     }
   } finally {
     await admin.context.close();
