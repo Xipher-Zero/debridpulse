@@ -55,6 +55,9 @@ SHELL_EXIT_SECONDS = 10
 # on with DebridPulse's own shutdown.
 GRACEFUL_SECONDS = 5
 POLL_SECONDS = 3.0
+# How soon a connected browser's Open DownloadPulse brings the window forward:
+# the backend's ``show`` is asked this often (one short line each way).
+SHOW_POLL_SECONDS = 0.5
 NATIVE_METHODS = ("os.setTray", "os.showNotification", "window.show", "window.hide", "window.focus",
                   "window.unminimize", "window.minimize", "window.setMainMenu", "os.showSaveDialog", "app.exit",
                   "window.setFrameTheme")
@@ -1365,9 +1368,25 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
     applied_frame = None                        # the frame last given to the window (apply_frame)
     minimized = False                           # the shell says it is minimized (its own events)
     next_poll = time.monotonic() + POLL_SECONDS
+    next_show = time.monotonic() + SHOW_POLL_SECONDS
+
+    async def bring_forward(why: str) -> None:
+        # What Open can do depends on what the window is: a window this
+        # loop hid is shown again (the shell maps it); a minimized one
+        # is asked to come back, which on Wayland is the compositor's
+        # to grant (the taskbar always can); a shown one is raised.
+        nonlocal hidden
+        methods = open_methods(hidden=hidden, minimized=minimized)
+        logger.info("%s: the window was %s; %s", why, "hidden" if hidden else "minimized" if minimized
+                    else "shown", ", ".join(methods))
+        hidden = False
+        for method in methods:
+            await _window(shell, method)
+
     while backend.process.returncode is None:
         try:
-            event, data = await asyncio.wait_for(shell.events.get(), max(0.1, next_poll - time.monotonic()))
+            event, data = await asyncio.wait_for(shell.events.get(),
+                                                 max(0.1, min(next_poll, next_show) - time.monotonic()))
         except TimeoutError:
             event, data = None, None
         if event in {"windowMinimize", "windowRestore"}:
@@ -1391,16 +1410,7 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
         elif event == "trayMenuItemClicked":
             chosen = (data or {}).get("id")
             if chosen == "open":
-                # What Open can do depends on what the window is: a window this
-                # loop hid is shown again (the shell maps it); a minimized one
-                # is asked to come back, which on Wayland is the compositor's
-                # to grant (the taskbar always can); a shown one is raised.
-                methods = open_methods(hidden=hidden, minimized=minimized)
-                logger.info("Open: the window was %s; %s", "hidden" if hidden else "minimized" if minimized
-                            else "shown", ", ".join(methods))
-                hidden = False
-                for method in methods:
-                    await _window(shell, method)
+                await bring_forward("Open")
             elif chosen in {"pause", "resume"}:
                 await channel.ask(chosen)
                 next_poll = 0
@@ -1412,6 +1422,11 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
             # Quit); its exit status is recorded where it ends (_end_shell).
             logger.info("the native shell ended by itself")
             return 0
+        if time.monotonic() >= next_show:
+            # A connected browser's Open DownloadPulse: the tray's Open.
+            if (await channel.ask("show")).get("show"):
+                await bring_forward("Open (a connected browser)")
+            next_show = time.monotonic() + SHOW_POLL_SECONDS
         if time.monotonic() >= next_poll:
             batch = await channel.ask("events", after=cursor)
             cursor = batch.get("cursor", cursor)

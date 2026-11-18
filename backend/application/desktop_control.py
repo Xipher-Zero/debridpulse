@@ -23,7 +23,10 @@ The tray asks four things, each answered by its existing owner:
   desktop save: ``request_destination``), each handed out once, by an opaque
   number and the name the file is offered under;
 * ``saved`` -- where one of them goes: the path the person's own Save dialog
-  chose, or none (cancelled).
+  chose, or none (cancelled);
+* ``show`` -- whether the window was asked to come forward since the
+  supervisor last asked (``request_show``: a connected browser's Open
+  DownloadPulse), answered once.
 
 The two save operations are how a desktop save reaches the Save dialog only
 the supervisor can show (a page and this backend have no window of their
@@ -61,7 +64,7 @@ LIFECYCLE = frozenset({"transfer.accepted", "transfer.queued", "transfer.transfe
 _FIELDS = {"status": {"id", "op"}, "events": {"id", "op", "after", "limit"},
            "pause": {"id", "op"}, "resume": {"id", "op"},
            "saves": {"id", "op"}, "saved": {"id", "op", "save", "path"}, "frame": {"id", "op"},
-           "locale": {"id", "op"}}
+           "locale": {"id", "op"}, "show": {"id", "op"}}
 # How long a desktop save waits for its destination: the supervisor's next
 # look (its loop) and the person's own time in the dialog.
 DESTINATION_WAIT_SECONDS = 600
@@ -109,6 +112,18 @@ async def request_destination(name: str) -> str | None:
         return None
     finally:
         _saves.pop(number, None)
+
+
+# A connected browser asked for the application (its Open DownloadPulse): the
+# supervisor brings its window forward, as the tray's Open does, when it next
+# asks (op ``show``). Asked twice before it looks is asked once.
+_show_requested = False
+
+
+def request_show() -> None:
+    """Ask the supervisor to bring the window forward on its next look."""
+    global _show_requested
+    _show_requested = True
 
 
 class ChannelRefused(RuntimeError):
@@ -167,7 +182,7 @@ def _project_event(item: dict) -> dict:
 
 
 async def answer(application, request) -> dict:
-    """The answer to one request; a refusal for anything outside the six."""
+    """The answer to one request; a refusal for anything outside its operations (``_FIELDS``)."""
     if not isinstance(request, dict) or not isinstance(request.get("id"), int) or isinstance(request.get("id"), bool):
         return {"id": None, "error": "refused"}
     ident, op = request["id"], request.get("op")
@@ -181,6 +196,10 @@ async def answer(application, request) -> dict:
     if op in {"pause", "resume"}:
         result = await (application.pause_all() if op == "pause" else application.resume_all())
         return {"id": ident, "ok": bool(result.get("ok")), "paused": bool(result.get("paused"))}
+    if op == "show":
+        global _show_requested
+        asked, _show_requested = _show_requested, False
+        return {"id": ident, "show": asked}
     if op == "frame":
         return {"id": ident, "frame": dict(_frame) if _frame else None}
     if op == "locale":

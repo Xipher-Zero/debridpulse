@@ -495,3 +495,66 @@ def test_saving_where_chosen_is_the_desktop_applications_alone_and_holds_no_main
     for other in ("/api/torrents/12/trace", "/api/torrents/12/save", "/api/admin/backups/a/b/package/save",
                   "/api/admin/backups/restore", "/api/torrents/x/trace/save"):
         assert not exempt(other), other
+
+
+# ── A connected browser's Open DownloadPulse ───────────────────────────────
+
+class _RecordingShell:
+    """The native shell's two seams the loop uses (its events, its calls), recorded."""
+
+    def __init__(self):
+        self.events, self.calls = asyncio.Queue(), []
+
+    async def call(self, method, data=None):
+        self.calls.append(method)
+
+
+class _QuietTray:
+    tray_shown = True
+
+    async def tray(self, menu):
+        pass
+
+    async def notice(self, title, body):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_a_connected_browsers_open_brings_the_window_forward_as_the_trays_open_does(tmp_path):
+    from test_browser_pairing import CHROMIUM, Person, extension, pair
+
+    backend = await Backend(tmp_path).start()
+    loop_task = None
+    try:
+        assert await backend.ready()
+        backend.base = f"http://127.0.0.1:{backend.port}"
+        owner = await Person.sign_in(backend, "owner", PASSWORD)
+        token, _ = await pair(backend, owner, "Brave on Linux")
+        await owner.close()
+        # Nothing asked yet: the channel answers no, and asking does not ask.
+        assert (await backend.channel.ask("show"))["show"] is False
+        shell = _RecordingShell()
+        loop_task = asyncio.ensure_future(supervisor._serve(
+            shell, backend.channel, supervisor.Words(tmp_path / "config" / "config.json"), backend.owned, _QuietTray()))
+        await shell.events.put(("windowClose", None))              # closed to the tray
+        deadline = time.monotonic() + 10
+        while "window.hide" not in shell.calls and time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+        assert shell.calls == ["window.hide"]
+        # Without a browser token the window is not anyone's to call forward.
+        assert (await extension(backend, "POST", "/api/browser/v1/application/show", origin=CHROMIUM))[0] == 401
+        status, body = await extension(backend, "POST", "/api/browser/v1/application/show", token, origin=CHROMIUM)
+        assert status == 200 and body == {"desktop": True}, body
+        asked = time.monotonic()
+        while shell.calls[-1:] != ["window.focus"] and time.monotonic() - asked < 5:
+            await asyncio.sleep(0.05)
+        # Shown again and raised -- the tray's Open for a hidden window -- within the supervisor's next look.
+        assert shell.calls == ["window.hide", "window.show", "window.focus"]
+        assert time.monotonic() - asked < 2
+        await asyncio.sleep(supervisor.SHOW_POLL_SECONDS * 3)
+        assert shell.calls == ["window.hide", "window.show", "window.focus"]   # asked once, done once
+    finally:
+        if loop_task is not None:
+            loop_task.cancel()
+            await asyncio.gather(loop_task, return_exceptions=True)
+        await backend.stop()

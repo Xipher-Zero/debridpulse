@@ -68,6 +68,13 @@ A device-authorization flow, after RFC 8628.
   It is how the extension verifies its pairing and the server's protocol, and it
   names what this server offers a browser: `capabilities: {sources, controls,
   withdraw, estimate}`.
+- **The person's appearance.** The same answer carries `appearance: {mode,
+  dark_palette, light_palette}`: the token's person's own choice, read from its
+  one owner (`services.account_appearance.load`; a retired palette reads as its
+  mode's native one), as palette IDs. The extension draws its own pages in it
+  and carries the palettes' colours itself; an ID it does not know is drawn as
+  that mode's native palette. A change in DownloadPulse is the extension's next
+  read.
 
 ## 2a. A browser's downloads
 
@@ -103,6 +110,19 @@ withdrawal, advisory pause/resume and the per-client limits.
   title replaces its link's placeholder; a change moves the cursor), `source`
   (a summary without query, credentials or payload), `phase`, `reason`, `actionability`, `paused_by`, `error`,
   `progress`, `estimate` and `control`. A completed download is settled.
+
+## 2b. Open DownloadPulse (the desktop application)
+`POST /api/browser/v1/application/show` (a browser token; nothing else is
+admitted). On the installed desktop application it asks its supervisor to bring
+the window forward -- exactly the tray's Open: a window closed to the tray is
+shown again, a minimized one asked back, a shown one raised -- and answers
+`{"desktop": true}`. The request is a flag on the backend's private control
+channel (`application.desktop_control`, op `show`), which the supervisor reads
+every half second; asked twice before it looks is shown once. Whether the
+window may take the focus is the operating system's decision (Windows and some
+Wayland desktops may flash the taskbar instead). A server has no window: it
+answers `{"desktop": false}` and changes nothing, and the extension opens the
+page in a tab, as it does for an older DownloadPulse (`404`).
 
 ## 3. Disconnecting
 

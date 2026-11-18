@@ -173,6 +173,7 @@ def test_a_browser_token_holds_the_browser_client_and_nothing_else_whatever_its_
                 if capability is not Capability.PUBLIC and permits(browser, capability)}
     assert admitted == {action for action, capability in ACTIONS.items() if capability is Capability.BROWSER_CLIENT}
     assert admitted == {"api.browser_routes.browser_session", "api.browser_routes.disconnect_this_browser",
+                        "api.browser_routes.show_application",
                         "api.browser_routes.submit_browser_job",
                         "api.browser_routes.list_browser_jobs", "api.browser_routes.get_browser_job",
                         "api.browser_routes.withdraw_browser_job", "api.browser_routes.request_browser_control"}
@@ -218,7 +219,15 @@ async def test_a_browser_pairs_on_approval_and_collects_its_token_exactly_once(w
                 "protocol": "debridpulse.browser/1", "token": {"id": collected["token_id"], "label": "Laptop-Firefox"},
                 "account": {"display_name": "Administrator"},
                 "capabilities": {"sources": ["links", "magnet", "metalink", "nzb", "nzb_link", "torrent"],
-                                 "controls": ["pause", "resume"], "withdraw": True, "estimate": True}}
+                                 "controls": ["pause", "resume"], "withdraw": True, "estimate": True},
+                "appearance": {"mode": "dark", "dark_palette": "debridpulse-dark", "light_palette": "debridpulse-light"}}
+        # The person's appearance is its owner's answer: a change there is the extension's next read.
+        status, changed = await owner.call("PATCH", "/api/account/appearance",
+                                           json={"mode": "light", "light_palette": "nord-light"})
+        assert status == 200, changed
+        _, session = await extension(world, "GET", "/api/browser/v1/session", collected["token"])
+        assert session["appearance"] == {"mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "nord-light"}
+        assert (await owner.call("PATCH", "/api/account/appearance", json={"mode": "dark"}))[0] == 200
 
         status, events = await owner.call("GET", "/api/events?limit=50", csrf=False)
         assert status == 200, events
@@ -294,6 +303,9 @@ async def test_a_browser_token_on_an_admin_account_reaches_nothing_but_the_brows
         _, integration = await owner.call("POST", f"/api/accounts/{DEFAULT_INTEGRATION_ID}/tokens",
                                           json={"label": "radarr"})
         assert (await extension(world, "GET", "/api/browser/v1/session", integration["token"]))[0] == 403
+        assert (await owner.call("POST", "/api/browser/v1/application/show"))[0] == 403
+        # A server has no window to bring forward: the extension is told to open the page.
+        assert await extension(world, "POST", "/api/browser/v1/application/show", token) == (200, {"desktop": False})
     finally:
         await owner.close()
 

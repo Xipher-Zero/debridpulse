@@ -154,14 +154,20 @@ async def list_all_browser_tokens():
 @router.get("/browser/v1/session")
 async def browser_session(request: Request):
     """Which connection this browser token is, and the protocol this server
-    speaks: how the extension verifies a pairing and a server's version."""
+    speaks: how the extension verifies a pairing and a server's version; and
+    its person's appearance, which the extension's own pages follow."""
+    from services import account_appearance
     principal = request.state.principal
     rows = await accounts.list_tokens(principal.account_id)
     label = next((str(row["label"]) for row in rows if str(row["id"]) == principal.credential_id), "")
     return {"protocol": BROWSER_PROTOCOL, "token": {"id": principal.credential_id, "label": label},
             "account": {"display_name": principal.display_name},
             "capabilities": {"sources": sorted(BROWSER_SOURCE_KINDS), "controls": ["pause", "resume"],
-                             "withdraw": True, "estimate": True}}
+                             "withdraw": True, "estimate": True},
+            # The person's own appearance (services.account_appearance, its one owner): the
+            # mode and the palette chosen for each mode, as palette IDs. The extension draws
+            # its own pages in it (operator, 2026-11-18).
+            "appearance": await account_appearance.load(principal.account_id)}
 
 
 @router.delete("/browser/v1/session")
@@ -175,6 +181,21 @@ async def disconnect_this_browser(request: Request):
                                        actor_id=principal.account_id):
         raise DisplayError(404, "Connected browser not found.", code="account.browser_token_not_found")
     return {"ok": True}
+
+
+@router.post("/browser/v1/application/show")
+async def show_application():
+    """The extension's Open DownloadPulse, for DownloadPulse on this computer:
+    the installed desktop application brings its own window forward (its
+    supervisor does, as the tray's Open does, on its next look) and answers
+    ``{"desktop": true}``. A server has no window: ``{"desktop": false}``,
+    and the extension opens the page instead. Nothing else is touched."""
+    from core.config import desktop_installation
+    if not desktop_installation():
+        return {"desktop": False}
+    from application.desktop_control import request_show
+    request_show()
+    return {"desktop": True}
 
 
 # ── the browser's own downloads (``external.service``, browser jobs) ────────
