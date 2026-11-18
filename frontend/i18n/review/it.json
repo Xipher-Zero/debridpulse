@@ -34074,6 +34074,364 @@
     "ai-generated",
     "ai-review"
    ]
+  },
+  "browser.pairing.title": {
+   "source": "295862f48c908f92",
+   "translation": "fffebf6cdb1d897f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.intro": {
+   "source": "8bd7a008583c45ff",
+   "translation": "acd2bd55188803d1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.field.browser": {
+   "source": "d31de1a5c5c8ba2a",
+   "translation": "76dc0ca5be0ffb5f",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.field.requested": {
+   "source": "2d9e28289facab94",
+   "translation": "7ae8aed8cf978b41",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.field.code": {
+   "source": "340f463033e0fd5d",
+   "translation": "dabfdc4bb56c4e07",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.code_hint": {
+   "source": "7d99a1983692b67e",
+   "translation": "291df41033fdad09",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.field.name": {
+   "source": "b35bd5d7f59c227c",
+   "translation": "7289fb6627191cc1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.warning": {
+   "source": "907c5e24e825d9f8",
+   "translation": "8547588e2e5751b2",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "Only connect a browser from which you personally started this request, just now."
+  },
+  "browser.pairing.approve": {
+   "source": "1a2303ede07493ac",
+   "translation": "112975e54c821fdf",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.deny": {
+   "source": "05a2d7332eb9d8bf",
+   "translation": "cc2a91346b9e25a0",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.approved": {
+   "source": "6e7c02641a1d78cc",
+   "translation": "9b02401b9c7df4ec",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.denied": {
+   "source": "6da3bbefec97e7ac",
+   "translation": "9a1dc6109174e7c0",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.not_permitted": {
+   "source": "76947daa5f42649b",
+   "translation": "ccacdc4cfb78dc69",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "browser.pairing.failed": {
+   "source": "19aa462e0491f279",
+   "translation": "190377fb12000386",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.browser.pairing.not_found": {
+   "source": "0c4068abe1265279",
+   "translation": "a961bd259d95c443",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.browser.pairing.name_required": {
+   "source": "f16876aab04bfdc9",
+   "translation": "0ad84acf77e14e02",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.browser.pairing.busy": {
+   "source": "e4a6f9f296f819f6",
+   "translation": "f7857f05aa926669",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.browser.pairing.rate_limited": {
+   "source": "400b7f691b511b63",
+   "translation": "35f3e88a0bccbd9d",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.account.browser_token_label_required": {
+   "source": "c569984c80f0713c",
+   "translation": "b82b107e7a159044",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.account.browser_not_permitted": {
+   "source": "76947daa5f42649b",
+   "translation": "ccacdc4cfb78dc69",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "error.account.browser_token_not_found": {
+   "source": "798464198eb54095",
+   "translation": "487bea81918ca821",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.action.browsers": {
+   "source": "b446b885a79eb15d",
+   "translation": "8264aa528e2459c9",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.title": {
+   "source": "b446b885a79eb15d",
+   "translation": "8264aa528e2459c9",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.intro": {
+   "source": "c23a0ce1f6bc39a1",
+   "translation": "3ec68232359152c5",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.none": {
+   "source": "811d17c2926baee3",
+   "translation": "a8d58fc14ae26df1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.unreadable": {
+   "source": "fa61dc6313c3749f",
+   "translation": "6ea2b790daf075ed",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.connected": {
+   "source": "22965568d22a14ee",
+   "translation": "16fd42b4a732dcfd",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.last_used": {
+   "source": "830ec7f812f9d862",
+   "translation": "4592854b8196c157",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.never_used": {
+   "source": "3b82aae1ed24f607",
+   "translation": "d4e431f82cb8c5b7",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.disconnect": {
+   "source": "acfc5be785a9bb3d",
+   "translation": "160c65c2c6603786",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.disconnect_title": {
+   "source": "1fa7a806237b3dd2",
+   "translation": "8d761ae7784df6ea",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.disconnect_message": {
+   "source": "4d4998b4ce904c7b",
+   "translation": "1c254197de50b1bc",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "It stops working immediately. To use it again, connect it again from that browser."
+  },
+  "account.browsers.disconnected": {
+   "source": "606765548a2ab5fc",
+   "translation": "d403107d7d5e2d3b",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "account.browsers.not_disconnected": {
+   "source": "2c54c789320e4561",
+   "translation": "1a9402e13256e6e4",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers": {
+   "source": "b446b885a79eb15d",
+   "translation": "8264aa528e2459c9",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers_none": {
+   "source": "811d17c2926baee3",
+   "translation": "a8d58fc14ae26df1",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers_unreadable": {
+   "source": "fa61dc6313c3749f",
+   "translation": "6ea2b790daf075ed",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers_connected": {
+   "source": "22965568d22a14ee",
+   "translation": "16fd42b4a732dcfd",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers_last_used": {
+   "source": "830ec7f812f9d862",
+   "translation": "4592854b8196c157",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers_never_used": {
+   "source": "3b82aae1ed24f607",
+   "translation": "d4e431f82cb8c5b7",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers_disconnect": {
+   "source": "acfc5be785a9bb3d",
+   "translation": "160c65c2c6603786",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers_disconnect_title": {
+   "source": "d41303362ab7dd45",
+   "translation": "073acad8cfa6c15a",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
+  },
+  "settings.account.browsers_disconnect_message": {
+   "source": "e7fe7f38ece4f003",
+   "translation": "034c7a1d6e7f3d7c",
+   "provenance": [
+    "ai-generated",
+    "ai-review",
+    "ai-back-translation"
+   ],
+   "backTranslation": "It stops working immediately. The owner can connect it again from that browser."
+  },
+  "settings.account.browsers_disconnected": {
+   "source": "a2b0776a8f79bf02",
+   "translation": "01fa66477eaa8063",
+   "provenance": [
+    "ai-generated",
+    "ai-review"
+   ]
   }
  }
 }

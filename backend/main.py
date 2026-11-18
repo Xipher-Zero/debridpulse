@@ -45,6 +45,7 @@ from api.executor_work import router as executor_work_router
 from api.arr_qbittorrent import router as arr_qbittorrent_router
 from api.arr_sabnzbd import router as arr_sabnzbd_router
 from api.external_routes import router as external_router
+from api.browser_routes import router as browser_router
 from api.file_selection_routes import router as file_selection_router
 from api.operational_downloads import router as operational_downloads_router
 from api.settings_validation_routes import router as settings_validation_router
@@ -605,6 +606,7 @@ app.include_router(file_selection_router, prefix="/api")
 app.include_router(account_router, prefix="/api")
 app.include_router(setup_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
+app.include_router(browser_router, prefix="/api")
 app.include_router(arr_sabnzbd_router, prefix="/api")
 app.include_router(arr_qbittorrent_router, prefix="/api")
 app.include_router(router, prefix="/api")

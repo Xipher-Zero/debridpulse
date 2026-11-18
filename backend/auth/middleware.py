@@ -8,7 +8,7 @@ from urllib.parse import quote
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from auth.accounts import DEFAULT_ADMIN_ID, admitted, resolve_token
+from auth.accounts import DEFAULT_ADMIN_ID, TOKEN_KIND_INTEGRATION, admitted, resolve_token
 from auth.manager import (
     PasswordAuthenticationBusy,
     password_proof_current,
@@ -210,6 +210,8 @@ async def enforce_general_web_security(
         if fetch_site == "cross-site":
             return Response(content="Forbidden request context", status_code=403)
         return await call_next(request)
+    if browser_extension_request(request.url.path, origin):
+        return await call_next(request)
 
     # Host is client-controlled browser input. Establish an intentionally trusted
     # application authority before comparing Origin with it. The operator-owned
@@ -251,6 +253,25 @@ async def enforce_general_web_security(
     return await call_next(request)
 
 
+# The browser-client API (``api.browser_routes``) is called from a browser
+# extension's own background, whose requests carry the extension's origin
+# (``chrome-extension://…``, ``moz-extension://…``), never this server's. Every
+# route under this prefix is either credential-free (starting and polling a
+# pairing, whose secret device code is the proof) or admits a browser token
+# alone, sent explicitly as ``Authorization: Bearer`` -- a capability no
+# session holds -- so no ambient credential (a cookie, HTTP Basic) can make
+# any of them act. A web page cannot claim an extension origin, so pages stay
+# refused here as everywhere else. Nothing outside this prefix is exempted.
+BROWSER_CLIENT_PREFIX = "/api/browser/v1/"
+_EXTENSION_ORIGIN_SCHEMES = ("chrome-extension://", "moz-extension://")
+
+
+def browser_extension_request(path: str, origin: str) -> bool:
+    origin = str(origin or "").strip().casefold()
+    return (str(path or "").startswith(BROWSER_CLIENT_PREFIX)
+            and any(origin.startswith(scheme) and len(origin) > len(scheme) for scheme in _EXTENSION_ORIGIN_SCHEMES))
+
+
 def _protocol_key_refusal(message: str) -> Response:
     """The download-client protocol's own refusal: *arr reports a rejected key
     only from this body (HTTP 200), never from a status code."""
@@ -273,7 +294,9 @@ async def _authenticate_query_key(request: Request, call_next: CallNext, cfg) ->
     if len(provided) > 4096 or any(ch.isspace() for ch in provided):
         return _protocol_key_refusal("API Key Incorrect")
     resolved = await resolve_token(provided)
-    if resolved is None:
+    # Only an Integration token speaks a download-client protocol; a person's
+    # browser token is refused here exactly as an unknown key is.
+    if resolved is None or resolved[3] != TOKEN_KIND_INTEGRATION:
         return _protocol_key_refusal("API Key Incorrect")
     principal = Principal.integration_token(*resolved)
     _attach_principal(request, principal)
@@ -323,9 +346,11 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
     auth_header = str(request.headers.get("Authorization", "") or "")
 
     if _has_bearer_scheme(auth_header):
-        # Only an active Integration account's own token authenticates a
-        # bearer request, as that account, with its role -- even in open
-        # mode, so its work stays attributed to it. A bearer credential that
+        # Only an active Integration account's own token, or an active Admin
+        # or User account's browser token, authenticates a bearer request, as
+        # that account -- even in open mode, so its work stays attributed to
+        # it. A browser token's authority is the browser client alone
+        # (``auth.permissions.capabilities``), never its account's role. A bearer credential that
         # names no active token is refused in every mode: an explicit,
         # invalid credential never falls back to the standalone Admin.
         provided_token = _decode_bearer_token(auth_header)

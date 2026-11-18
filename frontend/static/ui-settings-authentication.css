@@ -2394,6 +2394,75 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   font-weight: 700;
 }
 
+/* Connected browsers (WS-S1): the person's own list in My Account, an Admin's
+   in Account Details, and the "Connect a browser" approval dialog. */
+.dp-account-browsers,
+.dp-account-details-browsers {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dp-account-browser,
+.dp-account-details-browser {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--dp-border-subtle, rgba(127, 127, 127, .2));
+}
+.dp-account-browser-text,
+.dp-account-details-browser-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.dp-account-browser-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.dp-account-browser-detail,
+.dp-account-browsers-intro,
+.dp-account-browsers-empty {
+  color: var(--dp-text-muted);
+  font-size: 13px;
+}
+.dp-account-details-browsers-section {
+  margin-top: 12px;
+}
+.dp-browser-pairing-facts {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+}
+.dp-browser-pairing-facts > div {
+  display: flex;
+  gap: 8px;
+}
+.dp-browser-pairing-facts dt {
+  min-width: 8em;
+  color: var(--dp-text-muted);
+}
+.dp-browser-pairing-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.dp-browser-pairing-code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 700;
+  letter-spacing: .08em;
+}
+.dp-browser-pairing-hint {
+  color: var(--dp-text-muted);
+  font-size: 13px;
+}
+.dp-browser-pairing-warning {
+  margin-top: 12px;
+  font-weight: 600;
+}
+
 /* Merge Accounts: a bounded list of identities, then the consequences. */
 .dp-merge-list {
   display: grid;

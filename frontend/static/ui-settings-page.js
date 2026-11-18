@@ -6993,6 +6993,35 @@
     </dl>`;
   }
 
+  /* A person's connected browsers (WS-S1), in their Account Details: an
+   * Admin may disconnect any of them (never connect one -- only the person
+   * does, by approving a pairing). The server's token list, filtered to
+   * browser tokens, is the only truth shown; a Disconnect re-reads it. */
+  async function readBrowsers(account) {
+    try {
+      const listed = await request('GET', `/accounts/${encodeURIComponent(account.id)}/tokens`, undefined, 10000);
+      return (Array.isArray(listed?.tokens) ? listed.tokens : []).filter(token => token.kind === 'browser');
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function browsersMarkup(listed) {
+    if (!Array.isArray(listed)) return `<div class="dp-settings-users-detail"${keyed(say('settings.account.browsers_unreadable'))}>${html(t('settings.account.browsers_unreadable'))}</div>`;
+    if (!listed.length) return `<div class="dp-settings-users-detail"${keyed(say('settings.account.browsers_none'))}>${html(t('settings.account.browsers_none'))}</div>`;
+    const date = value => window.downloadsDateMarkup ? window.downloadsDateMarkup(value) : html(value);
+    return `<ul class="dp-account-details-browsers">${listed.map(token => `
+      <li class="dp-account-details-browser">
+        <span class="dp-account-details-browser-text">
+          <span class="dp-settings-users-token-name">${html(token.label)}</span>
+          <span class="dp-settings-users-detail">${words(say('settings.account.browsers_connected'))} ${date(token.created_at)}</span>
+          <span class="dp-settings-users-detail">${words(say('settings.account.browsers_last_used'))} ${token.last_seen_at
+            ? date(token.last_seen_at) : words(say('settings.account.browsers_never_used'))}</span>
+        </span>
+        <button class="btn btn-danger btn-sm" type="button" data-disconnect-browser="${html(token.id)}"${keyed(say('settings.account.browsers_disconnect'))}>${html(t('settings.account.browsers_disconnect'))}</button>
+      </li>`).join('')}</ul>`;
+  }
+
   async function showAccountDetails(account) {
     let rows;
     try {
@@ -7010,6 +7039,31 @@
       }
       if (activity?.isConnected) activity.innerHTML = activityMarkup(rows);
     };
+    // A person's browsers; an Integration account holds none.
+    const person = !isIntegration(account);
+    let browsersSlot = null;
+    let browsers = person ? await readBrowsers(account) : [];
+    const repaintBrowsers = async () => {
+      browsers = await readBrowsers(account);
+      if (browsersSlot?.isConnected) browsersSlot.innerHTML = browsersMarkup(browsers);
+    };
+    const disconnectBrowser = async tokenId => {
+      const confirmed = await window.DPSettingsModal.confirm({
+        title: say('settings.account.browsers_disconnect_title'),
+        message: say('settings.account.browsers_disconnect_message'),
+        confirmLabel: say('settings.account.browsers_disconnect'),
+        tone: 'danger',
+      });
+      if (!confirmed) return;
+      try {
+        await request('DELETE', `/accounts/${encodeURIComponent(account.id)}/tokens/${encodeURIComponent(tokenId)}`,
+          undefined, 10000);
+        notify(t('settings.account.browsers_disconnected'), 'success');
+      } catch (error) {
+        notify(error.message, 'error');
+      }
+      await repaintBrowsers();
+    };
     const dialog = window.DPSettingsModal.open({
       title: say('settings.account.details_title', {name: accountName(account)}),
       dismiss: true,
@@ -7020,10 +7074,18 @@
           <section class="dp-account-details-activity"${keyed(null, {'aria-label': say('settings.account.activity')})}>
             <h3 class="dp-account-details-heading"${keyed(say('settings.account.activity'))}>${html(t('settings.account.activity'))}</h3>
             <div data-account-activity></div>
-          </section>`;
+          </section>${person ? `
+          <section class="dp-account-details-browsers-section"${keyed(null, {'aria-label': say('settings.account.browsers')})}>
+            <h3 class="dp-account-details-heading"${keyed(say('settings.account.browsers'))}>${html(t('settings.account.browsers'))}</h3>
+            <div data-account-browsers></div>
+          </section>` : ''}`;
         activity = body.querySelector('[data-account-activity]');
         activity.innerHTML = activityMarkup(rows);
+        browsersSlot = body.querySelector('[data-account-browsers]');
+        if (browsersSlot) browsersSlot.innerHTML = browsersMarkup(browsers);
         body.addEventListener('click', event => {
+          const disconnect = event.target.closest('button[data-disconnect-browser]');
+          if (disconnect) { void disconnectBrowser(disconnect.dataset.disconnectBrowser); return; }
           const button = event.target.closest('button[data-withdraw-demand]');
           if (!button) return;
           void withdrawAccountRequest(account, button.dataset.withdrawDemand, button).then(repaint);

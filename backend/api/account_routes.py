@@ -216,9 +216,9 @@ async def create_account_token(account_id: str, label: Annotated[str, Body(embed
 
 
 @router.delete("/accounts/{account_id}/tokens/{token_id}")
-async def revoke_account_token(account_id: str, token_id: str):
+async def revoke_account_token(request: Request, account_id: str, token_id: str):
     """Revocation stops authentication at once; it withdraws nothing."""
-    if not await accounts.revoke_token(account_id, token_id):
+    if not await accounts.revoke_token(account_id, token_id, actor_id=_actor(request)):
         raise DisplayError(404, "Token not found", code="token.not_found")
     return {"ok": True}
 

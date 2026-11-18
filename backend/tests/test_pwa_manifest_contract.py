@@ -108,7 +108,9 @@ def test_the_sign_in_policy_admits_only_its_own_origins_manifest_and_images(allo
 def test_exactly_the_install_files_become_public():
     assert INSTALL_PATHS <= PUBLIC_PATHS
     assert PUBLIC_PATHS - INSTALL_PATHS == {
-        "/api/health", "/api/version", "/api/avatar", "/api/auth/status", "/login", "/auth/oidc/start", "/auth/oidc/callback"}
+        "/api/health", "/api/version", "/api/avatar", "/api/auth/status", "/login", "/auth/oidc/start", "/auth/oidc/callback",
+        # Starting and polling a browser pairing (BROWSER_CLIENT.md): no credential exists yet.
+        "/api/browser/v1/pairings", "/api/browser/v1/pairings/poll"}
     for path in ("/", "/index.html", "/favicon-32.png", "/icons/dp/manifest.json", "/api/settings", "/api/stats"):
         assert is_public_path(path) is False
 

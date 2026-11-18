@@ -439,6 +439,8 @@
     // Rerun Setup Wizard: for an Admin (a Server's, or a Standalone
     // installation's protected one); the server refuses anyone else.
     const setupWizard = can('administer') && Boolean(window.DPSetupWizard);
+    // Connected Browsers: every person who may connect a browser (not ReadOnly).
+    const connectsBrowsers = can('browsers.own');
     let emailSlot = null;
     // The Pencil turns the shown address into the field, holding it; Save
     // sends the change, Cancel discards it.
@@ -463,21 +465,27 @@
       const from = view;
       view = next;
       Object.entries(views).forEach(([name, node]) => { node.hidden = name !== next; });
-      ['password', 'clear'].forEach(id => handle.setActionHidden(id, next !== 'profile'));
+      ['password', 'clear', 'browsers'].forEach(id => handle.setActionHidden(id, next !== 'profile'));
       // Clear Password's view is destructive: the red treatment, and its own accept.
       handle.setTone(next === 'clear' ? 'danger' : '');
       handle.setAcceptLabel(said(next === 'clear' ? 'account.action.clear_password' : 'common.save'));
       // The language view saves where a row is chosen: no Save, and its
       // Cancel is the way back to the profile.
-      handle.setAcceptHidden(next === 'language');
-      handle.setTitle(said(next === 'language' ? 'account.language.title' : 'account.title'));
-      handle.setCancelLabel(said(next === 'language' ? 'settings.common.back' : 'common.cancel'));
+      // Connected Browsers acts where a row is disconnected, as the language
+      // view saves where a row is chosen: no Save, and Cancel is the way back.
+      const listView = next === 'language' || next === 'browsers';
+      handle.setAcceptHidden(listView);
+      handle.setTitle(said(next === 'language' ? 'account.language.title'
+        : next === 'browsers' ? 'account.browsers.title' : 'account.title'));
+      handle.setCancelLabel(said(listView ? 'settings.common.back' : 'common.cancel'));
       if (next === 'profile') {
         // Secrets never outlive their view.
         ['current', 'next', 'confirm', 'clear_current'].forEach(name => { if (fields[name]) fields[name].value = ''; });
         (returnTo || (from === 'language' ? language.button : null) || fields.display_name).focus();
       } else if (next === 'language') {
         language.open();
+      } else if (next === 'browsers') {
+        void browsers.open();
       } else if (next === 'clear') {
         fields.clear_current.focus();
       } else {
@@ -555,6 +563,81 @@
       },
     };
 
+    /* The account's own connected browsers (api/browser_routes.py): each one's
+     * name, when it was connected and last used, and Disconnect. The server's
+     * list is the only truth shown; a Disconnect re-reads it. */
+    const browsers = {
+      slot: null, handle: null,
+      escape: value => String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch])),
+      mount(body, handle) {
+        this.handle = handle;
+        this.slot = body.querySelector('[data-account-browsers-list]');
+      },
+      async read() {
+        try {
+          const response = await debridPulseFetch('/api/account/browsers', {headers: {'Accept': 'application/json'}});
+          const data = response.ok ? await response.json() : null;
+          return Array.isArray(data?.browsers) ? data.browsers : null;
+        } catch (_) {
+          return null;
+        }
+      },
+      async open() {
+        if (!this.slot) return;
+        this.slot.setAttribute('aria-busy', 'true');
+        const listed = await this.read();
+        this.slot.removeAttribute('aria-busy');
+        if (view !== 'browsers') return;
+        this.paint(listed);
+      },
+      paint(listed) {
+        const date = value => window.downloadsDateMarkup ? window.downloadsDateMarkup(value) : this.escape(value);
+        if (!listed) {
+          this.slot.innerHTML = '<p class="dp-account-browsers-empty" role="alert" data-i18n="account.browsers.unreadable"></p>';
+        } else if (!listed.length) {
+          this.slot.innerHTML = '<p class="dp-account-browsers-empty" data-i18n="account.browsers.none"></p>';
+        } else {
+          this.slot.innerHTML = `<ul class="dp-account-browsers">${listed.map(item => `
+            <li class="dp-account-browser" data-browser-id="${this.escape(item.id)}">
+              <div class="dp-account-browser-text">
+                <span class="dp-account-browser-name" data-browser-name></span>
+                <span class="dp-account-browser-detail"><span data-i18n="account.browsers.connected"></span> ${date(item.created_at)}</span>
+                <span class="dp-account-browser-detail"><span data-i18n="account.browsers.last_used"></span> ${item.last_seen_at
+                  ? date(item.last_seen_at) : '<span data-i18n="account.browsers.never_used"></span>'}</span>
+              </div>
+              <button type="button" class="btn btn-danger btn-sm" data-browser-disconnect data-i18n="account.browsers.disconnect"></button>
+            </li>`).join('')}</ul>`;
+          this.slot.querySelectorAll('[data-browser-id]').forEach((row, index) => {
+            row.querySelector('[data-browser-name]').textContent = String(listed[index].label || '');
+            row.querySelector('[data-browser-disconnect]').addEventListener('click',
+              () => void this.disconnect(listed[index]));
+          });
+        }
+        DPI18n.render(this.slot);
+        (this.slot.querySelector('button') || this.slot).focus?.();
+      },
+      async disconnect(item) {
+        const name = String(item.label || '');
+        const confirmed = await modal.confirm({tone: 'danger',
+          title: {key: 'account.browsers.disconnect_title', values: {name}, toString: () => DPI18n.t('account.browsers.disconnect_title', {name})},
+          message: said('account.browsers.disconnect_message'),
+          confirmLabel: said('account.browsers.disconnect'), cancelLabel: said('common.cancel')});
+        if (!confirmed) return;
+        let ok = false;
+        try {
+          const response = await debridPulseFetch(`/api/account/browsers/${encodeURIComponent(item.id)}`,
+            {method: 'DELETE', headers: {'Accept': 'application/json'}});
+          ok = response.ok;
+        } catch (_) {
+          ok = false;
+        }
+        window.toast(ok ? DPI18n.t('account.browsers.disconnected', {name}) : DPI18n.t('account.browsers.not_disconnected'),
+          ok ? 'success' : 'error');
+        if (view === 'browsers') await this.open();
+      },
+    };
+
     /* Whether the profile holds an edit Save has not sent. */
     const profileEdited = () => Boolean(fields.display_name) && (
       fields.display_name.value.trim() !== String(profile.display_name || data.display_name || '')
@@ -574,6 +657,7 @@
     if (passwordAction) actions.push({id: 'password', placement: 'leading',
       label: said(passwordAction === 'change' ? 'account.action.change_password' : 'account.action.set_password')});
     if (clearable) actions.push({id: 'clear', label: said('account.action.clear_password'), tone: 'danger', placement: 'leading'});
+    if (connectsBrowsers) actions.push({id: 'browsers', label: said('account.action.browsers'), placement: 'leading'});
 
     // The header's far end: My Account's Help, then Easy | Advanced for every
     // account that owns a presentation. Help explains what this dialog offers
@@ -600,7 +684,7 @@
       className: 'dp-account-dialog',
       actions,
       onAction(id) {
-        if (id === 'password' || id === 'clear') show(id, this.handle);
+        if (id === 'password' || id === 'clear' || id === 'browsers') show(id, this.handle);
       },
       mount(body, handle) {
         this.handle = handle;
@@ -644,6 +728,10 @@
             <label class="dp-modal-field"><span class="form-label" data-i18n="account.field.current_password"></span>
               <input class="input" data-field="clear_current" type="password" maxlength="4096" autocomplete="current-password"></label>
             <p class="dp-account-clear-warning" data-i18n="account.clear.consequence"></p>
+          </div>` : ''}${connectsBrowsers ? `
+          <div class="dp-account-view dp-account-browsers-view" data-account-view="browsers" hidden>
+            <p class="dp-account-browsers-intro" data-i18n="account.browsers.intro"></p>
+            <div data-account-browsers-list></div>
           </div>` : ''}`;
         DPI18n.render(body);
         body.querySelectorAll('[data-account-view]').forEach(node => { views[node.dataset.accountView] = node; });
@@ -659,6 +747,7 @@
         emailSlot = body.querySelector('[data-account-email]');
         paintEmail();
         language.mount(body, handle);
+        browsers.mount(body, handle);
         // Opened over this dialog, which keeps every unsaved edit as it is:
         // the wizard never saves them, and they are discarded only by the
         // operator's own choice when it opens a page (leaveForSetup).

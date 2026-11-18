@@ -60,15 +60,26 @@ class Capability(StrEnum):
     # transfer. Admin deliberately does not hold it: an Admin session is no
     # external client, and administers clients through tokens and profiles.
     EXTERNAL_CLIENT = "external.client"
+    # A person connecting browsers to their own account: approving a pairing
+    # (``auth.browser_pairing``) and listing or disconnecting their own
+    # browser tokens. Held by every role that may submit downloads, through a
+    # signed-in person only -- no token kind holds it.
+    BROWSERS_OWN = "browsers.own"
+    # The browser-client API (``api.browser_routes``): the ONLY capability a
+    # browser token carries (``capabilities``), whatever its account's role,
+    # and one no role holds -- so no session reaches it and no browser token
+    # reaches anything else.
+    BROWSER_CLIENT = "browser.client"
 
 
 _HUMAN = frozenset({Capability.SESSION, Capability.INTERFACE, Capability.TRANSFERS_READ,
                     Capability.STATISTICS_SUMMARY, Capability.STATISTICS_READ})
 ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
     Role.ADMIN: frozenset(Capability) - {Capability.PUBLIC, Capability.NOTIFICATIONS_SELF,
-                                         Capability.EXTERNAL_CLIENT},
+                                         Capability.EXTERNAL_CLIENT, Capability.BROWSER_CLIENT},
     Role.USER: _HUMAN | {Capability.TRANSFERS_SUBMIT, Capability.TRANSFERS_OPERATE,
-                         Capability.TRANSFERS_DESTROY, Capability.DEMAND_OWN, Capability.NOTIFICATIONS_SELF},
+                         Capability.TRANSFERS_DESTROY, Capability.DEMAND_OWN, Capability.NOTIFICATIONS_SELF,
+                         Capability.BROWSERS_OWN},
     Role.READONLY: _HUMAN,
     Role.INTEGRATION: frozenset({Capability.SESSION, Capability.TRANSFERS_SUBMIT, Capability.DEMAND_OWN,
                                  Capability.METRICS_READ, Capability.STATISTICS_SUMMARY,
@@ -76,7 +87,15 @@ ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
 }
 
 
+_BROWSER_TOKEN = frozenset({Capability.BROWSER_CLIENT})
+
+
 def capabilities(principal: Principal | None) -> frozenset[Capability]:
+    # A browser token's authority REPLACES its account's role: a browser on an
+    # Admin account is still only a browser client (``resolve_token`` already
+    # admitted only an active Admin or User account's browser token).
+    if getattr(principal, "credential_kind", "") == "browser":
+        return _BROWSER_TOKEN
     try:
         role = Role(str(getattr(principal, "role", "") or ""))
     except ValueError:
@@ -94,6 +113,7 @@ _SUB, _OP, _DES = Capability.TRANSFERS_SUBMIT, Capability.TRANSFERS_OPERATE, Cap
 _DEM, _MET, _A = Capability.DEMAND_OWN, Capability.METRICS_READ, Capability.ADMINISTER
 _NS = Capability.NOTIFICATIONS_SELF
 _EXT = Capability.EXTERNAL_CLIENT
+_BOWN, _BCL = Capability.BROWSERS_OWN, Capability.BROWSER_CLIENT
 
 # Every routed action, by the endpoint that serves it (``module.function``).
 # A route test compares this table with the live route table both ways.
@@ -168,6 +188,18 @@ ACTIONS: dict[str, Capability] = {
     "api.account_routes.list_requests": _DEM,
     "api.account_routes.withdraw_request": _DEM,
     # The native external-client API: the client's own jobs only.
+    # Browser pairing and connected browsers (``api.browser_routes``). Starting
+    # and polling a pairing need no credential (the poll's secret device code
+    # is the proof); approving one and managing one's own browsers need a
+    # signed-in person; the browser-client API needs a browser token.
+    "api.browser_routes.start_browser_pairing": _P,
+    "api.browser_routes.poll_browser_pairing": _P,
+    "api.browser_routes.pending_browser_pairing": _BOWN,
+    "api.browser_routes.approve_browser_pairing": _BOWN,
+    "api.browser_routes.deny_browser_pairing": _BOWN,
+    "api.browser_routes.list_own_browsers": _BOWN,
+    "api.browser_routes.disconnect_own_browser": _BOWN,
+    "api.browser_routes.browser_session": _BCL,
     "api.external_routes.external_capabilities": _EXT,
     "api.external_routes.submit_external_job": _EXT,
     "api.external_routes.list_external_jobs": _EXT,

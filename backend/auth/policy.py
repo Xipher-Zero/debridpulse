@@ -12,6 +12,10 @@ PUBLIC_PATHS = frozenset(
         "/api/version",
         "/api/avatar",
         "/api/auth/status",
+        # Starting and polling a browser pairing (``api.browser_routes``): no
+        # credential exists yet; the poll's secret device code is the proof.
+        "/api/browser/v1/pairings",
+        "/api/browser/v1/pairings/poll",
         "/login",
         "/auth/oidc/start",
         "/auth/oidc/callback",

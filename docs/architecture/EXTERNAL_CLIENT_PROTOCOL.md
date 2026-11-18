@@ -39,6 +39,10 @@ Owners in the code:
   Integration still has no `transfers.read`, `transfers.operate` or
   `transfers.destroy`. Even when a job serves a transfer, `/api/torrents/*`
   answers that token with `403`.
+- **Browser tokens are not external clients.** A person's connected browser
+  holds a `browser` token (`BROWSER_CLIENT.md`), whose only capability is
+  `browser.client`: it gets `403` on every route here, and an Integration
+  token gets `403` on the browser-client API.
 - **Client binding.** Each token has a `client_id` (`account_tokens.client_id`).
   A newly issued token is a new client. Two tokens of one Integration account are
   two clients, and neither sees the other's jobs.

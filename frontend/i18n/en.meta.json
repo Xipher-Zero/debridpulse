@@ -23669,6 +23669,279 @@
    "context": "Refusal of a request for the desktop application's window frame colours (sent by the page itself, never shown in normal use).",
    "owner": "backend/api/routes.py",
    "criticality": "normal"
+  },
+  "browser.pairing.title": {
+   "category": "modal-title",
+   "context": "Connect a browser dialog: its title. Opened when a browser extension asks to connect to the signed-in person's account.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.intro": {
+   "category": "hint",
+   "context": "Connect a browser dialog: what approving does.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.field.browser": {
+   "category": "label",
+   "context": "Connect a browser dialog: the requesting browser's name, as the extension reported it.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.field.requested": {
+   "category": "label",
+   "context": "Connect a browser dialog: when the browser asked to connect.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.field.code": {
+   "category": "label",
+   "context": "Connect a browser dialog: the short code the browser extension also shows.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.code_hint": {
+   "category": "hint",
+   "context": "Connect a browser dialog: beneath the code.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.field.name": {
+   "category": "label",
+   "context": "Connect a browser dialog: the editable name the connected browser will be listed under (for example Laptop-Firefox).",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.warning": {
+   "category": "critical-warning",
+   "context": "Connect a browser dialog: the anti-phishing warning. Someone else may have sent this link; approving would let their browser act on this account.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "critical-warning"
+  },
+  "browser.pairing.approve": {
+   "category": "action",
+   "context": "Connect a browser dialog: approves the connection.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.deny": {
+   "category": "action",
+   "context": "Connect a browser dialog: refuses the connection.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.approved": {
+   "category": "toast",
+   "context": "After approving: the browser, by the name given, is now connected.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a connected browser's name, as its owner named it (for example Laptop-Firefox)"
+   }
+  },
+  "browser.pairing.denied": {
+   "category": "toast",
+   "context": "After denying a browser's connection request.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.not_permitted": {
+   "category": "error",
+   "context": "Connect a browser dialog: a ReadOnly account opened a connection link.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "browser.pairing.failed": {
+   "category": "error",
+   "context": "Connect a browser dialog: a refusal with no more specific reason.",
+   "owner": "frontend/static/ui-browser-pairing.js",
+   "criticality": "normal"
+  },
+  "error.browser.pairing.not_found": {
+   "category": "error",
+   "context": "Browser pairing: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/browser_routes.py",
+   "criticality": "normal"
+  },
+  "error.browser.pairing.name_required": {
+   "category": "error",
+   "context": "Browser pairing: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/browser_routes.py",
+   "criticality": "normal"
+  },
+  "error.browser.pairing.busy": {
+   "category": "error",
+   "context": "Browser pairing: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/browser_routes.py",
+   "criticality": "normal"
+  },
+  "error.browser.pairing.rate_limited": {
+   "category": "error",
+   "context": "Browser pairing: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/browser_routes.py",
+   "criticality": "normal"
+  },
+  "error.account.browser_token_label_required": {
+   "category": "error",
+   "context": "Connected browsers: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.browser_not_permitted": {
+   "category": "error",
+   "context": "Connected browsers: a refusal (ReadOnly and Integration accounts). Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/auth/accounts.py",
+   "criticality": "normal"
+  },
+  "error.account.browser_token_not_found": {
+   "category": "error",
+   "context": "Connected browsers: a refusal. Shown in the reader's language; API clients receive the English `detail`.",
+   "owner": "backend/api/browser_routes.py",
+   "criticality": "normal"
+  },
+  "account.action.browsers": {
+   "category": "action",
+   "context": "My Account: opens the view listing the browsers connected to this account.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.title": {
+   "category": "modal-title",
+   "context": "My Account › Connected browsers: the view's title.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.intro": {
+   "category": "hint",
+   "context": "My Account › Connected browsers: what the list is and what Disconnect does.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.none": {
+   "category": "hint",
+   "context": "My Account › Connected browsers: the list is empty.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.unreadable": {
+   "category": "error",
+   "context": "My Account › Connected browsers: the list could not be loaded.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.connected": {
+   "category": "label",
+   "context": "My Account › Connected browsers: precedes the date the browser was connected.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.last_used": {
+   "category": "label",
+   "context": "My Account › Connected browsers: precedes the date the browser last reached the server.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.never_used": {
+   "category": "label",
+   "context": "My Account › Connected browsers: after 'Last used' when the browser has not reached the server yet.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.disconnect": {
+   "category": "action",
+   "context": "My Account › Connected browsers: revokes this browser's access.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "account.browsers.disconnect_title": {
+   "category": "modal-title",
+   "context": "Confirmation before disconnecting a browser, named by its name.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a connected browser's name, as its owner named it (for example Laptop-Firefox)"
+   }
+  },
+  "account.browsers.disconnect_message": {
+   "category": "critical-warning",
+   "context": "Confirmation before disconnecting a browser: the consequence.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "critical-warning"
+  },
+  "account.browsers.disconnected": {
+   "category": "toast",
+   "context": "After disconnecting a browser, named by its name.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal",
+   "args": {
+    "name": "string: a connected browser's name, as its owner named it (for example Laptop-Firefox)"
+   }
+  },
+  "account.browsers.not_disconnected": {
+   "category": "error",
+   "context": "My Account › Connected browsers: Disconnect failed.",
+   "owner": "frontend/static/auth.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers": {
+   "category": "card-title",
+   "context": "Users & Access › Account Details: the section listing this person's connected browsers.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers_none": {
+   "category": "hint",
+   "context": "Users & Access › Account Details › Connected browsers: the list is empty.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers_unreadable": {
+   "category": "error",
+   "context": "Users & Access › Account Details › Connected browsers: the list could not be loaded.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers_connected": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Connected browsers: precedes the date the browser was connected.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers_last_used": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Connected browsers: precedes the date the browser last reached the server.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers_never_used": {
+   "category": "label",
+   "context": "Users & Access › Account Details › Connected browsers: after 'Last used' when the browser has not reached the server yet.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers_disconnect": {
+   "category": "action",
+   "context": "Users & Access › Account Details › Connected browsers: an Admin revokes this person's browser.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers_disconnect_title": {
+   "category": "modal-title",
+   "context": "Confirmation before an Admin disconnects a person's browser.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
+  },
+  "settings.account.browsers_disconnect_message": {
+   "category": "critical-warning",
+   "context": "Confirmation before an Admin disconnects a person's browser: the consequence.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "critical-warning"
+  },
+  "settings.account.browsers_disconnected": {
+   "category": "toast",
+   "context": "After an Admin disconnected a person's browser.",
+   "owner": "frontend/static/ui-settings-page.js",
+   "criticality": "normal"
   }
  }
 }

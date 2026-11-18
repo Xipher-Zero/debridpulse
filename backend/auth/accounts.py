@@ -67,6 +67,9 @@ HUMAN_ROLES = frozenset({Role.ADMIN, Role.USER, Role.READONLY})
 # The roles Authentication settings may give an account created by its first
 # admitted OIDC sign-in. Admin is never provisioned automatically.
 OIDC_PROVISION_ROLES = frozenset({Role.USER, Role.READONLY})
+# The roles whose people may connect a browser (``browser`` tokens): every
+# account that may submit downloads. ReadOnly and Integration accounts may not.
+BROWSER_ROLES = frozenset({Role.ADMIN, Role.USER})
 
 DEFAULT_ADMIN_ID = "00000000-0000-4000-8000-000000000001"
 DEFAULT_INTEGRATION_ID = "00000000-0000-4000-8000-000000000002"
@@ -114,6 +117,10 @@ SCHEMA = (
     # external client the token authenticates as (``external``): a new token
     # is a new client; only an Admin's explicit rotation (``create_token``
     # with ``succeeds``) gives a token its predecessor's client.
+    # ``kind`` is what the token is: ``integration`` (an Integration account's
+    # API token) or ``browser`` (a person's connected browser, issued only by
+    # pairing, ``auth.browser_pairing``). A browser token's authority is the
+    # browser client alone (``auth.permissions``), never its account's role.
     """CREATE TABLE IF NOT EXISTS account_tokens (
         id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES accounts(id),
@@ -121,7 +128,8 @@ SCHEMA = (
         verifier TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL,
         revoked_at TEXT,
-        client_id TEXT
+        client_id TEXT,
+        kind TEXT NOT NULL DEFAULT 'integration'
     )""",
     "CREATE INDEX IF NOT EXISTS idx_account_tokens_account ON account_tokens (account_id)",
     # A User's own notification configuration (``services.account_notifications``):
@@ -185,6 +193,8 @@ TABLES = ("accounts", "account_local_credentials", "account_oidc_bindings", "acc
           "account_notifications", "account_appearance", "login_appearance",
           "installation_setup", "account_setup_rerun")
 TOKEN_PREFIX = "dp_"
+TOKEN_KIND_INTEGRATION = "integration"
+TOKEN_KIND_BROWSER = "browser"
 _TOKEN_RANDOM_BYTES = 32
 
 
@@ -286,6 +296,8 @@ async def ensure_schema(db) -> None:
     # When a token last authenticated a request (``resolve_token``), at most
     # every TOKEN_SEEN_SECONDS: how Local Port knows a client is in use.
     await _ensure_column(db, "account_tokens", "last_seen_at", "TEXT")
+    # Every token issued before browser tokens existed is an Integration token.
+    await _ensure_column(db, "account_tokens", "kind", "TEXT NOT NULL DEFAULT 'integration'")
     await db.execute("UPDATE account_tokens SET client_id=id WHERE client_id IS NULL")
     await _ensure_column(db, "accounts", "username", "TEXT")
     # NULL: the account never chose Easy or Advanced, which is Advanced
@@ -1483,8 +1495,8 @@ async def create_token(account_id: str, label: str, *, succeeds: str | None = No
             await db.execute("UPDATE account_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
                              (_now(), predecessor["id"]))
         await db.execute(
-            "INSERT INTO account_tokens(id,account_id,label,verifier,created_at,client_id) VALUES(?,?,?,?,?,?)",
-            (token_id, account.id, label, _token_verifier(raw), _now(), client_id))
+            "INSERT INTO account_tokens(id,account_id,label,verifier,created_at,client_id,kind) VALUES(?,?,?,?,?,?,?)",
+            (token_id, account.id, label, _token_verifier(raw), _now(), client_id, TOKEN_KIND_INTEGRATION))
         if succeeds is not None:
             from db.event_journal import JournalEvent, record
 
@@ -1496,31 +1508,81 @@ async def create_token(account_id: str, label: str, *, succeeds: str | None = No
             "client_id": client_id}, raw
 
 
+async def issue_browser_token(account_id: str, label: str, *, requester: str = "") -> tuple[dict, str]:
+    """Issue a browser token for a person's own account, at the moment they
+    approve a pairing (``auth.browser_pairing``). The raw secret is returned
+    once, here, and never stored. The token is its own client, so each
+    browser's work stays fenced from every other credential's. Only an active
+    Admin or User account may hold one (``BROWSER_ROLES``). The connection is
+    journaled in the same transaction, naming the requesting address but never
+    the secret."""
+    label = str(label or "").strip()[:128]
+    if not label:
+        raise AccountRefused("A connected browser needs a name.", code="account.browser_token_label_required")
+    raw = TOKEN_PREFIX + secrets.token_urlsafe(_TOKEN_RANDOM_BYTES)
+    token_id = str(uuid.uuid4())
+    async with _transaction() as db:
+        account = await _require(db, account_id)
+        if not account.active or account.role not in BROWSER_ROLES:
+            raise AccountRefused("This account can't connect a browser.", code="account.browser_not_permitted")
+        await db.execute(
+            "INSERT INTO account_tokens(id,account_id,label,verifier,created_at,client_id,kind) VALUES(?,?,?,?,?,?,?)",
+            (token_id, account.id, label, _token_verifier(raw), _now(), token_id, TOKEN_KIND_BROWSER))
+        from db.event_journal import JournalEvent, record
+
+        await record(db, JournalEvent(
+            "administration", "administration.browser_connected", "info",
+            "A browser was connected to an account", "account", account.id,
+            detail=f"token {token_id} ({label}); requested from {str(requester or 'unknown')[:64]}"))
+    return {"id": token_id, "account_id": str(account_id), "label": label, "kind": TOKEN_KIND_BROWSER,
+            "revoked_at": None, "client_id": token_id}, raw
+
+
 async def list_tokens(account_id: str) -> list[dict]:
-    """An Integration account's ACTIVE tokens: the ones that can still be
-    revoked. A revoked token keeps its row for attribution
+    """An account's ACTIVE tokens: the ones that can still be revoked -- an
+    Integration account's API tokens, or a person's browser tokens (each row
+    names its ``kind``). A revoked token keeps its row for attribution
     (``requester_identities``) but is no longer the account's to manage."""
     from db.database import get_db
 
     async with get_db() as db:
         return await db.fetchall(
-            "SELECT id, account_id, label, created_at, revoked_at, client_id FROM account_tokens "
+            "SELECT id, account_id, label, created_at, revoked_at, client_id, kind, last_seen_at FROM account_tokens "
             "WHERE account_id=? AND revoked_at IS NULL ORDER BY created_at, id", (str(account_id),))
 
 
-async def revoke_token(account_id: str, token_id: str) -> bool:
+async def revoke_token(account_id: str, token_id: str, *, kind: str | None = None,
+                       actor_id: str | None = None) -> bool:
     """Revoke one token at once. Its row stays for attribution; work it
-    submitted is untouched."""
+    submitted is untouched. ``kind`` restricts which token may be revoked (a
+    person revoking their own browser token names ``browser``). Revoking a
+    browser token is journaled, naming whether its owner or an Admin did it."""
     async with _transaction() as db:
-        cursor = await db.execute(
-            "UPDATE account_tokens SET revoked_at=? WHERE id=? AND account_id=? AND revoked_at IS NULL",
-            (_now(), str(token_id), str(account_id)))
-        return cursor.rowcount == 1
+        row = await db.fetchone(
+            "SELECT id, label, kind FROM account_tokens WHERE id=? AND account_id=? AND revoked_at IS NULL",
+            (str(token_id), str(account_id)))
+        if row is None or (kind is not None and str(row["kind"]) != kind):
+            return False
+        await db.execute("UPDATE account_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
+                         (_now(), row["id"]))
+        if str(row["kind"]) == TOKEN_KIND_BROWSER:
+            from db.event_journal import JournalEvent, record
+
+            by_owner = actor_id is None or str(actor_id) == str(account_id)
+            await record(db, JournalEvent(
+                "administration", "administration.browser_disconnected", "info",
+                ("A connected browser was disconnected by its owner" if by_owner
+                 else "A connected browser was disconnected by an Admin"),
+                "account", str(account_id), detail=f"token {row['id']} ({row['label']})"))
+        return True
 
 
-async def resolve_token(raw: str) -> tuple[Account, str, str] | None:
-    """The active Integration account, token ID and external client ID a
-    bearer secret names.
+async def resolve_token(raw: str) -> tuple[Account, str, str, str] | None:
+    """The account, token ID, client ID and token kind a bearer secret names:
+    an active Integration account's ``integration`` token, or an active Admin
+    or User account's ``browser`` token. Every other pairing is refused, and
+    the account is re-read on every request, so a person demoted to ReadOnly,
+    deactivated, merged or removed stops every browser of theirs at once.
 
     Lookup is by verifier, so tokens cannot be enumerated or probed by
     prefix; the matched verifier is still compared in constant time."""
@@ -1532,15 +1594,20 @@ async def resolve_token(raw: str) -> tuple[Account, str, str] | None:
     verifier = _token_verifier(raw)
     async with get_db() as db:
         row = await db.fetchone(
-            "SELECT id, account_id, verifier, client_id FROM account_tokens WHERE verifier=? AND revoked_at IS NULL",
+            "SELECT id, account_id, verifier, client_id, kind FROM account_tokens "
+            "WHERE verifier=? AND revoked_at IS NULL",
             (verifier,))
         account = await _fetch(db, row["account_id"]) if row is not None else None
     if row is None or not secrets.compare_digest(str(row["verifier"]), verifier):
         return None
-    if account is None or not account.active or account.role is not Role.INTEGRATION:
+    kind = str(row["kind"] or TOKEN_KIND_INTEGRATION)
+    if account is None or not account.active:
+        return None
+    if not ((kind == TOKEN_KIND_INTEGRATION and account.role is Role.INTEGRATION)
+            or (kind == TOKEN_KIND_BROWSER and account.role in BROWSER_ROLES)):
         return None
     await _seen(str(row["id"]))
-    return account, str(row["id"]), str(row["client_id"] or row["id"])
+    return account, str(row["id"]), str(row["client_id"] or row["id"]), kind
 
 
 # A token's last use is written at most this often (an in-process throttle):

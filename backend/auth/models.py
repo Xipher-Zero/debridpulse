@@ -40,6 +40,11 @@ class Principal:
     # The external client that credential authenticates as (``external``):
     # the fence around every external job. Empty for every other principal.
     client_id: str = ""
+    # What kind of token carried the request (``auth.accounts`` token kinds):
+    # ``integration`` or ``browser``. A ``browser`` principal's authority is
+    # the browser client alone, whatever its account's role
+    # (``auth.permissions.capabilities``). Empty for every non-token principal.
+    credential_kind: str = ""
 
     @classmethod
     def anonymous(cls) -> "Principal":
@@ -92,7 +97,11 @@ class Principal:
         ).bound_to(account)
 
     @classmethod
-    def integration_token(cls, account, token_id: str, client_id: str = "") -> "Principal":
+    def integration_token(cls, account, token_id: str, client_id: str = "",
+                          kind: str = "integration") -> "Principal":
+        """A bearer token's principal: an Integration token, or a person's
+        browser token (``kind``), exactly as ``auth.accounts.resolve_token``
+        resolved it."""
         return cls(
             authenticated=True,
             mechanism=AuthMechanism.API_TOKEN,
@@ -100,6 +109,7 @@ class Principal:
             display_name=account.display_name,
             credential_id=str(token_id),
             client_id=str(client_id or token_id),
+            credential_kind=str(kind or "integration"),
         ).bound_to(account)
 
     def bound_to(self, account) -> "Principal":
