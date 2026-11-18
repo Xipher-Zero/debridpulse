@@ -154,6 +154,19 @@ async def browser_session(request: Request):
                              "withdraw": True, "estimate": True}}
 
 
+@router.delete("/browser/v1/session")
+async def disconnect_this_browser(request: Request):
+    """Disconnect the browser this token belongs to, from the browser itself
+    (the extension's Disconnect): the token that carries this request is
+    revoked at once, journaled as disconnected by its owner. The work it
+    sent is untouched."""
+    principal = request.state.principal
+    if not await accounts.revoke_token(principal.account_id, principal.credential_id, kind=TOKEN_KIND_BROWSER,
+                                       actor_id=principal.account_id):
+        raise DisplayError(404, "Connected browser not found.", code="account.browser_token_not_found")
+    return {"ok": True}
+
+
 # ── the browser's own downloads (``external.service``, browser jobs) ────────
 #
 # Each route is the external-client owner's operation, called with the

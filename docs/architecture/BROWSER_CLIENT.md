@@ -107,6 +107,7 @@ withdrawal, advisory pause/resume and the per-client limits.
 | Who | Route |
 |---|---|
 | The person, their own browsers | `GET /api/account/browsers`; `DELETE /api/account/browsers/{token_id}` |
+| The browser itself (the extension's Disconnect) | `DELETE /api/browser/v1/session`: the token carrying the request is revoked, journaled as by its owner |
 | An Admin, anyone's | `GET /api/accounts/{id}/tokens` (each row names its `kind`); `DELETE /api/accounts/{id}/tokens/{token_id}` |
 
 Revocation is immediate (`401` on the next call). The work the browser sent is

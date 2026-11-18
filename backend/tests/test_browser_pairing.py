@@ -172,7 +172,8 @@ def test_a_browser_token_holds_the_browser_client_and_nothing_else_whatever_its_
     admitted = {action for action, capability in ACTIONS.items()
                 if capability is not Capability.PUBLIC and permits(browser, capability)}
     assert admitted == {action for action, capability in ACTIONS.items() if capability is Capability.BROWSER_CLIENT}
-    assert admitted == {"api.browser_routes.browser_session", "api.browser_routes.submit_browser_job",
+    assert admitted == {"api.browser_routes.browser_session", "api.browser_routes.disconnect_this_browser",
+                        "api.browser_routes.submit_browser_job",
                         "api.browser_routes.list_browser_jobs", "api.browser_routes.get_browser_job",
                         "api.browser_routes.withdraw_browser_job", "api.browser_routes.request_browser_control"}
 
@@ -351,6 +352,35 @@ async def test_people_manage_only_their_own_browsers_and_an_admin_may_disconnect
     finally:
         await owner.close()
         await una.close()
+
+
+def test_a_browser_disconnects_itself_and_its_token_stops_at_once(tmp_path):
+    """The extension's Disconnect: the token revokes itself; another browser's is untouched.
+    Its own backend: the module's shared one has spent its per-peer pairing budget."""
+    server = Server(tmp_path)
+    try:
+        server.wait_ready()
+
+        async def scenario():
+            owner = await Person.sign_in(server, "owner")
+            try:
+                mine, mine_id = await pair(server, owner, "Leaving browser")
+                other, _ = await pair(server, owner, "Staying browser")
+                status, body = await extension(server, "DELETE", "/api/browser/v1/session", mine)
+                assert status == 200 and body == {"ok": True}
+                assert (await extension(server, "GET", "/api/browser/v1/session", mine))[0] == 401
+                assert (await extension(server, "GET", "/api/browser/v1/session", other))[0] == 200
+                _, events = await owner.call("GET", "/api/events?limit=50", csrf=False)
+                assert any(item["type"] == "administration.browser_disconnected" and mine_id in (item["detail"] or "")
+                           and "by its owner" in item["message"] for item in events["items"])
+                # A session never reaches it.
+                assert (await owner.call("DELETE", "/api/browser/v1/session"))[0] == 403
+            finally:
+                await owner.close()
+
+        asyncio.run(scenario())
+    finally:
+        server.stop()
 
 
 def test_a_person_moved_to_readonly_stops_every_browser_of_theirs_at_once(tmp_path):
