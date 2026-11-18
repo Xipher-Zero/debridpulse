@@ -172,3 +172,39 @@ test('an Admin sees every connected browser in Integration Accounts, revokes it 
     await extension.dispose();
   }
 });
+
+test('from 780px every token table in Integration Accounts lines its columns up', async ({browser}) => {
+  expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
+  const extension = await extensionClient();
+  const admin = await adminPage(browser);
+  try {
+    // Two Integration accounts with tokens of different lengths, and a connected browser.
+    for (const [name, labels] of [[`Short ${run}`, ['A']], [`Suite ${run}`, ['Sonarr instance on the media server', 'Lidarr']]]) {
+      const created = await admin.page.evaluate(async (displayName) => (await (await window.debridPulseAuth.fetch('/api/accounts', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({kind: 'integration', display_name: displayName})})).json()), name);
+      for (const label of labels) {
+        await admin.page.evaluate(async ([id, tokenLabel]) => window.debridPulseAuth.fetch(`/api/accounts/${id}/tokens`, {
+          method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({label: tokenLabel})}), [created.id, label]);
+      }
+    }
+    const pairing = await start(extension, `Align ${run}`);
+    await admin.page.goto(pairing.verification_path);
+    await admin.page.locator('.dp-browser-pairing-dialog').getByRole('button', {name: 'Connect', exact: true}).click();
+    await expect.poll(async () => (await poll(extension, pairing.device_code)).status, {intervals: [2100]}).toBe('approved');
+    await admin.page.goto('/');
+    await admin.page.locator('#sidebar .nav-item[data-view="settings"]').click();
+    await admin.page.locator('#view-settings [data-tab="users"]:not(.dp-motion-still *)').click();
+    await expect(admin.page.locator('.dp-settings-users-integrations-card .dp-settings-users-tokens')).toHaveCount(3);
+    for (const width of [780, 1024, 1440]) {
+      await admin.page.setViewportSize({width, height: 900});
+      const columns = await admin.page.evaluate(() => [...document.querySelectorAll(
+        '.dp-settings-users-integrations-card .dp-settings-users-tokens')].map((table) =>
+        [...table.querySelectorAll('thead th')].map((th) => Math.round(th.getBoundingClientRect().left))));
+      for (const table of columns.slice(1)) expect(table, `${width}px`).toEqual(columns[0]);
+    }
+  } finally {
+    await admin.context.close();
+    await extension.dispose();
+  }
+});

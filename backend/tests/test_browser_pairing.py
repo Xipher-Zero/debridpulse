@@ -413,6 +413,21 @@ def test_a_person_moved_to_readonly_stops_every_browser_of_theirs_at_once(tmp_pa
                 status, body = await owner.call("PATCH", f"/api/accounts/{vera_id}", json={"role": "readonly"})
                 assert status == 200, body
                 assert (await extension(server, "GET", "/api/browser/v1/session", token))[0] == 401
+                # Disabling a person revokes their browsers (re-enabling restores sign-in, never a browser).
+                status, created = await owner.call("POST", "/api/accounts", json={
+                    "kind": "local", "role": "user", "username": "dora", "password": PASSWORD, "display_name": "Dora"})
+                assert status == 200, created
+                dora = await Person.sign_in(server, "dora")
+                dora_token, dora_id = await pair(server, dora, "Dora's browser")
+                await dora.close()
+                _, listed = await owner.call("GET", "/api/accounts", csrf=False)
+                dora_account = next(item["id"] for item in listed["accounts"] if item.get("username") == "dora")
+                status, body = await owner.call("PATCH", f"/api/accounts/{dora_account}", json={"enabled": False})
+                assert status == 200, body
+                _, overview = await owner.call("GET", "/api/browser-tokens", csrf=False)
+                assert dora_id not in {item["id"] for item in overview["browsers"]}
+                assert (await owner.call("PATCH", f"/api/accounts/{dora_account}", json={"enabled": True}))[0] == 200
+                assert (await extension(server, "GET", "/api/browser/v1/session", dora_token))[0] == 401
             finally:
                 await owner.close()
 

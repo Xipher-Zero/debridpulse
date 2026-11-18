@@ -1027,6 +1027,25 @@ async def owned_account_ids(account_id: str) -> list[str]:
         return await _owned_account_ids(db, account_id)
 
 
+async def _revoke_browsers(db, account_id: str, why: str) -> None:
+    """A person who can no longer sign in keeps no connected browser: each of
+    their browser tokens is revoked in the caller's transaction and journaled
+    (re-enabling restores sign-in, never a browser; it pairs again)."""
+    from db.event_journal import JournalEvent, record
+
+    rows = await db.fetchall("SELECT id, label FROM account_tokens WHERE account_id=? AND kind=? AND revoked_at IS NULL",
+                             (str(account_id), TOKEN_KIND_BROWSER))
+    if not rows:
+        return
+    await db.execute("UPDATE account_tokens SET revoked_at=? WHERE account_id=? AND kind=? AND revoked_at IS NULL",
+                     (_now(), str(account_id), TOKEN_KIND_BROWSER))
+    for row in rows:
+        await record(db, JournalEvent(
+            "administration", "administration.browser_disconnected", "info",
+            "A connected browser was disconnected by an Admin", "account", str(account_id),
+            detail=f"token {row['id']} ({row['label']}); {why}"))
+
+
 async def set_enabled(actor_id: str, account_id: str, enabled: bool) -> list[int]:
     """Disable revokes access at once and, in the same transaction, withdraws
     the account's outstanding demand. Re-enabling restores access only: a
@@ -1040,6 +1059,7 @@ async def set_enabled(actor_id: str, account_id: str, enabled: bool) -> list[int
             raise AccountRefused("The default Admin account cannot be disabled", code="account.default_admin_not_disableable")
         await db.execute("UPDATE accounts SET enabled=? WHERE id=?", (int(bool(enabled)), account.id))
         if not enabled:
+            await _revoke_browsers(db, account.id, "account disabled")
             withdrawn = await _withdraw_owned_demand(db, account.id, "account_disabled")
     return withdrawn
 
@@ -1114,6 +1134,7 @@ async def merge_accounts(actor_id: str, source_ids, target_id: str) -> None:
             await db.execute("DELETE FROM account_notifications WHERE account_id=?", (source_id,))
             await db.execute("DELETE FROM account_appearance WHERE account_id=?", (source_id,))
             await db.execute("DELETE FROM account_setup_rerun WHERE account_id=?", (source_id,))
+            await _revoke_browsers(db, source_id, "account merged")
             await db.execute(
                 "UPDATE accounts SET enabled=0, username=NULL, merged_into=?, deleted_at=? WHERE id=?",
                 (target.id, now, source_id))

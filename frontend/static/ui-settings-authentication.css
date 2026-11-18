@@ -1226,6 +1226,28 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   vertical-align: middle;
 }
 
+/* From 780px every token table in the card (each Integration account's, and
+   Connected browsers) lays its columns out alike, so Issued, Status and
+   Actions stand in one place down the whole card: Token takes the rest.
+   Below 780px fitIntegrationAccounts shares measured widths instead. */
+@media (min-width: 780px) {
+  #view-settings .dp-settings-users-tokens {
+    table-layout: fixed;
+  }
+  #view-settings .dp-settings-users-tokens > thead > tr > th:nth-child(2) {
+    width: 12rem;
+  }
+  #view-settings .dp-settings-users-tokens > thead > tr > th:nth-child(3) {
+    width: 9rem;
+  }
+  #view-settings .dp-settings-users-tokens > thead > tr > th:nth-child(4) {
+    width: 9rem;
+  }
+  #view-settings .dp-settings-users-tokens .dp-settings-users-token-name {
+    overflow-wrap: anywhere;
+  }
+}
+
 /* An account table is not a transfer table: the transfer tables' narrow-width
    column reduction (ui-transfer-contract.css) never removes its Status or
    Actions. It scrolls inside its own wrapper instead. */
