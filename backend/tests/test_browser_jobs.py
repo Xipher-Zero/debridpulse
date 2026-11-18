@@ -1,0 +1,190 @@
+"""WS-S2: a connected browser's own downloads (``external.service`` browser jobs).
+
+Live proofs against a real backend in its own process (the WS-S1 harness):
+real sign-ins, real browser tokens from real pairings, real submissions
+through the external-client owner. Nothing in the server is replaced.
+"""
+from __future__ import annotations
+
+import asyncio
+import base64
+import uuid
+
+import pytest
+
+from test_browser_pairing import PASSWORD, Person, Server, anonymous, extension, pair
+
+PUBLIC_LINK = "https://203.0.113.10/releases/file.iso"      # TEST-NET-3: never resolved, never private
+LAN_LINK = "http://192.168.77.10/share/file.iso"
+META4 = ('<?xml version="1.0" encoding="UTF-8"?><metalink xmlns="urn:ietf:params:xml:ns:metalink">'
+         '<file name="file.iso"><size>1024</size><url>https://203.0.113.10/file.iso</url></file></metalink>')
+
+
+def _key() -> str:
+    return "k-" + uuid.uuid4().hex
+
+
+@pytest.fixture(scope="module")
+def world(tmp_path_factory):
+    """One backend; the owner (Admin) and Una (User), each with one connected browser."""
+    server = Server(tmp_path_factory.mktemp("browser-jobs"))
+    try:
+        server.wait_ready()
+
+        async def people():
+            owner = await Person.sign_in(server, "owner")
+            status, body = await owner.call("POST", "/api/accounts", json={
+                "kind": "local", "role": "user", "username": "una", "password": PASSWORD, "display_name": "Una"})
+            assert status == 200, body
+            una = await Person.sign_in(server, "una")
+            tokens = {"owner": (await pair(server, owner, "Owner's Firefox"))[0],
+                      "una": (await pair(server, una, "Una's Chrome"))[0]}
+            await owner.close()
+            await una.close()
+            return tokens
+
+        server.tokens = asyncio.run(people())
+        yield server
+    finally:
+        server.stop()
+
+
+async def submit(server, token, source, key=None, **extra):
+    return await extension(server, "POST", "/api/browser/v1/jobs", token,
+                           json={"idempotency_key": key or _key(), "source": source, **extra})
+
+
+@pytest.mark.asyncio
+async def test_a_browser_submits_its_own_download_once_and_sees_only_its_own(world):
+    una, owner = world.tokens["una"], world.tokens["owner"]
+    key = _key()
+    status, job = await submit(world, una, {"kind": "links", "links": [PUBLIC_LINK]}, key, display_name="ISO")
+    assert status == 201, job
+    # The person's own download: no category, profile or delivery; an estimate field.
+    assert not {"category", "profile_id", "delivery"} & set(job)
+    assert "estimate" in job and job["display_name"] == "ISO"
+    assert job["source"] == {"kind": "links", "count": 1, "hosts": ["203.0.113.10"]}
+    # A retry is the same job, never a second download; the same key for something else is refused.
+    status, again = await submit(world, una, {"kind": "links", "links": [PUBLIC_LINK]}, key, display_name="ISO")
+    assert status == 200 and again["id"] == job["id"]
+    status, conflict = await submit(world, una, {"kind": "magnet", "magnet": "magnet:?xt=urn:btih:" + "c" * 40}, key)
+    assert status == 409 and conflict["detail"]["code"] == "idempotency_conflict"
+
+    _, mine = await extension(world, "GET", "/api/browser/v1/jobs", una)
+    assert job["id"] in {item["id"] for item in mine["jobs"]}
+    _, theirs = await extension(world, "GET", "/api/browser/v1/jobs", owner)
+    assert job["id"] not in {item["id"] for item in theirs["jobs"]}
+    status, _ = await extension(world, "GET", f"/api/browser/v1/jobs/{job['id']}", owner)
+    assert status == 404
+    # The same download, attributed to Una and to that browser, in her own requests.
+    una_person = await Person.sign_in(world, "una")
+    try:
+        _, requests = await una_person.call("GET", "/api/requests", csrf=False)
+        session = (await extension(world, "GET", "/api/browser/v1/session", una))[1]
+        assert any(item["credential_id"] == session["token"]["id"] for item in requests["requests"])
+    finally:
+        await una_person.close()
+
+
+@pytest.mark.asyncio
+async def test_a_browser_submits_every_kind_quick_add_takes(world):
+    owner = world.tokens["owner"]
+    torrent = b"d4:infod6:lengthi1024e4:name8:file.iso12:piece lengthi16384e6:pieces20:" + b"\x00" * 20 + b"ee"
+    sources = [
+        {"kind": "magnet", "magnet": "magnet:?xt=urn:btih:" + "a" * 40 + "&dn=one"},
+        {"kind": "torrent", "filename": "file.torrent", "torrent_base64": base64.b64encode(torrent).decode()},
+        {"kind": "metalink", "filename": "file.meta4", "metalink_base64": base64.b64encode(META4.encode()).decode()},
+    ]
+    for source in sources:
+        status, job = await submit(world, owner, source)
+        assert status == 201, (source["kind"], job)
+        assert job["source"]["kind"] == source["kind"]
+    status, refused = await submit(world, owner, {"kind": "metalink", "filename": "file.metalink",
+                                                  "metalink_base64": base64.b64encode(META4.encode()).decode()})
+    assert status == 422 and refused["detail"]["code"] == "invalid_source"
+    # Nothing outside the browser contract is accepted.
+    status, refused = await submit(world, owner, {"kind": "links", "links": [PUBLIC_LINK]}, category="tv")
+    assert status == 422 and refused["detail"]["code"] == "invalid_request"
+
+
+@pytest.mark.asyncio
+async def test_remove_withdraws_only_this_browsers_request(world):
+    una = world.tokens["una"]
+    _, job = await submit(world, una, {"kind": "links", "links": ["https://203.0.113.11/other.bin"]})
+    status, withdrawn = await extension(world, "POST", f"/api/browser/v1/jobs/{job['id']}/withdraw", una)
+    assert status == 200, withdrawn
+    _, current = await extension(world, "GET", f"/api/browser/v1/jobs/{job['id']}", una)
+    assert current["phase"] == "withdrawn"
+    status, _ = await extension(world, "POST", f"/api/browser/v1/jobs/{job['id']}/withdraw", world.tokens["owner"])
+    assert status == 404
+
+
+@pytest.mark.asyncio
+async def test_pause_and_resume_are_the_protocols_advisory_controls(world):
+    una = world.tokens["una"]
+    _, job = await submit(world, una, {"kind": "links", "links": ["https://203.0.113.12/paused.bin"]})
+    status, paused = await extension(world, "POST", f"/api/browser/v1/jobs/{job['id']}/controls", una,
+                                     json={"kind": "pause", "request_key": _key()})
+    assert status == 200, paused
+    # Its request is the only one this download serves: the pause is honoured, as the browser's own hold.
+    assert (paused["disposition"], paused["reason"], paused["effective"]) == ("honored", "paused", "paused")
+    _, current = await extension(world, "GET", f"/api/browser/v1/jobs/{job['id']}", una)
+    assert (current["reason"], current["paused_by"]) == ("paused", "client")
+    status, resumed = await extension(world, "POST", f"/api/browser/v1/jobs/{job['id']}/controls", una,
+                                      json={"kind": "resume", "request_key": _key()})
+    assert status == 200 and (resumed["disposition"], resumed["reason"]) == ("honored", "resumed")
+    # Another browser cannot touch it.
+    status, _ = await extension(world, "POST", f"/api/browser/v1/jobs/{job['id']}/controls", world.tokens["owner"],
+                                json={"kind": "pause", "request_key": _key()})
+    assert status == 404
+    status, invalid = await extension(world, "POST", f"/api/browser/v1/jobs/{job['id']}/controls", una,
+                                      json={"kind": "delete", "request_key": _key()})
+    assert status == 422 and invalid["detail"]["code"] == "invalid_request"
+
+
+@pytest.mark.asyncio
+async def test_a_browser_job_has_no_delivery_and_the_external_api_stays_closed_to_it(world):
+    owner = world.tokens["owner"]
+    _, job = await submit(world, owner, {"kind": "links", "links": ["https://203.0.113.13/x.bin"]})
+    for method, path in (("GET", f"/api/external/v1/jobs/{job['id']}/delivery"),
+                         ("POST", f"/api/external/v1/jobs/{job['id']}/delivery/ack"),
+                         ("GET", "/api/external/v1/jobs")):
+        status, _ = await extension(world, method, path, owner, json={} if method == "POST" else None)
+        assert status == 403, (method, path)
+
+
+def test_private_lan_links_follow_the_installations_local_network_settings(tmp_path):
+    """D4 (operator): Local Network Connections and Skip Local Connection
+    Confirmation govern a browser's private-LAN link, exactly as they govern
+    any submitter who cannot answer the confirmation; nothing new consents."""
+    server = Server(tmp_path)
+    try:
+        server.wait_ready()
+
+        async def scenario():
+            owner = await Person.sign_in(server, "owner")
+            try:
+                token, _ = await pair(server, owner, "LAN browser")
+                assert (await owner.call("PATCH", "/api/transfer-policy", json={
+                    "private_lan_connections": True, "skip_private_lan_confirmation": False}))[0] == 200
+                status, refused = await submit(server, token, {"kind": "links", "links": [LAN_LINK]})
+                assert status == 422 and refused["detail"]["code"] == "local_network_confirmation_required"
+                assert (await owner.call("PATCH", "/api/transfer-policy", json={
+                    "skip_private_lan_confirmation": True}))[0] == 200
+                status, job = await submit(server, token, {"kind": "links", "links": [LAN_LINK]})
+                assert status == 201, job
+            finally:
+                await owner.close()
+
+        asyncio.run(scenario())
+    finally:
+        server.stop()
+
+
+@pytest.mark.asyncio
+async def test_the_session_route_names_what_this_server_offers_a_browser(world):
+    _, session = await extension(world, "GET", "/api/browser/v1/session", world.tokens["una"])
+    assert session["capabilities"] == {"sources": ["links", "magnet", "metalink", "nzb", "nzb_link", "torrent"],
+                                       "controls": ["pause", "resume"], "withdraw": True, "estimate": True}
+    status, _ = await anonymous(world, "GET", "/api/browser/v1/jobs")
+    assert status == 401

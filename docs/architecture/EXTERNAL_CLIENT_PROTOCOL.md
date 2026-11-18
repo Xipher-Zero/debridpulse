@@ -238,6 +238,12 @@ Each job also carries:
   otherwise. The two are never combined. An execution figure is activity, never
   material, and may move back when an attempt is replaced;
 - `error`: category and retryability only;
+- `estimate`: while the transfer downloads, DebridPulse's estimated time
+  remaining, in its one public form from the one estimate owner
+  (`acquisition_eta`): `{seconds, held, estimated, indeterminate}`, with
+  `seconds` null while indeterminate; `null` otherwise. It is read when the job
+  is read and is never part of `revision` or `cursor`: a moving estimate is no
+  change. It is labelled an estimate and is never an exact figure;
 - `revision`: increments on every public change;
 - `cursor`: a global change sequence.
 

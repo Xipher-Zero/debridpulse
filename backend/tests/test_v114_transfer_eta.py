@@ -1012,16 +1012,23 @@ async def test_concurrent_publishers_leave_the_memo_equal_to_what_was_last_sent(
 
 # ── what the estimate must not touch ──────────────────────────────────────────
 
-def test_external_adapters_carry_no_estimate():
-    """Deferred, not done: SABnzbd's ``timeleft`` and qBittorrent's ``eta``
-    keep their unknown forms; no adapter reads the new estimate."""
-    sab = (ROOT / "backend/api/arr_sabnzbd.py").read_text()
-    qbit = (ROOT / "backend/api/arr_qbittorrent.py").read_text()
+def test_external_surfaces_report_the_one_estimate_owners_figure():
+    """L27 (operator, 2026-11-17): external clients get the estimate. The
+    external job view reads the one owner (``TransferEngine.acquisition_etas``)
+    in its one public form, at view time; SABnzbd's ``timeleft`` and
+    qBittorrent's ``eta`` are that figure, else each dialect's unknown form."""
     external = (ROOT / "backend/external/service.py").read_text()
-    for source in (sab, qbit, external):
-        assert "acquisition_eta" not in source
-    assert '"timeleft": "0:00:00"' in sab
-    assert '"eta": UNKNOWN_ETA' in qbit
+    assert "engine.acquisition_etas(" in external and "acquisition_eta_payload(" in external
+    assert '"timeleft": _timeleft(job.get("estimate"))' in (ROOT / "backend/api/arr_sabnzbd.py").read_text()
+    assert '"eta": _eta(job.get("estimate"))' in (ROOT / "backend/api/arr_qbittorrent.py").read_text()
+
+    from api.arr_qbittorrent import UNKNOWN_ETA, _eta
+    from api.arr_sabnzbd import _timeleft
+
+    for estimate in (None, {}, {"seconds": None, "indeterminate": True}, {"seconds": 0}):
+        assert _timeleft(estimate) == "0:00:00" and _eta(estimate) == UNKNOWN_ETA
+    assert _timeleft({"seconds": 3725}) == "1:02:05" and _eta({"seconds": 3725}) == 3725
+    assert _eta({"seconds": UNKNOWN_ETA + 5}) == UNKNOWN_ETA
 
 
 def test_every_surface_reads_the_one_estimate_owner():

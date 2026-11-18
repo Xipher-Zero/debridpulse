@@ -188,8 +188,9 @@ async def _queue(external: ExternalClients, principal, params) -> dict:
         # executor's own exact byte counters when DebridPulse shows exactly
         # those, else SABnzbd's unknown form -- never verified material's
         # measurement, whose total is the artifacts' declared sizes (a NZB's
-        # declared size is not what it delivers). Time left is unknown: no
-        # speed or remaining time is invented.
+        # declared size is not what it delivers). Time left is DebridPulse's
+        # own estimate (the job's ``estimate``, from the one estimate owner),
+        # else SABnzbd's unknown form; none is invented here.
         executor_bytes = effective.get("source") == "execution"
         total = effective.get("total_bytes") if executor_bytes else None
         completed = effective.get("completed_bytes") if executor_bytes else None
@@ -198,11 +199,20 @@ async def _queue(external: ExternalClients, principal, params) -> dict:
         slots.append({
             "index": index, "nzo_id": job["id"], "filename": _name(job), "cat": job["category"],
             "status": _QUEUE_STATUS.get(job["reason"], "Downloading"), "priority": "Normal",
-            "mb": mb, "mbleft": mbleft, "timeleft": "0:00:00",
+            "mb": mb, "mbleft": mbleft, "timeleft": _timeleft(job.get("estimate")),
             "percentage": str(int(percent or 0)),
         })
     return {"queue": {"paused": bool(listing["globally_paused"]), "noofslots": len(slots),
                       "noofslots_total": listing["total"], "slots": slots}}
+
+
+def _timeleft(estimate) -> str:
+    """SABnzbd's ``timeleft`` (``H:MM:SS``) from a job's estimate; its
+    unknown form, ``0:00:00``, when there is no number."""
+    seconds = (estimate or {}).get("seconds")
+    if not isinstance(seconds, int) or isinstance(seconds, bool) or seconds <= 0:
+        return "0:00:00"
+    return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 
 
 async def _history(external: ExternalClients, principal, params) -> dict:

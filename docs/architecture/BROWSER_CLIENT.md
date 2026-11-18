@@ -1,4 +1,4 @@
-# Browser client: pairing and browser tokens (`debridpulse.browser/1`)
+# Browser client: pairing, browser tokens and downloads (`debridpulse.browser/1`)
 
 A person connects a browser extension to their own account: the extension
 asks, the person approves on this server, and the extension receives its own
@@ -65,8 +65,42 @@ A device-authorization flow, after RFC 8628.
   attributed to its person and its name.
 - **The first route.** `GET /api/browser/v1/session` →
   `{protocol: "debridpulse.browser/1", token: {id, label}, account: {display_name}}`.
-  It is how the extension verifies its pairing and the server's protocol. The
-  browser adapter extends this API.
+  It is how the extension verifies its pairing and the server's protocol, and it
+  names what this server offers a browser: `capabilities: {sources, controls,
+  withdraw, estimate}`.
+
+## 2a. A browser's downloads
+
+A browser's submission is that person's own download, admitted exactly as
+Quick Add admits it: same core paths, same demand attribution (the person
+and this browser's token), into their normal Downloads. Its job belongs to
+the one external-client owner (`external/service.py`), as a **browser** job
+(`external_jobs.kind`). It has no category, delivery profile, delivery or
+acknowledgement. Everything else is the external protocol's, unchanged:
+client-scoped idempotency, the change-cursor listing, isolation, demand-only
+withdrawal, advisory pause/resume and the per-client limits.
+
+| Route | Does |
+|---|---|
+| `POST /api/browser/v1/jobs` `{idempotency_key, source, display_name?, client_reference?}` | Submit. `201` new, `200` the same key and intent again; another intent under that key is `409 idempotency_conflict`. |
+| `GET /api/browser/v1/jobs?after&limit&phase` | This browser's jobs by change cursor. |
+| `GET /api/browser/v1/jobs/{id}` | One of them; another client's is `404`. |
+| `POST /api/browser/v1/jobs/{id}/withdraw` | Remove: withdraw this browser's request. The download stops only if nobody else needs it; finished files are kept. |
+| `POST /api/browser/v1/jobs/{id}/controls` `{kind: pause\|resume, request_key}` | The protocol's advisory controls. Honoured only while this browser's request is the only one the download serves, otherwise declined with its reason (`shared_interest`, `globally_paused`, `paused_independently`, …). |
+
+- **Sources.** `links` (1–100), `magnet`, `nzb_link`, `nzb`, `torrent`,
+  `metalink` (a `.meta4` file, as DebridPulse's own upload takes it).
+  - A media page is a link: core's routing decides, as for Quick Add.
+  - A link that needs an item-or-collection answer is refused
+    (`acquisition_scope_required`).
+- **Private-LAN links** follow the installation's **Local Network Connections**
+  and **Skip Local Connection Confirmation** settings, exactly as for any
+  submitter that cannot answer the confirmation. Otherwise they are refused
+  (`local_network_confirmation_required`). A browser never consents.
+- **The job view:** `id`, `revision`, `cursor`, the timestamps, `display_name`,
+  `client_reference`, `source` (a summary without query, credentials or
+  payload), `phase`, `reason`, `actionability`, `paused_by`, `error`,
+  `progress`, `estimate` and `control`. A completed download is settled.
 
 ## 3. Disconnecting
 

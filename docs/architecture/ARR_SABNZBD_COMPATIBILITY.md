@@ -261,11 +261,13 @@ Further rules:
   used, so verified material's byte measurement (the artifacts' declared sizes,
   which the qBittorrent dialect carries) is not carried here, and no total is
   derived from a percentage.
-- **Unknown values.** Speed and time left are not part of the contract:
-  `timeleft` reads `0:00:00`, SABnzbd's unknown form. *arr parses `timeleft` as a
+- **Time left.** `timeleft` is the job's `estimate` (`H:MM:SS`): DebridPulse's
+  own figure from its one estimate owner, never computed here. With no number it
+  reads `0:00:00`, SABnzbd's unknown form. *arr parses `timeleft` as a
   non-optional `H:M:S` / `D:H:M:S` time span and refuses anything else
   (`SabnzbdQueueTimeConverter`), so no other unknown representation exists.
-  SABnzbd itself reports `0:00:00` when it has no estimate. The qBittorrent
+  SABnzbd itself reports `0:00:00` when it has no estimate. Speed is not part of
+  the contract. The qBittorrent
   dialect carries the same effective figure and exact bytes in its own fields
   (`size`, `progress`).
 - **Completed means verified.** A job is Completed only when its whole delivery

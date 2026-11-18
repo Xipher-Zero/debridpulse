@@ -247,8 +247,10 @@ Notes on the values:
     writer whose work is not DP material may have acquired much of it.
   - **Completed:** `size` is the committed delivery's, `progress` `1`,
     `amount_left` `0`. No in-flight counter outlives acquisition.
-- **Unknown values.** `eta` is qBittorrent's unknown value `8640000`, which *arr
-  reads as no time left known. No speed, ETA, peer or tracker figure is invented.
+- **Time left.** `eta` is the job's `estimate` in seconds: DebridPulse's own
+  figure from its one estimate owner, never computed here. With no number it is
+  qBittorrent's unknown value `8640000`, which *arr reads as no time left known.
+  No speed, peer or tracker figure is invented.
 - **Import location.** `content_path` is the single delivered file, or the one
   folder holding every delivered file beneath the import root. It always differs
   from `save_path`, as *arr requires. A multi-file delivery loose in the import

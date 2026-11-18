@@ -28,6 +28,9 @@ MAX_TORRENT_BYTES = 16 * 1024 * 1024
 # NZB owner's own ceiling is larger and still applies to what it writes.
 MAX_NZB_BYTES = 8 * 1024 * 1024
 MAX_FILENAME = 255
+# Decoded bytes of an inline Metalink4 descriptor: the bound DebridPulse's own
+# upload holds one to.
+MAX_METALINK_BYTES = 16 * 1024 * 1024
 
 
 class IntakeRefused(Exception):
@@ -47,6 +50,7 @@ class Intake:
     url: str = ""
     torrent: bytes = b""
     nzb: bytes = b""
+    metalink: bytes = b""
     filename: str = ""
     # What may be shown and persisted: no query, path, credential or payload.
     summary: dict | None = None
@@ -127,6 +131,17 @@ def normalize(source: object) -> Intake:
                       identity=f"torrent:{hashlib.sha256(data).hexdigest()}",
                       summary={"kind": "torrent", "info_hash": identity.info_hash,
                                "name": str(identity.name or filename)[:256]})
+    if kind == "metalink":
+        # A Metalink4 descriptor, as DebridPulse's own upload takes it
+        # (``api.routes.add_multimeta_file``: ``.meta4`` only, 16 MB).
+        filename = source.get("filename") or "upload.meta4"
+        data = _uploaded(source.get("metalink_base64"), filename, field="metalink_base64", suffix=".meta4",
+                         limit=MAX_METALINK_BYTES, what="Metalink")
+        # Read by the Multimeta provider during resolution, never here; the
+        # identity is the exact bytes.
+        digest = hashlib.sha256(data).hexdigest()
+        return Intake("metalink", metalink=data, filename=filename, identity=f"metalink:{digest}",
+                      summary={"kind": "metalink", "name": filename[:256]})
     raise IntakeRefused("unsupported_source", "unsupported source kind")
 
 

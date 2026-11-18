@@ -193,6 +193,15 @@ def _unfinished_progress(progress: dict) -> dict:
     return {"size": 0, "progress": round(fraction, 4)}
 
 
+def _eta(estimate) -> int:
+    """qBittorrent's ``eta`` (seconds) from a job's estimate, the one
+    estimate owner's figure; its unknown value when there is no number."""
+    seconds = (estimate or {}).get("seconds")
+    if not isinstance(seconds, int) or isinstance(seconds, bool) or seconds <= 0:
+        return UNKNOWN_ETA
+    return min(seconds, UNKNOWN_ETA)
+
+
 def _torrent(job: dict) -> dict:
     """One job as the torrent *arr parses (``QBittorrentTorrent``). No
     speed, seed or tracker figure is reported: none exists. A finished,
@@ -205,7 +214,7 @@ def _torrent(job: dict) -> dict:
     torrent = {"hash": info_hash, "infohash_v1": info_hash, "infohash_v2": "",
                "name": job["display_name"] or str(job["source"].get("name") or "") or info_hash,
                "category": job["category"], "save_path": save_path, "content_path": "",
-               "eta": UNKNOWN_ETA, "ratio": 0,
+               "eta": _eta(job.get("estimate")), "ratio": 0,
                "ratio_limit": -2, "seeding_time_limit": -2, "inactive_seeding_time_limit": -2,
                **_unfinished_progress(job.get("progress") or {})}
     if job["phase"] == "failed":

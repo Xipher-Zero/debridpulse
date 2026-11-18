@@ -19,7 +19,8 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Body, Request
+from fastapi import APIRouter, Body, Depends, Query, Request
+from fastapi.responses import JSONResponse
 
 from auth import accounts
 from auth.accounts import TOKEN_KIND_BROWSER, AccountRefused
@@ -28,7 +29,11 @@ from auth.browser_pairing import (
 )
 from auth.manager import peer_key
 from auth.throttle import DualWindowRateLimiter
+from application.dependencies import get_application
+from application.service import ApplicationService
+from api.external_routes import _call
 from core.localization import DisplayError, refusal
+from external.service import BROWSER_SOURCE_KINDS, ExternalClients
 
 router = APIRouter()
 
@@ -144,4 +149,54 @@ async def browser_session(request: Request):
     rows = await accounts.list_tokens(principal.account_id)
     label = next((str(row["label"]) for row in rows if str(row["id"]) == principal.credential_id), "")
     return {"protocol": BROWSER_PROTOCOL, "token": {"id": principal.credential_id, "label": label},
-            "account": {"display_name": principal.display_name}}
+            "account": {"display_name": principal.display_name},
+            "capabilities": {"sources": sorted(BROWSER_SOURCE_KINDS), "controls": ["pause", "resume"],
+                             "withdraw": True, "estimate": True}}
+
+
+# ── the browser's own downloads (``external.service``, browser jobs) ────────
+#
+# Each route is the external-client owner's operation, called with the
+# browser token's principal: the same idempotency, listing, isolation,
+# withdrawal and advisory controls an Integration has, with no delivery.
+
+
+@router.post("/browser/v1/jobs")
+async def submit_browser_job(request: Request, body: Annotated[dict, Body()],
+                             application: ApplicationService = Depends(get_application)):
+    """Submit one download (``idempotency_key`` required): a retry with the
+    same key answers the same job (200), never a second download."""
+    job, created = await _call(ExternalClients(application).submit(request.state.principal, body))
+    return JSONResponse(status_code=201 if created else 200, content=job)
+
+
+@router.get("/browser/v1/jobs")
+async def list_browser_jobs(request: Request, application: ApplicationService = Depends(get_application),
+                            after: Annotated[int, Query(ge=0)] = 0,
+                            limit: Annotated[int, Query(ge=1, le=200)] = 100,
+                            phase: Annotated[str | None, Query(max_length=32)] = None):
+    """This browser's own downloads, by change cursor."""
+    return await _call(ExternalClients(application).jobs(request.state.principal, after=after, limit=limit,
+                                                         phase=phase))
+
+
+@router.get("/browser/v1/jobs/{job_id}")
+async def get_browser_job(job_id: str, request: Request,
+                          application: ApplicationService = Depends(get_application)):
+    return await _call(ExternalClients(application).job(request.state.principal, job_id))
+
+
+@router.post("/browser/v1/jobs/{job_id}/withdraw")
+async def withdraw_browser_job(job_id: str, request: Request,
+                               application: ApplicationService = Depends(get_application)):
+    """Remove: withdraw this browser's request. The download stops only if
+    nobody else still needs it; a finished download is kept."""
+    return await _call(ExternalClients(application).withdraw(request.state.principal, job_id))
+
+
+@router.post("/browser/v1/jobs/{job_id}/controls")
+async def request_browser_control(job_id: str, request: Request, body: Annotated[dict, Body()],
+                                  application: ApplicationService = Depends(get_application)):
+    """Advisory pause/resume (``{kind, request_key}``): honoured only while
+    this browser's request is the only one its download serves."""
+    return await _call(ExternalClients(application).control(request.state.principal, job_id, body))

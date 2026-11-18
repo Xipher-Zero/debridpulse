@@ -2,7 +2,11 @@
 controls. Schema created by the canonical bootstrap (``db.database.init_db``
 through ``ensure_schema``), wiped child-first by ``services.db_maintenance``.
 
-* ``external_jobs`` -- one row per external submission. ``(client_id,
+* ``external_jobs`` -- one row per external submission. ``kind`` is the
+  client's kind: ``integration`` (a job delivered into a delivery profile) or
+  ``browser`` (a person's connected browser: no category, profile or
+  delivery -- the job is that person's own download, as Quick Add's is;
+  ``category``, ``profile_id`` and ``profile_snapshot`` are then empty). ``(client_id,
   idempotency_key)`` is unique. ``reserved_demand_id`` is the demand ID chosen
   before admission; ``demand_id`` (a foreign key to the demand ledger) is set
   once that demand exists, so a job is ACCEPTED exactly when its demand is
@@ -45,6 +49,7 @@ SCHEMA = (
         projection TEXT,
         refreshed_at REAL NOT NULL DEFAULT 0,
         updated_at REAL NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'integration',
         UNIQUE(client_id, idempotency_key))""",
     "CREATE INDEX IF NOT EXISTS idx_external_jobs_client_seq ON external_jobs(client_id, change_seq)",
     "CREATE INDEX IF NOT EXISTS idx_external_jobs_refresh ON external_jobs(accepted_at, refreshed_at)",
@@ -87,3 +92,8 @@ TABLES = ("external_controls", "external_deliveries", "external_jobs")
 async def ensure_schema(db) -> None:
     for statement in SCHEMA:
         await db.execute(statement)
+    # Every job recorded before browser clients existed is an Integration job:
+    # the canonical column migration (``db.database._ensure_column``).
+    from db.database import _ensure_column
+
+    await _ensure_column(db, "external_jobs", "kind", "TEXT NOT NULL DEFAULT 'integration'")

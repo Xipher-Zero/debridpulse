@@ -44,6 +44,7 @@ from core.settings_constraints import path_within
 from external.profiles import DeliveryProfile, category_key, client_flavor, confined_to
 from transfers.filesystem import member_payload
 from transfers.models import SubmissionDemand
+from transfers.runtime_telemetry import acquisition_eta_payload
 
 logger = logging.getLogger("debridpulse.external")
 # Who withdrew a job's demand when an Admin retired a delivery profile (or the
@@ -108,6 +109,30 @@ def _lock(table, key) -> asyncio.Lock:
         lock = asyncio.Lock()
         table[key] = lock
     return lock
+
+
+# The client kinds (``external.store``): an Integration's jobs are delivered
+# into a delivery profile; a person's connected browser's jobs are that
+# person's own downloads, as Quick Add's are -- no category, profile or
+# delivery. Everything else (identity, idempotency, listing, isolation,
+# withdrawal, advisory controls, limits) is one and the same for both.
+BROWSER = "browser"
+# What a browser may submit: every kind DebridPulse's own Quick Add takes.
+BROWSER_SOURCE_KINDS = frozenset({"links", "magnet", "nzb_link", "nzb", "torrent", "metalink"})
+
+
+def _browser(principal: Principal | None) -> bool:
+    return getattr(principal, "credential_kind", "") == BROWSER
+
+
+def _kind(job: dict) -> str:
+    return str(job.get("kind") or "integration")
+
+
+def _delivered_kind(job: dict) -> None:
+    """Delivery and acknowledgement exist only for an Integration's job."""
+    if _kind(job) == BROWSER:
+        raise ExternalRefused("not_applicable", "A browser's download has no delivery", status=409)
 
 
 def client_of(principal: Principal | None) -> str:
@@ -281,9 +306,35 @@ class ExternalClients:
         if not isinstance(body, dict):
             raise ExternalRefused("invalid_request", "The request body must be an object")
         key = _key(body.get("idempotency_key"))
-        intent = self._intent(client_id, body, keyed=True)
+        intent = (self._browser_intent(body) if _browser(principal)
+                  else self._intent(client_id, body, keyed=True))
         _admit_mutation(client_id)
         return await self._submit_keyed(principal, client_id, key, intent)
+
+    @staticmethod
+    def _browser_intent(body: dict) -> dict:
+        """A connected browser's submission: the person's own download, into
+        their normal Downloads exactly as Quick Add admits it. No category
+        or delivery profile exists to select; nothing else is accepted."""
+        display_name = body.get("display_name") or ""
+        reference = body.get("client_reference")
+        if not isinstance(display_name, str) or len(display_name) > 256:
+            raise ExternalRefused("invalid_request", "display_name is at most 256 characters")
+        if reference is not None and (not isinstance(reference, str) or len(reference) > 256):
+            raise ExternalRefused("invalid_request", "client_reference is at most 256 characters")
+        unknown = set(body) - {"source", "display_name", "client_reference", "idempotency_key"}
+        if unknown:
+            raise ExternalRefused("invalid_request", f"Unknown field(s): {', '.join(sorted(unknown))}")
+        try:
+            source = intake_owner.normalize(body.get("source"))
+        except intake_owner.IntakeRefused as exc:
+            raise ExternalRefused(exc.code, exc.message, status=exc.status) from None
+        if source.kind not in BROWSER_SOURCE_KINDS:
+            raise ExternalRefused("source_kind_not_permitted", "A browser may not submit that source kind")
+        digest = intake_owner.intent_digest(source, profile_id="", category_key=BROWSER,
+                                            display_name=display_name.strip(), client_reference=reference)
+        return {"source": source, "digest": digest, "category": "", "profile": None,
+                "display_name": display_name.strip(), "reference": reference}
 
     async def submit_live(self, principal: Principal, body: dict) -> tuple[dict, bool]:
         """Submit for a client protocol whose caller supplies no request
@@ -422,6 +473,17 @@ class ExternalClients:
             # reservation either exists before a catalog change (and is
             # counted) or is selected against the changed catalog -- never
             # admitted under a profile that has just been removed or narrowed.
+            if _browser(principal):
+                await db.execute(
+                    """INSERT INTO external_jobs(id,client_id,account_id,credential_id,idempotency_key,intent_digest,
+                           source_kind,source_summary,category,profile_id,profile_snapshot,display_name,
+                           client_reference,reserved_demand_id,delivery_id,created_at,updated_at,kind)
+                       VALUES(?,?,?,?,?,?,?,?,'','','{}',?,?,?,?,?,?,?)""",
+                    (job_id, client_id, principal.account_id, principal.credential_id, key, digest, source.kind,
+                     json.dumps(source.summary, sort_keys=True), display_name, reference,
+                     str(uuid.uuid4()), "dlv_" + uuid.uuid4().hex, now, now, BROWSER))
+                await db.commit()
+                return await db.fetchone("SELECT * FROM external_jobs WHERE id=?", (job_id,))
             current = _settings().external_delivery.select(client_id, category)
             if current is None or current.id != profile.id or source.kind not in current.source_kinds:
                 await db.rollback()
@@ -546,6 +608,12 @@ class ExternalClients:
                 await application.submit_magnet(source.magnet, source="external", selection_mode="all", demand=demand)
             elif source.kind == "nzb_link":
                 await application.submit_nzb_link(source.url, source="external", demand=demand)
+            elif source.kind == "metalink":
+                async def descriptor(data=source.metalink):
+                    yield data
+
+                await application.submit_meta4(descriptor(), source.filename, source="external",
+                                               selection_mode="all", demand=demand)
             elif source.kind == "nzb":
                 # Staged and read by the existing NZB reader before admission.
                 await application.submit_nzb(source.nzb, source.filename, source="external", demand=demand,
@@ -606,8 +674,9 @@ class ExternalClients:
                                  (row["reserved_demand_id"], now, now, row["id"]))
                 await _audit(db, "external_job_accepted", "External job accepted", row,
                              transfer_id=int(demand["transfer_id"]), outcome="accepted")
-                profile = _settings().external_delivery.by_id(row["profile_id"])
-                if profile is None or row["client_id"] not in profile.clients:
+                profile = (_settings().external_delivery.by_id(row["profile_id"])
+                           if _kind(row) != BROWSER else None)
+                if _kind(row) != BROWSER and (profile is None or row["client_id"] not in profile.clients):
                     # Its admission was in flight when an Admin retired the
                     # profile (or this client from it): the retirement
                     # covers it, in this same commit.
@@ -722,6 +791,7 @@ class ExternalClients:
 
     async def delivery(self, principal: Principal, job_id: str) -> dict:
         row = await self._owned(principal, job_id)
+        _delivered_kind(row)
         row = await self._refresh(row["id"])
         return await self._delivery_view(row, include_files=True)
 
@@ -1083,6 +1153,7 @@ class ExternalClients:
 
     async def acknowledge(self, principal: Principal, job_id: str, body: dict) -> dict:
         row = await self._owned(principal, job_id)
+        _delivered_kind(row)
         if not isinstance(body, dict):
             raise ExternalRefused("invalid_request", "The request body must be an object")
         delivery_id, generation = body.get("delivery_id"), body.get("generation")
@@ -1225,6 +1296,14 @@ class ExternalClients:
     def _finish(projection: dict, current: dict | None, job: dict, now: float) -> dict:
         """Fold the delivery generation into the phase."""
         projection = dict(projection)
+        if _kind(job) == BROWSER:
+            # No delivery exists: completed is settled, as withdrawn and a
+            # cancelled or deleted transfer are.
+            for internal in ("_delivery_reason", "_acquiring", "_partial"):
+                projection.pop(internal, None)
+            projection["settled"] = projection["phase"] in {"withdrawn", "completed"} or (
+                projection["phase"] == "failed" and projection["reason"] in {"cancelled", "deleted"})
+            return projection
         unverifiable = projection.get("_delivery_reason") == "verifying_material"
         acquiring = projection.pop("_acquiring", False)
         delivery = {"state": "unavailable", "reason": projection.pop("_delivery_reason", "not_ready"),
@@ -1300,6 +1379,11 @@ class ExternalClients:
                 # (``percent`` stays verified material alone).
                 projection["progress"]["effective"] = await self._effective_progress(transfer)
         if status in {"completed", "consolidated"}:
+            if _kind(job) == BROWSER:
+                # The person's own download is done: nothing is delivered
+                # or acknowledged.
+                projection.update(phase="completed", reason="completed", actionability="none")
+                return plan
             await self._deliverable(job, transfer_id, status, members, plan)
             return plan
         if members["completed"] and members["completed"] < members["total"]:
@@ -1679,8 +1763,36 @@ class ExternalClients:
 
     # ── views ───────────────────────────────────────────────────────────────
 
+    async def _estimate(self, job: dict, projection: dict) -> dict | None:
+        """The transfer's estimated time remaining, read at view time from the
+        one estimate owner (``TransferEngine.acquisition_etas``), in its one
+        public form (``acquisition_eta_payload``), only while it downloads.
+        Never stored in the projection: a moving estimate is no change."""
+        if projection.get("reason") != "downloading" or not job.get("demand_id"):
+            return None
+        engine = getattr(self.application, "engine", None)
+        demand = await self.repository.demand(job["demand_id"])
+        if engine is None or demand is None:
+            return None
+        transfer_id = int(demand["transfer_id"])
+        etas = await engine.acquisition_etas([transfer_id])
+        return acquisition_eta_payload(etas.get(transfer_id))
+
     async def _view(self, job: dict) -> dict:
         projection = json.loads(job["projection"]) if job["projection"] else {}
+        if _kind(job) == BROWSER:
+            return {
+                "id": job["id"], "revision": int(job["revision"]), "cursor": int(job["change_seq"]),
+                "submitted_at": _iso(job["created_at"]), "accepted_at": _iso(job["accepted_at"]),
+                "updated_at": _iso(job["updated_at"]),
+                "display_name": job["display_name"], "client_reference": job["client_reference"],
+                "source": json.loads(job["source_summary"]),
+                "phase": projection.get("phase", "accepted"), "reason": projection.get("reason"),
+                "actionability": projection.get("actionability", "wait"),
+                "paused_by": projection.get("paused_by"), "error": projection.get("error"),
+                "progress": projection.get("progress"), "estimate": await self._estimate(job, projection),
+                "control": await self._latest_control(job["id"]),
+            }
         delivery = dict(projection.get("delivery") or {"state": "unavailable", "reason": "not_ready",
                                                         "generation": None})
         delivery["delivery_id"] = job["delivery_id"]
@@ -1694,7 +1806,8 @@ class ExternalClients:
             "phase": projection.get("phase", "accepted"), "reason": projection.get("reason"),
             "actionability": projection.get("actionability", "wait"),
             "paused_by": projection.get("paused_by"), "error": projection.get("error"),
-            "progress": projection.get("progress"), "delivery": delivery, "control": control,
+            "progress": projection.get("progress"), "estimate": await self._estimate(job, projection),
+            "delivery": delivery, "control": control,
         }
 
     async def _latest_control(self, job_id: str) -> dict | None:

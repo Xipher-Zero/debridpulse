@@ -172,7 +172,9 @@ def test_a_browser_token_holds_the_browser_client_and_nothing_else_whatever_its_
     admitted = {action for action, capability in ACTIONS.items()
                 if capability is not Capability.PUBLIC and permits(browser, capability)}
     assert admitted == {action for action, capability in ACTIONS.items() if capability is Capability.BROWSER_CLIENT}
-    assert admitted == {"api.browser_routes.browser_session"}
+    assert admitted == {"api.browser_routes.browser_session", "api.browser_routes.submit_browser_job",
+                        "api.browser_routes.list_browser_jobs", "api.browser_routes.get_browser_job",
+                        "api.browser_routes.withdraw_browser_job", "api.browser_routes.request_browser_control"}
 
 
 @pytest.mark.parametrize("role", ["admin", "user", "readonly", "integration"])
@@ -213,7 +215,9 @@ async def test_a_browser_pairs_on_approval_and_collects_its_token_exactly_once(w
             status, session = await extension(world, "GET", "/api/browser/v1/session", collected["token"], origin)
             assert status == 200 and session == {
                 "protocol": "debridpulse.browser/1", "token": {"id": collected["token_id"], "label": "Laptop-Firefox"},
-                "account": {"display_name": "Administrator"}}
+                "account": {"display_name": "Administrator"},
+                "capabilities": {"sources": ["links", "magnet", "metalink", "nzb", "nzb_link", "torrent"],
+                                 "controls": ["pause", "resume"], "withdraw": True, "estimate": True}}
 
         status, events = await owner.call("GET", "/api/events?limit=50", csrf=False)
         assert status == 200, events
