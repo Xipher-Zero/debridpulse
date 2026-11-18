@@ -60,7 +60,15 @@ async function record(page, surfaces, act, arg = null) {
           ghostBox: ghost ? [ghost.getBoundingClientRect().left, ghost.getBoundingClientRect().top] : null, box: [box.left, box.top, box.width, box.height],
           client: [surface.clientWidth, surface.clientHeight], bar: surface.offsetWidth - surface.clientWidth, clip: clips(surface) && (!ghost || clips(ghost)),
           durations: [...new Set(document.getAnimations().filter(a => a.effect?.target instanceof Node && a.effect.getKeyframes().some(k => k.transform)
-            && (surface.contains(a.effect.target) || !!ghost?.contains(a.effect.target))).map(a => a.effect.getTiming().duration))]};
+            && (surface.contains(a.effect.target) || !!ghost?.contains(a.effect.target))).map(a => a.effect.getTiming().duration))],
+          // The distance the slide is set to travel (its keyframes, in px): what
+          // it covers whichever of its frames a loaded runner gets to draw.
+          planned: Math.max(0, ...document.getAnimations().filter(a => a.effect?.target instanceof Node
+            && (surface.contains(a.effect.target) || !!ghost?.contains(a.effect.target)))
+            .flatMap(a => a.effect.getKeyframes().filter(k => k.transform && k.transform !== 'none').map(k => {
+              try { const m = new DOMMatrixReadOnly(k.transform); return Math.abs(surface.dataset.dpMotionAxis === 'y' ? m.m42 : m.m41); }
+              catch { return 0; }
+            })))};
       }
       window.__frames.push(frame);
       if (window.__frames.length < 120 && (document.querySelector('.dp-motion-surface') || window.__frames.length < 3)) requestAnimationFrame(tick);
@@ -82,7 +90,10 @@ function expectTravel(frames, {direction, share, duration, axis = 'x'}) {
   expect(moving.some(frame => Math.sign(Math.round(frame.old)) === sign), 'the old content leaves toward the start going forward').toBe(true);
   expect(moving.some(frame => Math.sign(Math.round(frame.now)) === -sign), 'the destination arrives from the other side').toBe(true);
   const width = frames[0].client[axis === 'y' ? 1 : 0];
-  const far = Math.max(...moving.map(frame => Math.abs(frame.old ?? 0))) / width;
+  // The travel is the slide's own distance; a runner that draws few frames
+  // samples less of it, so the drawn positions only stand in when it is unread.
+  const planned = Math.max(0, ...moving.map(frame => frame.planned || 0));
+  const far = (planned || Math.max(...moving.map(frame => Math.abs(frame.old ?? 0)))) / width;
   expect(far).toBeGreaterThanOrEqual(share[0]);
   expect(far).toBeLessThanOrEqual(share[1]);
   expect([...new Set(moving.flatMap(frame => frame.durations))]).toEqual([duration]);
