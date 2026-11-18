@@ -98,8 +98,10 @@ withdrawal, advisory pause/resume and the per-client limits.
   submitter that cannot answer the confirmation. Otherwise they are refused
   (`local_network_confirmation_required`). A browser never consents.
 - **The job view:** `id`, `revision`, `cursor`, the timestamps, `display_name`,
-  `client_reference`, `source` (a summary without query, credentials or
-  payload), `phase`, `reason`, `actionability`, `paused_by`, `error`,
+  `client_reference`, `name` (the transfer's title as DownloadPulse shows it:
+  the Downloads list's derived display name, so a media download's resolved
+  title replaces its link's placeholder; a change moves the cursor), `source`
+  (a summary without query, credentials or payload), `phase`, `reason`, `actionability`, `paused_by`, `error`,
   `progress`, `estimate` and `control`. A completed download is settled.
 
 ## 3. Disconnecting

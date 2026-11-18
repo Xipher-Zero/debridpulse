@@ -1551,6 +1551,20 @@ async def list_tokens(account_id: str) -> list[dict]:
             "WHERE account_id=? AND revoked_at IS NULL ORDER BY created_at, id", (str(account_id),))
 
 
+async def list_browser_tokens() -> list[dict]:
+    """Every person's connected browsers (active browser tokens), for an
+    Admin's API-token view: each token's name, its person and when it was
+    issued and last used. Never a credential or verifier."""
+    from db.database import get_db
+
+    async with get_db() as db:
+        return await db.fetchall(
+            "SELECT t.id, t.label, t.account_id, t.created_at, t.last_seen_at, "
+            "COALESCE(NULLIF(a.display_name, ''), a.username, '') AS account_name "
+            "FROM account_tokens t JOIN accounts a ON a.id = t.account_id "
+            "WHERE t.kind = ? AND t.revoked_at IS NULL ORDER BY t.created_at, t.id", (TOKEN_KIND_BROWSER,))
+
+
 async def revoke_token(account_id: str, token_id: str, *, kind: str | None = None,
                        actor_id: str | None = None) -> bool:
     """Revoke one token at once. Its row stays for attribution; work it

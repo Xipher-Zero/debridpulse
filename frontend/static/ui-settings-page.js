@@ -48,7 +48,7 @@
     // The account directory (GET /accounts) and each Integration account's
     // tokens, read when Settings loads and after every account action. null
     // while unread; an unreadable directory is an error, never an empty list.
-    users: {accounts: null, tokens: {}, error: ''},
+    users: {accounts: null, tokens: {}, browsers: null, error: ''},
     // The Admin-owned delivery-profile catalog (GET /external/profiles):
     // its profiles and the revision a write must name. null while unread.
     profiles: {catalog: null, error: ''},
@@ -4677,9 +4677,15 @@
   // Revoke be its glyph alone, named for the token it revokes and saying so
   // as a tooltip (fitIntegrationAccounts); from 780px neither is drawn.
   function tokenRows(account) {
-    const tokens = state.users.tokens[account.id];
-    if (!Array.isArray(tokens)) return `<div class="dp-settings-users-detail"${keyed(say('settings.tokens.unreadable'))}>${html(t('settings.tokens.unreadable'))}</div>`;
-    if (!tokens.length) return `<div class="dp-settings-users-detail"${keyed(say('settings.tokens.none'))}>${html(t('settings.tokens.none'))}</div>`;
+    return tokenTable(state.users.tokens[account.id], () => account.id, 'settings.tokens.unreadable', 'settings.tokens.none');
+  }
+
+  /* One token table, the API tokens view's one form: an Integration
+   * account's tokens, and every person's connected browsers (browserBlock).
+   * ``ownerOf`` names the account each token is revoked from. */
+  function tokenTable(tokens, ownerOf, unreadableKey, noneKey) {
+    if (!Array.isArray(tokens)) return `<div class="dp-settings-users-detail"${keyed(say(unreadableKey))}>${html(t(unreadableKey))}</div>`;
+    if (!tokens.length) return `<div class="dp-settings-users-detail"${keyed(say(noneKey))}>${html(t(noneKey))}</div>`;
     const issued = value => window.downloadsDateMarkup ? window.downloadsDateMarkup(value) : html(value);
     const day = value => window.downloadsDayMarkup ? window.downloadsDayMarkup(value) : html(value);
     const revoke = keyedIconLabel('trash2', say('settings.tokens.revoke'));
@@ -4691,7 +4697,7 @@
             <td><span class="dp-settings-users-token-name">${html(token.label)}</span><span class="dp-settings-users-token-issued dp-settings-users-detail">${day(token.created_at)}</span></td>
             <td class="dp-settings-users-detail">${issued(token.created_at)}</td>
             <td><span class="dp-settings-users-status" data-tone="success"${keyed(say('settings.tokens.active'))}>${html(t('settings.tokens.active'))}</span></td>
-            <td><div class="dp-settings-users-actions"><button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(account.id)}" data-token-id="${html(token.id)}"${keyed(null, {'data-tooltip': say('settings.tokens.revoke_named', {name: token.label})})} data-tooltip-label="[data-dp-icon-label]" data-tooltip-touch>${revoke}<span class="dp-settings-users-token-target"> ${html(token.label)}</span></button></div></td>
+            <td><div class="dp-settings-users-actions"><button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(ownerOf(token))}" data-token-id="${html(token.id)}"${keyed(null, {'data-tooltip': say('settings.tokens.revoke_named', {name: token.label})})} data-tooltip-label="[data-dp-icon-label]" data-tooltip-touch>${revoke}<span class="dp-settings-users-token-target"> ${html(token.label)}</span></button></div></td>
           </tr>`).join('')}
         </tbody>
       </table>`;
@@ -4726,6 +4732,25 @@
     }).join('');
   }
 
+  /* Every person's connected browsers (WS-S1), in the API tokens view: one
+   * group listing them all, each named with its person, revoked from that
+   * person's account like any token. Its heading is a group's, not an
+   * account's (no actions, no status: fitIntegrationAccounts fits account
+   * headers only); its table is the shared token table, fitted with the rest. A listing, not an Integration account:
+   * each browser stays its person's, and requests stay attributed to them. */
+  function browserBlock() {
+    const browsers = state.users.browsers;
+    const listed = Array.isArray(browsers)
+      ? browsers.map(browser => ({...browser, label: `${browser.label} \u2014 ${browser.account_name}`})) : browsers;
+    return `
+        <section class="dp-settings-users-integration dp-settings-users-browsers" data-browser-tokens>
+          <div class="dp-settings-users-browsers-head">
+            <span class="dp-settings-users-name"${keyed(say('settings.account.browsers'))}>${html(t('settings.account.browsers'))}</span>
+          </div>
+          ${tokenTable(listed, token => token.account_id, 'settings.account.browsers_unreadable', 'settings.account.browsers_none')}
+        </section>`;
+  }
+
   function usersBody() {
     const users = state.users;
     if (users.error) return `<div class="dp-settings-load-error"><b${keyed(say('settings.users.load_failed'))}>${html(t('settings.users.load_failed'))}</b><span>${html(users.error)}</span></div>`;
@@ -4750,7 +4775,7 @@
         + `<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local"${keyed(null, {'data-menu-label': say('settings.users.add_local')})} data-menu-closes>${
           fitLabel(say('settings.users.add_local'), say('settings.users.add_short'))}</button>`, '', {from: 3}),
     });
-    const automation = card(say('settings.integrations.title'), integrationBlocks(integrations), {
+    const automation = card(say('settings.integrations.title'), integrationBlocks(integrations) + browserBlock(), {
       className: 'dp-settings-users-card dp-settings-users-integrations-card',
       help: 'integration-accounts',
       titlePrefix: familyIcon('users', 'key-round'),
@@ -5533,9 +5558,16 @@
           tokens[account.id] = null;
         }
       }));
-      state.users = {accounts, tokens, error: ''};
+      let browsers = null;
+      try {
+        const listed = await request('GET', '/browser-tokens', undefined, 10000);
+        browsers = Array.isArray(listed?.browsers) ? listed.browsers : [];
+      } catch (_) {
+        browsers = null;
+      }
+      state.users = {accounts, tokens, browsers, error: ''};
     } catch (error) {
-      state.users = {accounts: null, tokens: {}, error: text(error.message)};
+      state.users = {accounts: null, tokens: {}, browsers: null, error: text(error.message)};
     }
     await loadProfiles();
     paintUsers();
@@ -6993,35 +7025,6 @@
     </dl>`;
   }
 
-  /* A person's connected browsers (WS-S1), in their Account Details: an
-   * Admin may disconnect any of them (never connect one -- only the person
-   * does, by approving a pairing). The server's token list, filtered to
-   * browser tokens, is the only truth shown; a Disconnect re-reads it. */
-  async function readBrowsers(account) {
-    try {
-      const listed = await request('GET', `/accounts/${encodeURIComponent(account.id)}/tokens`, undefined, 10000);
-      return (Array.isArray(listed?.tokens) ? listed.tokens : []).filter(token => token.kind === 'browser');
-    } catch (_) {
-      return null;
-    }
-  }
-
-  function browsersMarkup(listed) {
-    if (!Array.isArray(listed)) return `<div class="dp-settings-users-detail"${keyed(say('settings.account.browsers_unreadable'))}>${html(t('settings.account.browsers_unreadable'))}</div>`;
-    if (!listed.length) return `<div class="dp-settings-users-detail"${keyed(say('settings.account.browsers_none'))}>${html(t('settings.account.browsers_none'))}</div>`;
-    const date = value => window.downloadsDateMarkup ? window.downloadsDateMarkup(value) : html(value);
-    return `<ul class="dp-account-details-browsers">${listed.map(token => `
-      <li class="dp-account-details-browser">
-        <span class="dp-account-details-browser-text">
-          <span class="dp-settings-users-token-name">${html(token.label)}</span>
-          <span class="dp-settings-users-detail">${words(say('settings.account.browsers_connected'))} ${date(token.created_at)}</span>
-          <span class="dp-settings-users-detail">${words(say('settings.account.browsers_last_used'))} ${token.last_seen_at
-            ? date(token.last_seen_at) : words(say('settings.account.browsers_never_used'))}</span>
-        </span>
-        <button class="btn btn-danger btn-sm" type="button" data-disconnect-browser="${html(token.id)}"${keyed(say('settings.account.browsers_disconnect'))}>${html(t('settings.account.browsers_disconnect'))}</button>
-      </li>`).join('')}</ul>`;
-  }
-
   async function showAccountDetails(account) {
     let rows;
     try {
@@ -7039,31 +7042,6 @@
       }
       if (activity?.isConnected) activity.innerHTML = activityMarkup(rows);
     };
-    // A person's browsers; an Integration account holds none.
-    const person = !isIntegration(account);
-    let browsersSlot = null;
-    let browsers = person ? await readBrowsers(account) : [];
-    const repaintBrowsers = async () => {
-      browsers = await readBrowsers(account);
-      if (browsersSlot?.isConnected) browsersSlot.innerHTML = browsersMarkup(browsers);
-    };
-    const disconnectBrowser = async tokenId => {
-      const confirmed = await window.DPSettingsModal.confirm({
-        title: say('settings.account.browsers_disconnect_title'),
-        message: say('settings.account.browsers_disconnect_message'),
-        confirmLabel: say('settings.account.browsers_disconnect'),
-        tone: 'danger',
-      });
-      if (!confirmed) return;
-      try {
-        await request('DELETE', `/accounts/${encodeURIComponent(account.id)}/tokens/${encodeURIComponent(tokenId)}`,
-          undefined, 10000);
-        notify(t('settings.account.browsers_disconnected'), 'success');
-      } catch (error) {
-        notify(error.message, 'error');
-      }
-      await repaintBrowsers();
-    };
     const dialog = window.DPSettingsModal.open({
       title: say('settings.account.details_title', {name: accountName(account)}),
       dismiss: true,
@@ -7074,18 +7052,10 @@
           <section class="dp-account-details-activity"${keyed(null, {'aria-label': say('settings.account.activity')})}>
             <h3 class="dp-account-details-heading"${keyed(say('settings.account.activity'))}>${html(t('settings.account.activity'))}</h3>
             <div data-account-activity></div>
-          </section>${person ? `
-          <section class="dp-account-details-browsers-section"${keyed(null, {'aria-label': say('settings.account.browsers')})}>
-            <h3 class="dp-account-details-heading"${keyed(say('settings.account.browsers'))}>${html(t('settings.account.browsers'))}</h3>
-            <div data-account-browsers></div>
-          </section>` : ''}`;
+          </section>`;
         activity = body.querySelector('[data-account-activity]');
         activity.innerHTML = activityMarkup(rows);
-        browsersSlot = body.querySelector('[data-account-browsers]');
-        if (browsersSlot) browsersSlot.innerHTML = browsersMarkup(browsers);
         body.addEventListener('click', event => {
-          const disconnect = event.target.closest('button[data-disconnect-browser]');
-          if (disconnect) { void disconnectBrowser(disconnect.dataset.disconnectBrowser); return; }
           const button = event.target.closest('button[data-withdraw-demand]');
           if (!button) return;
           void withdrawAccountRequest(account, button.dataset.withdrawDemand, button).then(repaint);

@@ -334,6 +334,14 @@ async def test_people_manage_only_their_own_browsers_and_an_admin_may_disconnect
         assert (await owner.call("DELETE", f"/api/account/browsers/{integration['id']}"))[0] == 404
         assert (await extension(world, "GET", "/api/browser/v1/session", owner_token))[0] == 200
 
+        # An Admin sees every connected browser, with its person, in one list; a User does not.
+        status, overview = await owner.call("GET", "/api/browser-tokens", csrf=False)
+        assert status == 200
+        listed = {(item["label"], item["account_name"]) for item in overview["browsers"]}
+        assert {("Una's laptop", "Una"), ("Owner's desktop", "Administrator")} <= listed
+        assert all(set(item) == {"id", "label", "account_id", "account_name", "created_at", "last_seen_at"}
+                   for item in overview["browsers"])
+        assert (await una.call("GET", "/api/browser-tokens", csrf=False))[0] == 403
         # An Admin sees Una's browser among her tokens and disconnects it.
         _, accounts_list = await owner.call("GET", "/api/accounts", csrf=False)
         una_account = next(item for item in accounts_list["accounts"] if item.get("username") == "una")

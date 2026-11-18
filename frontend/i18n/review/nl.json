@@ -32970,59 +32970,9 @@
     "ai-review"
    ]
   },
-  "settings.account.browsers_connected": {
-   "source": "22965568d22a14ee",
-   "translation": "e9f3d961b3b354ab",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_last_used": {
-   "source": "830ec7f812f9d862",
-   "translation": "e41176e61418038b",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_never_used": {
-   "source": "3b82aae1ed24f607",
-   "translation": "2a8031e9b2c8e457",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect": {
-   "source": "acfc5be785a9bb3d",
-   "translation": "3b3c86bb0830d672",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect_title": {
-   "source": "d41303362ab7dd45",
-   "translation": "0276a8ecafc84dfb",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect_message": {
-   "source": "e7fe7f38ece4f003",
-   "translation": "fa2f830b38e03798",
-   "provenance": [
-    "ai-generated",
-    "ai-review",
-    "ai-back-translation"
-   ],
-   "backTranslation": "It stops working right away. The owner can connect it again from that browser."
-  },
-  "settings.account.browsers_disconnected": {
-   "source": "a2b0776a8f79bf02",
-   "translation": "b97befca2d3492d0",
+  "details.requested_by.browser": {
+   "source": "300c01978179dabe",
+   "translation": "2dccebe4568200e8",
    "provenance": [
     "ai-generated",
     "ai-review"

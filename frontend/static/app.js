@@ -3486,6 +3486,8 @@ function dpRequestedByMarkup(requested) {
   const entry = item => {
     const facts = [];
     if (item.kind === 'integration') facts.push(item.token_label ? T('details.requested_by.integration_token', {token: item.token_label}) : T('details.requested_by.integration'));
+    // A person's request carried by one of their connected browsers names that browser.
+    else if (item.token_label) facts.push(T('details.requested_by.browser', {token: item.token_label}));
     if (standing.has(item.standing)) facts.push(T(`details.requested_by.account_${item.standing}`));
     if (item.via_transfer_id != null) facts.push(T('details.requested_by.via', {id: item.via_transfer_id}));
     facts.push(dated('details.requested_by.requested', item.requested_at));

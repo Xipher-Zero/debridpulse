@@ -32821,59 +32821,9 @@
     "ai-review"
    ]
   },
-  "settings.account.browsers_connected": {
-   "source": "22965568d22a14ee",
-   "translation": "89f0983e21b3a374",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_last_used": {
-   "source": "830ec7f812f9d862",
-   "translation": "27cbd8f45bd18fa0",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_never_used": {
-   "source": "3b82aae1ed24f607",
-   "translation": "eb9f27089764c125",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect": {
-   "source": "acfc5be785a9bb3d",
-   "translation": "696482f031381581",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect_title": {
-   "source": "d41303362ab7dd45",
-   "translation": "420eda17e61cda87",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect_message": {
-   "source": "e7fe7f38ece4f003",
-   "translation": "5e98223a6b7de75c",
-   "provenance": [
-    "ai-generated",
-    "ai-review",
-    "ai-back-translation"
-   ],
-   "backTranslation": "It becomes unusable right away. The owner can connect once more from that browser."
-  },
-  "settings.account.browsers_disconnected": {
-   "source": "a2b0776a8f79bf02",
-   "translation": "6a6bec52f6a482b7",
+  "details.requested_by.browser": {
+   "source": "300c01978179dabe",
+   "translation": "b11de5025d485d26",
    "provenance": [
     "ai-generated",
     "ai-review"

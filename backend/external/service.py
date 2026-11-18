@@ -1361,6 +1361,12 @@ class ExternalClients:
         plan = _Plan({"phase": "processing", "reason": status, "actionability": "wait", "progress": None},
                      transfer_id=transfer_id)
         projection = plan.projection
+        if _kind(job) == BROWSER and transfer is not None:
+            # The transfer's title as DownloadPulse shows it (the Downloads
+            # list's derived display name: a media download's resolved title
+            # replaces its link's placeholder). In the projection, so a change
+            # of title is a change the browser's cursor sees.
+            projection["name"] = (await self.repository.display_names((transfer_id,))).get(transfer_id)
         if demand["withdrawn_at"] is not None:
             by = str(demand["withdrawn_by"] or "")
             projection.update(phase="withdrawn", actionability="none", reason=(
@@ -1786,7 +1792,7 @@ class ExternalClients:
                 "submitted_at": _iso(job["created_at"]), "accepted_at": _iso(job["accepted_at"]),
                 "updated_at": _iso(job["updated_at"]),
                 "display_name": job["display_name"], "client_reference": job["client_reference"],
-                "source": json.loads(job["source_summary"]),
+                "name": projection.get("name"), "source": json.loads(job["source_summary"]),
                 "phase": projection.get("phase", "accepted"), "reason": projection.get("reason"),
                 "actionability": projection.get("actionability", "wait"),
                 "paused_by": projection.get("paused_by"), "error": projection.get("error"),

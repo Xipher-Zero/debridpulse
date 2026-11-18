@@ -1466,6 +1466,13 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 #view-settings .dp-settings-users-integration-head > .dp-settings-users-actions {
   margin-left: auto;
 }
+/* The Connected browsers group (every person's browsers): a heading as an
+   account's name reads, without an account's actions or status. */
+#view-settings .dp-settings-users-browsers-head {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+}
 
 /* Drawn only by the handheld Integration Accounts stages (below): a token's
    issue day beneath its name, its Revoke glyph and the token it names. */
@@ -2406,18 +2413,17 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   font-weight: 700;
 }
 
-/* Connected browsers (WS-S1): the person's own list in My Account, an Admin's
-   in Account Details, and the "Connect a browser" approval dialog. */
-.dp-account-browsers,
-.dp-account-details-browsers {
+/* Connected browsers (WS-S1): the person's own list in My Account and the
+   "Connect a browser" approval dialog. (An Admin's view is the Integration
+   Accounts token table.) */
+.dp-account-browsers {
   display: grid;
   gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.dp-account-browser,
-.dp-account-details-browser {
+.dp-account-browser {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2425,8 +2431,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   padding: 8px 0;
   border-bottom: 1px solid var(--dp-border-subtle, rgba(127, 127, 127, .2));
 }
-.dp-account-browser-text,
-.dp-account-details-browser-text {
+.dp-account-browser-text {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -2444,9 +2449,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 .dp-modal-dialog.dp-account-dialog .dp-account-browsers-entry {
   display: flex;
   margin-top: 4px;
-}
-.dp-account-details-browsers-section {
-  margin-top: 12px;
 }
 .dp-browser-pairing-facts {
   display: grid;

@@ -3670,13 +3670,7 @@
   "settings.account.browsers": "Подключённые браузеры",
   "settings.account.browsers_none": "Подключённых браузеров нет.",
   "settings.account.browsers_unreadable": "Не удалось прочитать подключённые браузеры.",
-  "settings.account.browsers_connected": "Подключён",
-  "settings.account.browsers_last_used": "Последнее использование",
-  "settings.account.browsers_never_used": "ещё не было",
-  "settings.account.browsers_disconnect": "Отключить",
-  "settings.account.browsers_disconnect_title": "Отключить этот браузер?",
-  "settings.account.browsers_disconnect_message": "Он сразу перестанет работать. Его владелец может подключить его заново из этого браузера.",
-  "settings.account.browsers_disconnected": "Браузер отключён."
+  "details.requested_by.browser": "браузер «{token}»"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7347,12 +7341,6 @@
   "settings.account.browsers": "b446b885a79eb15d",
   "settings.account.browsers_none": "811d17c2926baee3",
   "settings.account.browsers_unreadable": "fa61dc6313c3749f",
-  "settings.account.browsers_connected": "22965568d22a14ee",
-  "settings.account.browsers_last_used": "830ec7f812f9d862",
-  "settings.account.browsers_never_used": "3b82aae1ed24f607",
-  "settings.account.browsers_disconnect": "acfc5be785a9bb3d",
-  "settings.account.browsers_disconnect_title": "d41303362ab7dd45",
-  "settings.account.browsers_disconnect_message": "e7fe7f38ece4f003",
-  "settings.account.browsers_disconnected": "a2b0776a8f79bf02"
+  "details.requested_by.browser": "300c01978179dabe"
  }
 }

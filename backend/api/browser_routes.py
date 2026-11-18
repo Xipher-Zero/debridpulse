@@ -141,6 +141,16 @@ async def disconnect_own_browser(request: Request, token_id: str):
     return {"ok": True}
 
 
+@router.get("/browser-tokens")
+async def list_all_browser_tokens():
+    """An Admin's view of every connected browser (Users & Access ›
+    Integration Accounts): revoked through the account token route like any
+    token. A listing, not an account: each browser stays its person's."""
+    return {"browsers": [{"id": str(row["id"]), "label": str(row["label"]), "account_id": str(row["account_id"]),
+                          "account_name": str(row["account_name"]), "created_at": row["created_at"],
+                          "last_seen_at": row.get("last_seen_at")} for row in await accounts.list_browser_tokens()]}
+
+
 @router.get("/browser/v1/session")
 async def browser_session(request: Request):
     """Which connection this browser token is, and the protocol this server

@@ -3670,13 +3670,7 @@
   "settings.account.browsers": "المتصفحات المرتبطة",
   "settings.account.browsers_none": "لا توجد متصفحات مرتبطة.",
   "settings.account.browsers_unreadable": "تعذرت قراءة المتصفحات المرتبطة.",
-  "settings.account.browsers_connected": "تاريخ الربط",
-  "settings.account.browsers_last_used": "آخر استخدام",
-  "settings.account.browsers_never_used": "لم يُستخدم بعد",
-  "settings.account.browsers_disconnect": "إلغاء الربط",
-  "settings.account.browsers_disconnect_title": "إلغاء ربط هذا المتصفح؟",
-  "settings.account.browsers_disconnect_message": "يتوقف عن العمل فورًا. يمكن لمالكه ربطه مرة أخرى من ذلك المتصفح.",
-  "settings.account.browsers_disconnected": "تم إلغاء ربط المتصفح."
+  "details.requested_by.browser": "المتصفح «{token}»"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7347,12 +7341,6 @@
   "settings.account.browsers": "b446b885a79eb15d",
   "settings.account.browsers_none": "811d17c2926baee3",
   "settings.account.browsers_unreadable": "fa61dc6313c3749f",
-  "settings.account.browsers_connected": "22965568d22a14ee",
-  "settings.account.browsers_last_used": "830ec7f812f9d862",
-  "settings.account.browsers_never_used": "3b82aae1ed24f607",
-  "settings.account.browsers_disconnect": "acfc5be785a9bb3d",
-  "settings.account.browsers_disconnect_title": "d41303362ab7dd45",
-  "settings.account.browsers_disconnect_message": "e7fe7f38ece4f003",
-  "settings.account.browsers_disconnected": "a2b0776a8f79bf02"
+  "details.requested_by.browser": "300c01978179dabe"
  }
 }

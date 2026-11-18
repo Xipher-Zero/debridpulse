@@ -199,6 +199,7 @@ ACTIONS: dict[str, Capability] = {
     "api.browser_routes.deny_browser_pairing": _BOWN,
     "api.browser_routes.list_own_browsers": _BOWN,
     "api.browser_routes.disconnect_own_browser": _BOWN,
+    "api.browser_routes.list_all_browser_tokens": _A,
     "api.browser_routes.browser_session": _BCL,
     "api.browser_routes.disconnect_this_browser": _BCL,
     "api.browser_routes.submit_browser_job": _BCL,

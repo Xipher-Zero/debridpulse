@@ -33449,59 +33449,9 @@
     "ai-review"
    ]
   },
-  "settings.account.browsers_connected": {
-   "source": "22965568d22a14ee",
-   "translation": "e92b0f99086360d0",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_last_used": {
-   "source": "830ec7f812f9d862",
-   "translation": "ee40152118c16b6b",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_never_used": {
-   "source": "3b82aae1ed24f607",
-   "translation": "4015b59ee0fe70b8",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect": {
-   "source": "acfc5be785a9bb3d",
-   "translation": "d6e3ceee3b83e801",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect_title": {
-   "source": "d41303362ab7dd45",
-   "translation": "be0f8d42deb64b0a",
-   "provenance": [
-    "ai-generated",
-    "ai-review"
-   ]
-  },
-  "settings.account.browsers_disconnect_message": {
-   "source": "e7fe7f38ece4f003",
-   "translation": "2820ecdd33585e6f",
-   "provenance": [
-    "ai-generated",
-    "ai-review",
-    "ai-back-translation"
-   ],
-   "backTranslation": "It stops working immediately. Its owner can reconnect it from that browser."
-  },
-  "settings.account.browsers_disconnected": {
-   "source": "a2b0776a8f79bf02",
-   "translation": "2e8dfdabac5ce29c",
+  "details.requested_by.browser": {
+   "source": "300c01978179dabe",
+   "translation": "7bf71a915ed855a0",
    "provenance": [
     "ai-generated",
     "ai-review"

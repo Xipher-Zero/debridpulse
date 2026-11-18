@@ -3670,13 +3670,7 @@
   "settings.account.browsers": "연결된 브라우저",
   "settings.account.browsers_none": "연결된 브라우저가 없습니다.",
   "settings.account.browsers_unreadable": "연결된 브라우저를 읽을 수 없습니다.",
-  "settings.account.browsers_connected": "연결 시각",
-  "settings.account.browsers_last_used": "마지막 사용",
-  "settings.account.browsers_never_used": "아직 없음",
-  "settings.account.browsers_disconnect": "연결 해제",
-  "settings.account.browsers_disconnect_title": "이 브라우저의 연결을 해제하시겠습니까?",
-  "settings.account.browsers_disconnect_message": "즉시 작동이 중지됩니다. 소유자는 해당 브라우저에서 다시 연결할 수 있습니다.",
-  "settings.account.browsers_disconnected": "브라우저 연결이 해제되었습니다."
+  "details.requested_by.browser": "브라우저 “{token}”"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7347,12 +7341,6 @@
   "settings.account.browsers": "b446b885a79eb15d",
   "settings.account.browsers_none": "811d17c2926baee3",
   "settings.account.browsers_unreadable": "fa61dc6313c3749f",
-  "settings.account.browsers_connected": "22965568d22a14ee",
-  "settings.account.browsers_last_used": "830ec7f812f9d862",
-  "settings.account.browsers_never_used": "3b82aae1ed24f607",
-  "settings.account.browsers_disconnect": "acfc5be785a9bb3d",
-  "settings.account.browsers_disconnect_title": "d41303362ab7dd45",
-  "settings.account.browsers_disconnect_message": "e7fe7f38ece4f003",
-  "settings.account.browsers_disconnected": "a2b0776a8f79bf02"
+  "details.requested_by.browser": "300c01978179dabe"
  }
 }

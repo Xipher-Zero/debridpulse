@@ -23885,63 +23885,30 @@
   },
   "settings.account.browsers": {
    "category": "card-title",
-   "context": "Users & Access › Account Details: the section listing this person's connected browsers.",
+   "context": "Users & Access › Integration Accounts › Connected browsers (every person's connected browsers, for an Admin): the group's heading.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.account.browsers_none": {
    "category": "hint",
-   "context": "Users & Access › Account Details › Connected browsers: the list is empty.",
+   "context": "Users & Access › Integration Accounts › Connected browsers (every person's connected browsers, for an Admin): no browser is connected.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
   "settings.account.browsers_unreadable": {
    "category": "error",
-   "context": "Users & Access › Account Details › Connected browsers: the list could not be loaded.",
+   "context": "Users & Access › Integration Accounts › Connected browsers (every person's connected browsers, for an Admin): the list could not be loaded.",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal"
   },
-  "settings.account.browsers_connected": {
+  "details.requested_by.browser": {
    "category": "label",
-   "context": "Users & Access › Account Details › Connected browsers: precedes the date the browser was connected.",
-   "owner": "frontend/static/ui-settings-page.js",
-   "criticality": "normal"
-  },
-  "settings.account.browsers_last_used": {
-   "category": "label",
-   "context": "Users & Access › Account Details › Connected browsers: precedes the date the browser last reached the server.",
-   "owner": "frontend/static/ui-settings-page.js",
-   "criticality": "normal"
-  },
-  "settings.account.browsers_never_used": {
-   "category": "label",
-   "context": "Users & Access › Account Details › Connected browsers: after 'Last used' when the browser has not reached the server yet.",
-   "owner": "frontend/static/ui-settings-page.js",
-   "criticality": "normal"
-  },
-  "settings.account.browsers_disconnect": {
-   "category": "action",
-   "context": "Users & Access › Account Details › Connected browsers: an Admin revokes this person's browser.",
-   "owner": "frontend/static/ui-settings-page.js",
-   "criticality": "normal"
-  },
-  "settings.account.browsers_disconnect_title": {
-   "category": "modal-title",
-   "context": "Confirmation before an Admin disconnects a person's browser.",
-   "owner": "frontend/static/ui-settings-page.js",
-   "criticality": "normal"
-  },
-  "settings.account.browsers_disconnect_message": {
-   "category": "critical-warning",
-   "context": "Confirmation before an Admin disconnects a person's browser: the consequence.",
-   "owner": "frontend/static/ui-settings-page.js",
-   "criticality": "critical-warning"
-  },
-  "settings.account.browsers_disconnected": {
-   "category": "toast",
-   "context": "After an Admin disconnected a person's browser.",
-   "owner": "frontend/static/ui-settings-page.js",
-   "criticality": "normal"
+   "context": "Transfer Details › Requested By: after a person's name, the connected browser (browser extension) that carried the request, by the name it was given (for example Brave on Linux). Compare details.requested_by.integration_token.",
+   "owner": "frontend/static/app.js",
+   "criticality": "normal",
+   "args": {
+    "token": "string: the connected browser's name"
+   }
   }
  }
 }

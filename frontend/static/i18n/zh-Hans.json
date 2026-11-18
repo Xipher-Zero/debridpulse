@@ -3670,13 +3670,7 @@
   "settings.account.browsers": "已连接的浏览器",
   "settings.account.browsers_none": "没有已连接的浏览器。",
   "settings.account.browsers_unreadable": "无法读取已连接的浏览器。",
-  "settings.account.browsers_connected": "连接时间",
-  "settings.account.browsers_last_used": "上次使用",
-  "settings.account.browsers_never_used": "尚未使用",
-  "settings.account.browsers_disconnect": "断开连接",
-  "settings.account.browsers_disconnect_title": "断开此浏览器？",
-  "settings.account.browsers_disconnect_message": "它会立即停止工作。其所有者可以从该浏览器重新连接。",
-  "settings.account.browsers_disconnected": "浏览器已断开连接。"
+  "details.requested_by.browser": "浏览器“{token}”"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7347,12 +7341,6 @@
   "settings.account.browsers": "b446b885a79eb15d",
   "settings.account.browsers_none": "811d17c2926baee3",
   "settings.account.browsers_unreadable": "fa61dc6313c3749f",
-  "settings.account.browsers_connected": "22965568d22a14ee",
-  "settings.account.browsers_last_used": "830ec7f812f9d862",
-  "settings.account.browsers_never_used": "3b82aae1ed24f607",
-  "settings.account.browsers_disconnect": "acfc5be785a9bb3d",
-  "settings.account.browsers_disconnect_title": "d41303362ab7dd45",
-  "settings.account.browsers_disconnect_message": "e7fe7f38ece4f003",
-  "settings.account.browsers_disconnected": "a2b0776a8f79bf02"
+  "details.requested_by.browser": "300c01978179dabe"
  }
 }

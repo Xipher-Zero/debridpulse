@@ -3670,12 +3670,6 @@
   "settings.account.browsers": "Connected browsers",
   "settings.account.browsers_none": "No browsers are connected.",
   "settings.account.browsers_unreadable": "Connected browsers couldn't be read.",
-  "settings.account.browsers_connected": "Connected",
-  "settings.account.browsers_last_used": "Last used",
-  "settings.account.browsers_never_used": "not yet",
-  "settings.account.browsers_disconnect": "Disconnect",
-  "settings.account.browsers_disconnect_title": "Disconnect this browser?",
-  "settings.account.browsers_disconnect_message": "It stops working at once. Its owner can connect it again from that browser.",
-  "settings.account.browsers_disconnected": "The browser was disconnected."
+  "details.requested_by.browser": "browser “{token}”"
  }
 }

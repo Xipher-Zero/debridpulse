@@ -64,6 +64,8 @@ async function open(browser, data = BASIC, viewport = {width: 1280, height: 900}
     const tokens = path.match(/^\/api\/accounts\/([^/]+)\/tokens$/);
     if (request.method() === 'GET' && tokens) return route.fulfill({json: {tokens: data.tokens[tokens[1]] || []}});
     if (request.method() === 'GET' && path === '/api/external/profiles') return route.fulfill({json: {revision: 1, profiles: []}});
+    // Every person's connected browsers (the card's Connected browsers group): the synthetic data's own.
+    if (request.method() === 'GET' && path === '/api/browser-tokens') return route.fulfill({json: {browsers: data.browsers || []}});
     // A test that changes the directory accepts a token's revocation (synthetic data only).
     const revoked = path.match(/^\/api\/accounts\/([^/]+)\/tokens\/([^/]+)$/);
     if (options.acceptRevoke && request.method() === 'DELETE' && revoked) {

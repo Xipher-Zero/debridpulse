@@ -63,6 +63,14 @@ async def test_a_browser_submits_its_own_download_once_and_sees_only_its_own(wor
     # The person's own download: no category, profile or delivery; an estimate field.
     assert not {"category", "profile_id", "delivery"} & set(job)
     assert "estimate" in job and job["display_name"] == "ISO"
+    # ``name``: the transfer's title as DownloadPulse shows it, the Downloads list's own.
+    una_session = await Person.sign_in(world, "una")
+    try:
+        _, listed = await una_session.call("GET", "/api/torrents", csrf=False)
+        shown = {str(item.get("display_name") or item.get("name")) for item in listed.get("items", listed.get("torrents", []))}
+    finally:
+        await una_session.close()
+    assert job["name"] and job["name"] in shown, (job["name"], shown)
     assert job["source"] == {"kind": "links", "count": 1, "hosts": ["203.0.113.10"]}
     # A retry is the same job, never a second download; the same key for something else is refused.
     status, again = await submit(world, una, {"kind": "links", "links": [PUBLIC_LINK]}, key, display_name="ISO")

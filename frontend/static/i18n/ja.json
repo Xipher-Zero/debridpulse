@@ -3670,13 +3670,7 @@
   "settings.account.browsers": "接続済みブラウザー",
   "settings.account.browsers_none": "接続されているブラウザーはありません。",
   "settings.account.browsers_unreadable": "接続済みブラウザーを読み込めませんでした。",
-  "settings.account.browsers_connected": "接続日時",
-  "settings.account.browsers_last_used": "最終使用",
-  "settings.account.browsers_never_used": "まだありません",
-  "settings.account.browsers_disconnect": "接続解除",
-  "settings.account.browsers_disconnect_title": "このブラウザーの接続を解除しますか？",
-  "settings.account.browsers_disconnect_message": "すぐに使えなくなります。所有者はそのブラウザーからもう一度接続できます。",
-  "settings.account.browsers_disconnected": "ブラウザーの接続を解除しました。"
+  "details.requested_by.browser": "ブラウザー「{token}」"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7347,12 +7341,6 @@
   "settings.account.browsers": "b446b885a79eb15d",
   "settings.account.browsers_none": "811d17c2926baee3",
   "settings.account.browsers_unreadable": "fa61dc6313c3749f",
-  "settings.account.browsers_connected": "22965568d22a14ee",
-  "settings.account.browsers_last_used": "830ec7f812f9d862",
-  "settings.account.browsers_never_used": "3b82aae1ed24f607",
-  "settings.account.browsers_disconnect": "acfc5be785a9bb3d",
-  "settings.account.browsers_disconnect_title": "d41303362ab7dd45",
-  "settings.account.browsers_disconnect_message": "e7fe7f38ece4f003",
-  "settings.account.browsers_disconnected": "a2b0776a8f79bf02"
+  "details.requested_by.browser": "300c01978179dabe"
  }
 }

@@ -3670,13 +3670,7 @@
   "settings.account.browsers": "Bağlı tarayıcılar",
   "settings.account.browsers_none": "Bağlı tarayıcı yok.",
   "settings.account.browsers_unreadable": "Bağlı tarayıcılar okunamadı.",
-  "settings.account.browsers_connected": "Bağlanma tarihi",
-  "settings.account.browsers_last_used": "Son kullanım",
-  "settings.account.browsers_never_used": "henüz yok",
-  "settings.account.browsers_disconnect": "Bağlantıyı kes",
-  "settings.account.browsers_disconnect_title": "Bu tarayıcının bağlantısı kesilsin mi?",
-  "settings.account.browsers_disconnect_message": "Hemen çalışmayı durdurur. Sahibi onu o tarayıcıdan yeniden bağlayabilir.",
-  "settings.account.browsers_disconnected": "Tarayıcının bağlantısı kesildi."
+  "details.requested_by.browser": "“{token}” tarayıcısı"
  },
  "sources": {
   "shell.nav.group.queue": "3b2fe03e36893916",
@@ -7347,12 +7341,6 @@
   "settings.account.browsers": "b446b885a79eb15d",
   "settings.account.browsers_none": "811d17c2926baee3",
   "settings.account.browsers_unreadable": "fa61dc6313c3749f",
-  "settings.account.browsers_connected": "22965568d22a14ee",
-  "settings.account.browsers_last_used": "830ec7f812f9d862",
-  "settings.account.browsers_never_used": "3b82aae1ed24f607",
-  "settings.account.browsers_disconnect": "acfc5be785a9bb3d",
-  "settings.account.browsers_disconnect_title": "d41303362ab7dd45",
-  "settings.account.browsers_disconnect_message": "e7fe7f38ece4f003",
-  "settings.account.browsers_disconnected": "a2b0776a8f79bf02"
+  "details.requested_by.browser": "300c01978179dabe"
  }
 }
