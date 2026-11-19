@@ -536,23 +536,25 @@ async def test_a_connected_browsers_open_brings_the_window_forward_as_the_trays_
         shell = _RecordingShell()
         loop_task = asyncio.ensure_future(supervisor._serve(
             shell, backend.channel, supervisor.Words(tmp_path / "config" / "config.json"), backend.owned, _QuietTray()))
+        # The window's own calls (macOS also sets its application menu first, once: not the window's state).
+        window = lambda: [call for call in shell.calls if call != "window.setMainMenu"]  # noqa: E731
         await shell.events.put(("windowClose", None))              # closed to the tray
         deadline = time.monotonic() + 10
-        while "window.hide" not in shell.calls and time.monotonic() < deadline:
+        while "window.hide" not in window() and time.monotonic() < deadline:
             await asyncio.sleep(0.05)
-        assert shell.calls == ["window.hide"]
+        assert window() == ["window.hide"]
         # Without a browser token the window is not anyone's to call forward.
         assert (await extension(backend, "POST", "/api/browser/v1/application/show", origin=CHROMIUM))[0] == 401
         status, body = await extension(backend, "POST", "/api/browser/v1/application/show", token, origin=CHROMIUM)
         assert status == 200 and body == {"desktop": True}, body
         asked = time.monotonic()
-        while shell.calls[-1:] != ["window.focus"] and time.monotonic() - asked < 5:
+        while window()[-1:] != ["window.focus"] and time.monotonic() - asked < 5:
             await asyncio.sleep(0.05)
         # Shown again and raised -- the tray's Open for a hidden window -- within the supervisor's next look.
-        assert shell.calls == ["window.hide", "window.show", "window.focus"]
+        assert window() == ["window.hide", "window.show", "window.focus"]
         assert time.monotonic() - asked < 2
         await asyncio.sleep(supervisor.SHOW_POLL_SECONDS * 3)
-        assert shell.calls == ["window.hide", "window.show", "window.focus"]   # asked once, done once
+        assert window() == ["window.hide", "window.show", "window.focus"]   # asked once, done once
     finally:
         if loop_task is not None:
             loop_task.cancel()
