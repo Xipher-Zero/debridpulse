@@ -19,6 +19,7 @@ from transfers.registry import IntegrationRegistry
 from transfers.recovery_repository import TransferRepository
 from transfers.staged_input import StagedInputStore
 from transfers.storage import DiskCapacity, register_storage_health
+from external.browser_cookies import browser_cookies
 
 
 def integration_surfaces(registry) -> tuple[tuple, dict, dict]:
@@ -54,6 +55,7 @@ def configure(application):
     register(registry, settings, IntegrationEnvironment(application.repository, settings.download_folder,
                                                         commands=application,
                                                         staged_input=application.staged_input,
+                                                        session_cookies=browser_cookies,
                                                         preferred_subtitle_language=(
                                                             settings.preferred_subtitle_language)))
     application.engine.registry = registry

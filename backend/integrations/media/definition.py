@@ -172,7 +172,8 @@ def build(options: MediaOptions, environment):
     # One sandbox runs both the provider's extraction and the executor's, so
     # both ask yt-dlp for the same clients.
     sandbox = MediaSandbox(runtime_dir(), budget=EXECUTOR_ID,
-                           youtube_player_clients=options.effective_player_clients())
+                           youtube_player_clients=options.effective_player_clients(),
+                           cookies=getattr(environment, "session_cookies", None))
     provider = MediaProvider(sandbox.extract, target_resolution=options.target_resolution,
                              video_quality=options.video_quality, video_codec=options.video_codec,
                              subtitle_language=environment.preferred_subtitle_language)

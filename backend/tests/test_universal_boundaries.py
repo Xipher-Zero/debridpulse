@@ -120,9 +120,13 @@ def test_one_input_lifecycle_one_secret_owner_and_neutral_evidence_owners():
             if isinstance(node, ast.ClassDef):
                 classes.setdefault(node.name, []).append(path.relative_to(backend).as_posix())
     stores = {name: paths for name, paths in classes.items()
-              if any(token in name for token in ("ChallengeStore", "Broker", "CredentialStore", "SecretStore"))}
+              if any(token in name for token in ("ChallengeStore", "Broker", "CredentialStore", "SecretStore",
+                                                 "Cookies"))}
+    # 1.0.14 (operator, 2026-11-19): exactly one more in-memory secret holder, outside the
+    # transfer core -- a connected browser's per-job video sign-in, read by Media Downloads.
     assert stores == {"InputChallengeStore": ["transfers/input_required.py"],
-                      "EphemeralInputBroker": ["transfers/input_required.py"]}
+                      "EphemeralInputBroker": ["transfers/input_required.py"],
+                      "BrowserCookies": ["external/browser_cookies.py"]}
     schema = (backend / "db" / "database.py").read_text()
     assert schema.count("CREATE TABLE IF NOT EXISTS transfer_input_challenges") == 1
     assert [line for line in schema.splitlines()

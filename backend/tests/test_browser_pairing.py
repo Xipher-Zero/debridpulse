@@ -219,7 +219,8 @@ async def test_a_browser_pairs_on_approval_and_collects_its_token_exactly_once(w
                 "protocol": "debridpulse.browser/1", "token": {"id": collected["token_id"], "label": "Laptop-Firefox"},
                 "account": {"display_name": "Administrator"},
                 "capabilities": {"sources": ["links", "magnet", "metalink", "nzb", "nzb_link", "torrent"],
-                                 "controls": ["pause", "resume"], "withdraw": True, "estimate": True},
+                                 "controls": ["pause", "resume"], "withdraw": True, "estimate": True,
+                                 "cookies": {"max_count": 300, "max_bytes": 32768, "sources": ["links"]}},
                 "appearance": {"mode": "dark", "dark_palette": "debridpulse-dark", "light_palette": "debridpulse-light"}}
         # The person's appearance is its owner's answer: a change there is the extension's next read.
         status, changed = await owner.call("PATCH", "/api/account/appearance",

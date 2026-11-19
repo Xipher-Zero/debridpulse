@@ -30,8 +30,13 @@ facts for the provider's plan) and the native download of the components the
 plan names (``mode: acquire``). Its postprocessors are never run: the lossless
 finalization (one ``-c copy`` remux, into Matroska when the plan chose MKV)
 is this worker's own, into the container the plan fixed before materialization.
-Plugins, configuration files, caches, cookies, netrc and remote components are
-never loaded.
+Plugins, configuration files, caches, netrc and remote components are never
+loaded, and cookies are never read from a file, a browser profile or the
+environment. The one exception is a connected browser's per-job video sign-in
+(``external.browser_cookies``): the instruction's own ``cookies`` list, placed
+in yt-dlp's in-memory jar (``_install_cookies``) and gone with this process --
+``cookiefile`` stays None, so yt-dlp never saves it, and every failure detail
+has those values redacted (``_detail``).
 """
 from __future__ import annotations
 
@@ -83,9 +88,40 @@ _FORMAT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}")
 _MEDIA_FETCH_PHASES = frozenset({"component", "subtitle"})
 
 
+# This worker's job's cookie values (``_install_cookies``): never in a detail.
+_SECRETS: list[str] = []
+
+
 def _detail(value) -> str:
     text = _URL.sub("<url>", " ".join(str(value or "").split()))
+    for secret in _SECRETS:
+        text = text.replace(secret, "<redacted>")
     return text[:MAX_DETAIL_CHARS]
+
+
+def _install_cookies(ydl, spec: dict) -> None:
+    """The instruction's ``cookies`` (a connected browser's video sign-in), into
+    yt-dlp's in-memory jar: each sent only where the browser itself would send
+    it (its own domain, path and secure flag). Nothing is read or written on disk."""
+    import http.cookiejar
+    if not spec.get("cookies"):
+        return
+    # A host-only cookie (no Domain attribute) goes to its own host alone, never
+    # to that host's subdomains, as in the browser (RFC 6265 5.3 step 6): the
+    # standard library's default policy is lenient there.
+    ydl.cookiejar.set_policy(http.cookiejar.DefaultCookiePolicy(
+        strict_ns_domain=http.cookiejar.DefaultCookiePolicy.DomainStrictNonDomain))
+    for item in spec["cookies"]:
+        name, value = str(item["name"]), str(item["value"])
+        domain, host_only = str(item["domain"]), bool(item.get("host_only"))
+        if len(value) >= 6:
+            _SECRETS.append(value)
+        expires = item.get("expires")
+        ydl.cookiejar.set_cookie(http.cookiejar.Cookie(
+            0, name, value, None, False, domain, not host_only, domain.startswith("."),
+            str(item.get("path") or "/"), True, bool(item.get("secure")),
+            int(expires) if expires is not None else None, expires is None, None, None,
+            {"HttpOnly": None} if item.get("http_only") else {}))
 
 
 class Failure(Exception):
@@ -303,7 +339,7 @@ def _params(spec: dict, log: _Log, **extra) -> dict:
         "compat_opts": ["prefer-legacy-http-handler"],
         # Explicit extractors only: GenericIE is never a fallback.
         "allowed_extractors": ["default", "-generic"],
-        "cachedir": False, "enable_file_urls": False, "usenetrc": False, "cookiefile": None,
+        "cachedir": False, "enable_file_urls": False, "usenetrc": False, "cookiefile": None, "cookiesfrombrowser": None,
         "remote_components": [],
         "js_runtimes": {"deno": {"path": tools["deno"]}} if tools.get("deno") else {},
         "ffmpeg_location": tools.get("ffmpeg") or None,
@@ -512,6 +548,7 @@ def extract(spec: dict) -> dict:
     params = _params(spec, log, format=selection.get("format"), format_sort=list(selection.get("format_sort") or []),
                      extract_flat="in_playlist", playlistend=bound + 1, lazy_playlist=False, noplaylist=single)
     with YoutubeDL(params) as ydl:
+        _install_cookies(ydl, spec)
         try:
             info = ydl.extract_info(spec["url"], download=False)
         except Exception as exc:  # noqa: BLE001 -- classified, never swallowed
@@ -749,6 +786,7 @@ def acquire(spec: dict, phase: _Phase) -> int:
     params = _params(spec, log, format="+".join(plan["formats"]), progress_hooks=[progress])
     os.makedirs(workspace, mode=0o700, exist_ok=True)
     with YoutubeDL(params) as ydl:
+        _install_cookies(ydl, spec)
         phase.enter("extract")
         try:
             info = ydl.extract_info(spec["url"], download=False)

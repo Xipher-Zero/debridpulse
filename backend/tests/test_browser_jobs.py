@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
 import uuid
 
 import pytest
@@ -193,6 +194,63 @@ def test_private_lan_links_follow_the_installations_local_network_settings(tmp_p
 async def test_the_session_route_names_what_this_server_offers_a_browser(world):
     _, session = await extension(world, "GET", "/api/browser/v1/session", world.tokens["una"])
     assert session["capabilities"] == {"sources": ["links", "magnet", "metalink", "nzb", "nzb_link", "torrent"],
-                                       "controls": ["pause", "resume"], "withdraw": True, "estimate": True}
+                                       "controls": ["pause", "resume"], "withdraw": True, "estimate": True,
+                                       "cookies": {"max_count": 300, "max_bytes": 32768, "sources": ["links"]}}
     status, _ = await anonymous(world, "GET", "/api/browser/v1/jobs")
     assert status == 401
+
+
+# -- a video's sign-in (external.browser_cookies, operator 2026-11-19) -------------------
+
+VIDEO_LINK = "https://www.example-video.test/watch?v=abc"
+SECRET = "s3cr3t-cookie-value-9f1c"
+
+
+def _cookie(**overrides):
+    return {"name": "SID", "value": SECRET, "domain": ".example-video.test", "path": "/", "secure": True,
+            "http_only": True, "host_only": False, "expires": None, **overrides}
+
+
+@pytest.mark.asyncio
+async def test_a_video_sign_in_goes_only_with_its_own_links_and_is_never_part_of_the_job(world):
+    una = world.tokens["una"]
+    key = _key()
+    status, job = await submit(world, una, {"kind": "links", "links": [VIDEO_LINK]}, key, cookies=[_cookie()])
+    assert status == 201, job
+    assert SECRET not in json.dumps(job)
+    # Not part of the request's identity: the same key without them is the same job, never a conflict.
+    status, again = await submit(world, una, {"kind": "links", "links": [VIDEO_LINK]}, key)
+    assert status == 200 and again["id"] == job["id"]
+    _, listed = await extension(world, "GET", "/api/browser/v1/jobs", una)
+    assert SECRET not in json.dumps(listed)
+    # Refused before anything is reserved: another site's cookie, a non-links source, a malformed cookie.
+    refusals = [
+        ({"kind": "links", "links": [VIDEO_LINK]}, [_cookie(domain=".elsewhere.test")]),
+        ({"kind": "links", "links": [VIDEO_LINK]}, [_cookie(domain="test")]),
+        ({"kind": "magnet", "magnet": "magnet:?xt=urn:btih:" + "d" * 40}, [_cookie()]),
+        ({"kind": "links", "links": [VIDEO_LINK]}, [_cookie(value="a;b")]),
+        ({"kind": "links", "links": [VIDEO_LINK]}, [_cookie(extra=1)]),
+        ({"kind": "links", "links": [VIDEO_LINK]}, []),
+        ({"kind": "links", "links": [VIDEO_LINK]}, [_cookie()] * 301),
+    ]
+    for source, cookies in refusals:
+        status, refused = await submit(world, una, source, cookies=cookies)
+        assert status == 422 and refused["detail"]["code"] == "invalid_request", (source, cookies, refused)
+        assert SECRET not in json.dumps(refused)
+
+
+@pytest.mark.asyncio
+async def test_the_sign_in_is_offered_only_while_media_downloads_takes_part(world):
+    una = world.tokens["una"]
+    owner = await Person.sign_in(world, "owner")
+    try:
+        assert "cookies" in (await extension(world, "GET", "/api/browser/v1/session", una))[1]["capabilities"]
+        status, body = await owner.call("PATCH", "/api/integrations/media/configuration", json={"enabled": False})
+        assert status == 200, body
+        try:
+            capabilities = (await extension(world, "GET", "/api/browser/v1/session", una))[1]["capabilities"]
+            assert "cookies" not in capabilities
+        finally:
+            assert (await owner.call("PATCH", "/api/integrations/media/configuration", json={"enabled": True}))[0] == 200
+    finally:
+        await owner.close()

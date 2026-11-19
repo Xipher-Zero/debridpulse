@@ -40,6 +40,7 @@ from core.logging_utils import sanitize_exception
 from db.database import get_db
 from db.event_journal import JournalEvent, record
 from external import intake as intake_owner
+from external.browser_cookies import CookieCapacity, CookieRefused, browser_cookies, parse as parse_cookies
 from core.settings_constraints import path_within
 from external.profiles import DeliveryProfile, category_key, client_flavor, confined_to
 from transfers.filesystem import member_payload
@@ -90,7 +91,7 @@ REFUSAL_CODES = (
     "source_too_large", "source_refused", "source_unavailable", "local_network_confirmation_required",
     "acquisition_scope_required", "submission_outcome_unknown", "job_not_found", "control_limit",
     "control_conflict", "delivery_mismatch", "unknown_generation", "stale_generation", "duplicate_torrent",
-    "profile_root_outside_downloads",
+    "profile_root_outside_downloads", "cookie_capacity",
 )
 
 
@@ -322,7 +323,7 @@ class ExternalClients:
             raise ExternalRefused("invalid_request", "display_name is at most 256 characters")
         if reference is not None and (not isinstance(reference, str) or len(reference) > 256):
             raise ExternalRefused("invalid_request", "client_reference is at most 256 characters")
-        unknown = set(body) - {"source", "display_name", "client_reference", "idempotency_key"}
+        unknown = set(body) - {"source", "display_name", "client_reference", "idempotency_key", "cookies"}
         if unknown:
             raise ExternalRefused("invalid_request", f"Unknown field(s): {', '.join(sorted(unknown))}")
         try:
@@ -331,10 +332,20 @@ class ExternalClients:
             raise ExternalRefused(exc.code, exc.message, status=exc.status) from None
         if source.kind not in BROWSER_SOURCE_KINDS:
             raise ExternalRefused("source_kind_not_permitted", "A browser may not submit that source kind")
+        # A video's sign-in (external.browser_cookies): links only, each cookie for a sent link's
+        # own site. Never part of the request's identity: not in the digest, never replayed.
+        cookies: tuple = ()
+        if "cookies" in body:
+            if source.kind != "links":
+                raise ExternalRefused("invalid_request", "cookies go only with links")
+            try:
+                cookies = parse_cookies(body["cookies"], list(source.links))
+            except CookieRefused as exc:
+                raise ExternalRefused("invalid_request", str(exc)) from None
         digest = intake_owner.intent_digest(source, profile_id="", category_key=BROWSER,
                                             display_name=display_name.strip(), client_reference=reference)
         return {"source": source, "digest": digest, "category": "", "profile": None,
-                "display_name": display_name.strip(), "reference": reference}
+                "display_name": display_name.strip(), "reference": reference, "cookies": cookies}
 
     async def submit_live(self, principal: Principal, body: dict) -> tuple[dict, bool]:
         """Submit for a client protocol whose caller supplies no request
@@ -452,7 +463,21 @@ class ExternalClients:
             else:
                 job = await self._reserve(principal, client_id, key, digest, source, intent["category"],
                                           intent["profile"], intent["display_name"], intent["reference"])
-            await self._admit(principal, job, source)
+            # The one registration (external.browser_cookies): on the admitting path only, before
+            # the demand commits, so the transfer's first resolution can already find them.
+            if intent.get("cookies"):
+                try:
+                    browser_cookies.register(job["reserved_demand_id"], principal.account_id, principal.credential_id,
+                                             intent["cookies"])
+                except CookieCapacity:
+                    raise ExternalRefused("cookie_capacity", "Too many videos with a sign-in are waiting; retry shortly",
+                                          status=503, retryable=True) from None
+            try:
+                await self._admit(principal, job, source)
+            except ExternalRefused:
+                if await self.repository.demand(job["reserved_demand_id"]) is None:
+                    browser_cookies.release(job["reserved_demand_id"])
+                raise
             return await self._view(await self._accept(job)), True
 
     async def _reserve(self, principal, client_id, key, digest, source, category, profile, display_name, reference):
@@ -814,6 +839,7 @@ class ExternalClients:
                 await _audit(db, "external_job_withdrawn", "External job withdrawn by its client", row,
                              transfer_id=int(demand["transfer_id"]) if demand else None, outcome="withdrawn")
                 await db.commit()
+        browser_cookies.release(row["demand_id"])   # eagerly; settle() is the authority
         await self._reconcile_controls(job_id=row["id"])
         view = await self._view(await self._refresh(row["id"]))
         return {**view, "already_withdrawn": already}
@@ -1658,8 +1684,10 @@ class ExternalClients:
         recovered_retirements = await self._settle_pending_retirements()
         refreshed = await self._refresh_unsettled()
         retired = await self._retire_acknowledged_folders()
+        cookies_released = await browser_cookies.settle()
         return {"accepted": len(pending), "forgotten": forgotten, "recovered": recovered, "released": released,
-                "refreshed": refreshed, "retired": retired, "profile_retirements": recovered_retirements}
+                "refreshed": refreshed, "retired": retired, "profile_retirements": recovered_retirements,
+                "cookies_released": cookies_released}
 
     async def _settle_pending_retirements(self, *, budget: int = REFRESH_BUDGET) -> int:
         """Profile retirements whose core settlement never finished -- a

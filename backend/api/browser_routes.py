@@ -151,8 +151,23 @@ async def list_all_browser_tokens():
                           "last_seen_at": row.get("last_seen_at")} for row in await accounts.list_browser_tokens()]}
 
 
+def _video_cookies(application) -> dict | None:
+    """The browser's video sign-in (external.browser_cookies), offered only while Media
+    Downloads takes part (operator, 2026-11-19): otherwise the extension never sends any."""
+    from core.config import get_settings
+    from external import browser_cookies as held
+    from integrations.configuration import effective_enabled
+    media = next((item for item in getattr(application, "definitions", ()) if item.id == "media"), None)
+    try:
+        if media is None or not effective_enabled(get_settings(), media):
+            return None
+    except Exception:
+        return None
+    return {"max_count": held.MAX_COOKIES, "max_bytes": held.MAX_BYTES, "sources": ["links"]}
+
+
 @router.get("/browser/v1/session")
-async def browser_session(request: Request):
+async def browser_session(request: Request, application: ApplicationService = Depends(get_application)):
     """Which connection this browser token is, and the protocol this server
     speaks: how the extension verifies a pairing and a server's version; and
     its person's appearance, which the extension's own pages follow."""
@@ -160,10 +175,14 @@ async def browser_session(request: Request):
     principal = request.state.principal
     rows = await accounts.list_tokens(principal.account_id)
     label = next((str(row["label"]) for row in rows if str(row["id"]) == principal.credential_id), "")
+    capabilities = {"sources": sorted(BROWSER_SOURCE_KINDS), "controls": ["pause", "resume"],
+                    "withdraw": True, "estimate": True}
+    cookies = _video_cookies(application)
+    if cookies:
+        capabilities["cookies"] = cookies
     return {"protocol": BROWSER_PROTOCOL, "token": {"id": principal.credential_id, "label": label},
             "account": {"display_name": principal.display_name},
-            "capabilities": {"sources": sorted(BROWSER_SOURCE_KINDS), "controls": ["pause", "resume"],
-                             "withdraw": True, "estimate": True},
+            "capabilities": capabilities,
             # The person's own appearance (services.account_appearance, its one owner): the
             # mode and the palette chosen for each mode, as palette IDs. The extension draws
             # its own pages in it (operator, 2026-11-18).

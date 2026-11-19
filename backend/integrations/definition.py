@@ -164,6 +164,11 @@ class IntegrationEnvironment:
     # .preferred_subtitle_language``): owned by the global Downloads settings,
     # only ever READ by an integration that acquires subtitled media.
     preferred_subtitle_language: str = "en"
+    # A connected browser's per-job video sign-in (``external.browser_cookies``):
+    # READ only, by the integration that runs yt-dlp, through ``current()`` (an
+    # extraction inside a resolution unit) and ``for_attempt(id)`` (an
+    # acquisition). None: no integration ever receives any.
+    session_cookies: object = None
 
 
 @runtime_checkable

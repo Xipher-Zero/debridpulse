@@ -99,6 +99,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import contextvars
 import math
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
@@ -122,6 +123,7 @@ class ObservationBatch(dict):
 
 from transfers.canonical import CanonicalOwnership
 from transfers.contracts import (
+    _SERVED_TRANSFER,
     AccountIdentitySource, CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation,
     UpstreamSelection,
 )
@@ -1091,7 +1093,10 @@ class TransferEngine:
                 # The continuation serves the challenged request itself.
                 cycle.admitted[work.request_id] = None
             unit = self._serve_input_continuation(cycle, work)
-        task = asyncio.create_task(unit)
+        # The unit runs in its own context naming its transfer (contracts.served_transfer).
+        context = contextvars.copy_context()
+        context.run(_SERVED_TRANSFER.set, transfer.id)
+        task = asyncio.create_task(unit, context=context)
         cycle.units[task] = transfer.id
         if qualification:
             cycle.qualifying.add(task)

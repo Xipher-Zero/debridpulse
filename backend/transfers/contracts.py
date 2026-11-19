@@ -126,6 +126,19 @@ def speculative_attempt() -> bool:
     return _SPECULATIVE_ATTEMPT.get()
 
 
+# Set by core for one resolution unit's task (and so every provider call it makes,
+# collection members included): the transfer that unit serves. A plain integer,
+# never a secret; outside a unit it is None. A provider-side reader may use it to
+# find state held for that transfer outside core -- the browser's per-job video
+# sign-in (external.browser_cookies) -- and must treat None as "none".
+_SERVED_TRANSFER: ContextVar[int | None] = ContextVar("served_transfer", default=None)
+
+
+def served_transfer() -> int | None:
+    """The transfer the resolution unit in progress serves, if any."""
+    return _SERVED_TRANSFER.get()
+
+
 @contextmanager
 def speculative_preparation():
     """The scope of one speculative backup preparation's provider call."""
