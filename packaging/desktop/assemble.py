@@ -379,6 +379,10 @@ def main() -> int:
         usenet["windows_helpers"] = {place: hashlib.sha256((out / "backend" / "usenet" / place).read_bytes()).hexdigest()
                                      for place in USENET_WINDOWS_HELPERS.values()}
     copytree(ROOT / "frontend" / "static", out / "frontend" / "static")
+    # The host icons, as the server image unpacks them (packaging/host_icons.py, their one owner).
+    sys.path.insert(0, str(ROOT / "packaging"))
+    from host_icons import unpack
+    unpack(ROOT / "frontend" / "host-icons.parts", out / "frontend" / "static" / "icons" / "hosts")
     (out / "desktop").mkdir(exist_ok=True)
     shutil.copy2(ROOT / "desktop" / "supervisor.py", out / "desktop" / "supervisor.py")
     copytree(ROOT / "desktop" / "shell", out / "desktop" / "shell")

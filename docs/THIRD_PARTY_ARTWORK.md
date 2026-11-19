@@ -82,8 +82,10 @@ How to read it:
 - **Hashes** are of the shipped bytes. All 37 files were found byte-identical
   in the qualified image; the 34 retained files are unchanged since.
 - **Host icons** ship inside the `frontend/host-icons.parts` archive. It is
-  unpacked to `frontend/static/icons/hosts/` when the image is built; it was not
-  changed in 1.0.13.
+  unpacked to `frontend/static/icons/hosts/` by its one owner,
+  `packaging/host_icons.py` (pinned checksum, exactly the files listed here), both when
+  the server image is built and when the desktop application is assembled; the archive
+  was not changed in 1.0.13.
 - **Rights holders** are as each service states them; "UNVERIFIED" means none
   was established.
 - **"Permission / operator position"** in the last column means no

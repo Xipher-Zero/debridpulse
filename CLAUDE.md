@@ -203,7 +203,8 @@ named in `docs/UI_FRONTEND_ARCHITECTURE.md` as the one mapping owner):
   (`providers/alldebrid/provider.py`, `providers/general_http/provider.py`).
 - Icon PNG/SVG assets ship via `frontend/host-icons.parts/` → reassembled ZIP in the
   Dockerfile; adding an asset means regenerating that archive and its `expected_sha256`.
-  Reusing an existing asset (e.g. `mega.svg`) needs no archive change.
+  Reusing an existing asset (e.g. `mega.svg`) needs no archive change. Unpacked by
+  `packaging/host_icons.py` for both the image and the desktop builds (pinned there).
 
 ---
 
@@ -227,11 +228,12 @@ compiled out; built by `aria2-package.yml`) and `ghcr.io/xipher-zero/debridpulse
 3. **App code** — `COPY backend/ /app/` (this includes `backend/tests` at `/app/tests`, which
    Browser Runtime uses to serve its test-only `browser_contract_app` composition from the
    candidate image; see `docs/RELEASE_PROCESS.md` → Release-image contract) +
-   `COPY frontend/ /app/frontend/`, then an inline
-   `python` heredoc reassembles `frontend/host-icons.parts/*` → base64 → ZIP, verifies
-   `expected_sha256` (`2bfb7cadf647f6d4093ce4ad7d13159e137a190925a1b840f8a50a7f579be90f`)
-   and an exact expected file-name set, extracts to `frontend/static/icons/hosts/`,
-   deletes the parts dir.
+   `COPY frontend/ /app/frontend/`, then `packaging/host_icons.py` (the host icons'
+   one owner, also run by `packaging/desktop/assemble.py` for the desktop builds)
+   reassembles `frontend/host-icons.parts/*` → base64 → ZIP, verifies `EXPECTED_SHA256`
+   (`2bfb7cadf647f6d4093ce4ad7d13159e137a190925a1b840f8a50a7f579be90f`) and an exact
+   expected file-name set, extracts to `frontend/static/icons/hosts/`; the parts dir is
+   deleted.
 4. **License/metadata files** — `CHANGELOG.md`, `VERSION`, `LICENSE`, `NOTICE`,
    `SOURCE_OFFER.md`, `LICENSES/`, `licenses/`, `docs/DEPENDENCY_LICENSES.md`.
 5. **Entrypoint** — `COPY entrypoint.sh /entrypoint.sh` + `chmod +x`.
