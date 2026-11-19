@@ -294,8 +294,10 @@ test('Recent Activity and Details follow the same priority', async ({ page }) =>
   await page.evaluate(() => showDetail(9733));
   const detail = page.locator('#modal-body .dk', {hasText: /^Progress$/}).locator('..').locator('.dv');
   await expect(detail).toHaveText('in progress 94.6% (not yet verified)');
+  // Paused, the writer's in-flight figure stays beside verified material, as while running
+  // (operator, 2026-11-19: a paused download keeps showing its completion).
   await page.evaluate(() => showDetail(9734));
-  await expect(detail).toHaveText('31.0%');
+  await expect(detail).toHaveText('31.0% · in progress 67.0% (not yet verified)');
   expect(errors).toEqual([]);
 });
 

@@ -216,8 +216,12 @@ async def record(db, event: JournalEvent) -> bool:
     event = _validated(event)
     name = event.subject_name
     if name is None and event.transfer_id is not None:
-        row = await db.fetchone("SELECT name FROM torrents WHERE id=?", (int(event.transfer_id),))
-        name = row["name"] if row else None
+        # The transfer as it is known at this moment: the title the Downloads list shows
+        # (its files' names once there are any, else what it was submitted as), read in
+        # this same transaction. A media link is "watch" until its title is known, and
+        # every event after that carries the title (operator, 2026-11-19).
+        from transfers.presentation_repository import transfer_display_names
+        name = (await transfer_display_names(db, (int(event.transfer_id),))).get(int(event.transfer_id))
     error = event.error
     detail = event.detail
     if detail is None and error is not None and getattr(error, "diagnostic", ""):

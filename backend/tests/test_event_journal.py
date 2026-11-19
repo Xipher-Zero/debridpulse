@@ -306,3 +306,21 @@ async def test_a_write_that_comes_with_a_reconfiguration_is_still_announced(tmp_
     await owner.Observability(repository=None).observe_journal()              # the reconfigured owner
     async with database.get_db() as db:
         assert announced[-1] == {"latest": await event_journal.latest_id(db)} != announced[0]
+
+
+async def test_events_carry_the_name_known_at_the_time_the_submitted_one_until_a_file_names_it(tmp_path, monkeypatch):
+    """Operator, 2026-11-19: a media link is submitted as "watch"; once its file
+    is known, every later event (the desktop notices, the Activity Log) carries
+    the title the Downloads list shows, never the URL's last segment."""
+    repository, engine = await lab(tmp_path, monkeypatch, RouteLab("alpha-route"))
+    transfer = await engine.submit((TransferRequest("parcel", "clip"),), name="watch", deduplicate=False)
+    await _settle(engine, repository, transfer.id)
+    assert (await repository.get(transfer.id)).state == TransferState.COMPLETED
+    # The title the Downloads list shows: its file's name (the lab's provider names it payload.bin).
+    from transfers.presentation_repository import transfer_display_names
+    async with database.get_db() as db:
+        title = (await transfer_display_names(db, (transfer.id,)))[transfer.id]
+    assert title == "payload.bin"
+    named = {row["event_type"]: row["subject_name"] for row in await _events("transfer_id=?", (transfer.id,))}
+    assert named["transfer.accepted"] == "watch"                 # what it was, when it was submitted
+    assert named["transfer.completed"] == title                  # what it is once its file is known
