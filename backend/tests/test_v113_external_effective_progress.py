@@ -97,6 +97,16 @@ async def test_a_running_usenet_job_shows_radarr_the_bar_dp_shows(mixed):  # noq
         # Nothing is invented: no time left, and verified material is unchanged.
         assert slot["timeleft"] == "0:00:00"
 
+    # Paused (operator, 2026-11-19): the completion the job holds stays shown, in DP and for *arr.
+    await mixed.engine.pause(row["id"])                    # the operator's pause, carried to SAB
+    row, effective = await observed(0.25, status="Paused")
+    assert row["status"] == "paused" and row["active_execution_progress"] == pytest.approx(75.0)
+    [rendered] = _render([[row["progress"], row["status"], row["active_execution_progress"],
+                           row["active_execution_basis"]]])
+    assert 'style="width:75' in rendered["bar"] and "is-indeterminate" not in rendered["bar"]
+    assert effective["source"] == "execution" and effective["percent"] == pytest.approx(75.0)
+    await mixed.engine.resume(row["id"])
+
     # Repair / unpack: the acquisition figure is retired in DP and for *arr.
     row, effective = await observed(0.0, status="Extracting")
     assert row["active_execution_basis"] == "processing"
@@ -119,7 +129,8 @@ ROW = {"execution_writers": 1, "execution_acquiring": 1, "execution_bytes_known"
     ("downloading", 0.0, None, None, "verified", 0.0),              # no in-flight figure
     ("downloading", 0.0, None, "processing", "verified", 0.0),      # past acquisition
     ("downloading", 0.0, 50.0, "processing", "verified", 0.0),
-    ("paused", 0.0, 65.2, "estimated", "verified", 0.0),            # only while downloading
+    ("paused", 0.0, 65.2, "estimated", "execution", 65.2),          # paused: the completion it holds
+    ("paused", 0.0, 40.0, "bytes", "execution", 40.0),
     ("queued", 0.0, 10.0, "bytes", "verified", 0.0),
     ("extracting", 0.0, 10.0, "bytes", "verified", 0.0),
     ("completed", 100.0, None, None, "verified", 100.0),

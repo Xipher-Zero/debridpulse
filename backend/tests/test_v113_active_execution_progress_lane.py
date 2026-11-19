@@ -165,7 +165,8 @@ async def test_a_destination_aware_writer_keeps_its_reconstruction_lane(tmp_path
         (await core.repository.artifacts(core.transfer.id))[0].id) == 1
 
 
-async def test_unauthorized_or_stopped_writers_contribute_nothing(tmp_path, monkeypatch):
+async def test_unauthorized_or_stopped_writers_contribute_nothing_and_a_paused_one_keeps_its_completion(
+        tmp_path, monkeypatch):
     core = await _core(tmp_path, monkeypatch, NativeJobExecutor)
     await _set_progress(core, 3, 4)
     [attempt] = core.executor.jobs
@@ -173,11 +174,17 @@ async def test_unauthorized_or_stopped_writers_contribute_nothing(tmp_path, monk
         await db.execute("UPDATE execution_attempts SET authorized=0 WHERE id=?", (attempt,))
         await db.commit()
     assert (await _active(core)).active_execution_progress is None
+    # Paused (operator, 2026-11-19): the completion the writer holds stays shown, never 0%.
     async with database.get_db() as db:
         await db.execute("UPDATE execution_attempts SET authorized=1,state=? WHERE id=?",
                          (ExecutionState.PAUSED.value, attempt))
         await db.commit()
-    assert (await _active(core)).active_execution_progress is None
+    assert (await _active(core)).active_execution_progress == pytest.approx(75.0)
+    for stopped in (ExecutionState.CANCELLED, ExecutionState.FAILED, ExecutionState.QUEUED):
+        async with database.get_db() as db:
+            await db.execute("UPDATE execution_attempts SET state=? WHERE id=?", (stopped.value, attempt))
+            await db.commit()
+        assert (await _active(core)).active_execution_progress is None, stopped
 
 
 async def test_a_native_job_does_not_count_as_reconstruction_a_switch_abandons(tmp_path, monkeypatch):
@@ -382,6 +389,15 @@ def test_processing_keeps_the_estimated_fill_and_says_processing_never_a_percent
 
 
 
+def test_a_paused_writer_keeps_showing_the_completion_it_holds():
+    """Operator, 2026-11-19: a paused Usenet job fell back to 0%. Paused, the
+    in-flight figure stays the bar (no stripe, no ETA); a queued row's stays hidden."""
+    paused, queued = _render([[0, "paused", 43.0, "bytes"], [0, "queued", 43.0, "bytes"]])
+    assert "width:43%" in paused["bar"] and "is-indeterminate" not in paused["bar"]
+    assert "43.0%" in paused["bar"] and "43.0%" in paused["details"]
+    assert "width:0%" in queued["bar"] and "43.0%" not in queued["bar"]
+
+
 def test_an_estimate_is_one_writers_own_never_combined_and_never_behind_or_beyond_its_exact_scope():
     """P3/P7 on the neutral projection: one writer's estimate mark is shown,
     labelled, while it is ahead of that writer's exact figure, and the exact
@@ -435,9 +451,15 @@ async def test_an_estimate_on_a_stopped_or_unauthorized_writer_contributes_nothi
         await db.execute("UPDATE execution_attempts SET authorized=0 WHERE id=?", (attempt,))
         await db.commit()
     assert (await _active(core)).active_execution_progress is None
+    # Paused, the writer keeps its estimate (operator, 2026-11-19); stopped, it is retired.
     async with database.get_db() as db:
         await db.execute("UPDATE execution_attempts SET authorized=1,state=? WHERE id=?",
                          (ExecutionState.PAUSED.value, attempt))
+        await db.commit()
+    assert ((await _active(core)).active_execution_progress, (await _active(core)).active_execution_basis) \
+        == (pytest.approx(61.2), "estimated")
+    async with database.get_db() as db:
+        await db.execute("UPDATE execution_attempts SET state=? WHERE id=?", (ExecutionState.CANCELLED.value, attempt))
         await db.commit()
     assert (await _active(core)).active_execution_basis is None
 

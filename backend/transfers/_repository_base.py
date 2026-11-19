@@ -443,7 +443,8 @@ class AggregateLifecycleOutcome:
 def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: bool = False) -> str:
     """THE one read of in-flight execution progress that is not DP material.
 
-    A current, authorized, running writer's executor progress is execution
+    A current, authorized writer's executor progress (running, or paused --
+    a paused writer keeps the completion it last reported) is execution
     activity only -- durable completion stays DP-valid material
     (``torrents.progress``) and never moves with it -- when its durable
     continuation plan says none of that work is DP material yet: it was
@@ -476,11 +477,19 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
                    " AND json_extract(e.progress, '$.completed_units') BETWEEN 0"
                    " AND json_extract(e.progress, '$.total_units'))")
     estimate_known = "(json_type(e.progress, '$.estimated_percentage') IN ('integer', 'real'))"
+    # A paused writer is still the current writer: its last observation is the
+    # completion it holds, and it keeps being shown while paused (operator,
+    # 2026-11-19: a paused native job fell back to 0%). Paused is not past
+    # acquisition: its figure stays an acquisition figure, never "processing"
+    # (``acquiring`` is stamped only while running). The reconstruction read
+    # (what a source switch abandons) keeps running writers only.
+    states = "'running'" if reconstruction_only else "'running', 'paused'"
     return f"""SELECT f.torrent_id AS transfer_id,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.completed_bytes'), 0))) AS execution_completed,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.total_bytes'), 0))) AS execution_total,
             COUNT(*) AS execution_writers,
-            SUM(COALESCE(json_extract(e.progress, '$.acquiring'), 1) != 0) AS execution_acquiring,
+            SUM(e.state = 'paused' OR COALESCE(json_extract(e.progress, '$.acquiring'), 1) != 0)
+                AS execution_acquiring,
             SUM(COALESCE(json_extract(e.progress, '$.total_bytes'), 0) > 0) AS execution_bytes_known,
             SUM({units_known}) AS execution_units_known,
             SUM(CASE WHEN {units_known} THEN json_extract(e.progress, '$.completed_units') ELSE 0 END)
@@ -491,7 +500,7 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
             MAX(CASE WHEN {estimate_known} THEN json_extract(e.progress, '$.estimated_percentage') END)
                 AS execution_estimated
         FROM download_files f JOIN execution_attempts e ON e.id = f.execution_attempt_id{exporter_join}
-        WHERE e.state = 'running' AND e.authorized = 1
+        WHERE e.state IN ({states}) AND e.authorized = 1
           AND {not_yet_material}
           AND ({transfer_scope})
         GROUP BY f.torrent_id"""
@@ -555,7 +564,7 @@ def effective_progress(status, verified, active_percent, active_basis, active_by
                        verified_bytes=None) -> dict:
     """THE primary progress figure of an unfinished transfer, as DebridPulse
     shows it (``frontend/static/app.js`` ``progress()``): while the transfer
-    is downloading and nothing is verified yet (no verified percentage, or
+    is downloading or paused and nothing is verified yet (no verified percentage, or
     exactly 0), the current in-flight execution figure; otherwise verified
     material. ``source`` says which, ``estimated`` whether the in-flight
     figure is a best-effort estimate. Byte counters ride along only with the
@@ -577,7 +586,8 @@ def effective_progress(status, verified, active_percent, active_basis, active_by
     except (TypeError, ValueError):
         current = math.nan
     unverified = verified is None or float(verified) <= 0
-    if state == "downloading" and active_basis != "processing" and math.isfinite(current) and unverified:
+    # Paused as well: a paused writer's figure is the completion it holds (operator, 2026-11-19).
+    if state in {"downloading", "paused"} and active_basis != "processing" and math.isfinite(current) and unverified:
         exact = active_bytes if active_basis == "bytes" else None
         return {"percent": round(min(max(current, 0.0), 100.0), 1), "source": "execution",
                 "estimated": active_basis == "estimated", "completed_bytes": exact[0] if exact else None,

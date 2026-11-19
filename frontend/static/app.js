@@ -1263,11 +1263,13 @@ function transferDisplayStatus(t) {
   return projected || (t && t.status) || '';
 }
 // The one active-execution predicate every progress presentation shares:
-// in-flight execution activity counts only while the row is actively running,
-// anywhere else a lingering value is stale and never shown. The percentage, or
-// null when there is none to trust.
+// in-flight execution activity counts while the row is running or paused (a
+// paused writer keeps the completion it holds; operator, 2026-11-19), anywhere
+// else a lingering value is stale and never shown. The percentage, or null
+// when there is none to trust.
 function inFlightExecutionPercent(status, activePct) {
-  if (String(status || '').toLowerCase() !== 'downloading') return null;
+  const state = String(status || '').toLowerCase();
+  if (state !== 'downloading' && state !== 'paused') return null;
   const raw = activePct === null || activePct === undefined ? NaN : Number(activePct);
   return Number.isFinite(raw) ? Number(Math.min(Math.max(raw, 0), 100).toFixed(1)) : null;
 }

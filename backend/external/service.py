@@ -341,7 +341,7 @@ class ExternalClients:
             try:
                 cookies = parse_cookies(body["cookies"], list(source.links))
             except CookieRefused as exc:
-                raise ExternalRefused("invalid_request", str(exc)) from None
+                raise ExternalRefused(exc.code, str(exc)) from None
         digest = intake_owner.intent_digest(source, profile_id="", category_key=BROWSER,
                                             display_name=display_name.strip(), client_reference=reference)
         return {"source": source, "digest": digest, "category": "", "profile": None,

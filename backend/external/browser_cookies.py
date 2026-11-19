@@ -49,7 +49,12 @@ _UNSAFE_VALUE = re.compile(r"[\x00-\x1f\x7f;]")
 
 class CookieRefused(ValueError):
     """A submission's ``cookies`` field is malformed or exceeds a bound. The
-    message names the field, never a value."""
+    message names the field, never a value; ``code`` is the browser protocol's
+    refusal code it is answered with."""
+
+    def __init__(self, message: str, *, code: str = "invalid_request"):
+        super().__init__(message)
+        self.code = code
 
 
 class CookieCapacity(RuntimeError):
@@ -97,39 +102,39 @@ def parse(value, links: list[str]) -> tuple[Cookie, ...]:
     """A submission's ``cookies``: validated, each domain-matched to a link's
     host (a cookie for any other site is refused), within the bounds."""
     if not isinstance(value, list) or not value:
-        raise CookieRefused("cookies must be a non-empty list")
+        raise CookieRefused("cookies must be a non-empty list", code="invalid_request")
     if len(value) > MAX_COOKIES:
-        raise CookieRefused(f"cookies holds at most {MAX_COOKIES} entries")
+        raise CookieRefused(f"cookies holds at most {MAX_COOKIES} entries", code="invalid_request")
     hosts = {host for host in map(_host, links) if host}
     cookies, size = [], 0
     for item in value:
         if not isinstance(item, dict) or set(item) - {"name", "value", "domain", "path", "secure", "http_only",
                                                        "host_only", "expires"}:
             raise CookieRefused("each cookie is an object of name, value, domain, path, secure, http_only, "
-                                "host_only, expires")
+                                "host_only, expires", code="invalid_request")
         name, val, domain, path = item.get("name"), item.get("value"), item.get("domain"), item.get("path", "/")
         if not isinstance(name, str) or not _TOKEN.match(name):
-            raise CookieRefused("a cookie's name is not a valid cookie name")
+            raise CookieRefused("a cookie's name is not a valid cookie name", code="invalid_request")
         if not isinstance(val, str) or len(val) > 8192 or _UNSAFE_VALUE.search(val):
-            raise CookieRefused("a cookie's value is not a valid cookie value")
+            raise CookieRefused("a cookie's value is not a valid cookie value", code="invalid_request")
         if not isinstance(domain, str) or not domain or len(domain) > 253 or _UNSAFE_VALUE.search(domain):
-            raise CookieRefused("a cookie's domain is not valid")
+            raise CookieRefused("a cookie's domain is not valid", code="invalid_request")
         if not isinstance(path, str) or not path.startswith("/") or len(path) > 1024 or _UNSAFE_VALUE.search(path):
-            raise CookieRefused("a cookie's path is not valid")
+            raise CookieRefused("a cookie's path is not valid", code="invalid_request")
         bare = domain.lower().lstrip(".")
         # Only the sent video's own site: the link's host is that domain or under it.
         if "." not in bare or not any(host == bare or host.endswith("." + bare) for host in hosts):
-            raise CookieRefused("a cookie's domain does not match the sent link")
+            raise CookieRefused("a cookie's domain does not match the sent link", code="invalid_request")
         flags = [item.get(key, False) for key in ("secure", "http_only", "host_only")]
         if not all(isinstance(flag, bool) for flag in flags):
-            raise CookieRefused("secure, http_only and host_only are true or false")
+            raise CookieRefused("secure, http_only and host_only are true or false", code="invalid_request")
         expires = item.get("expires")
         if expires is not None and (isinstance(expires, bool) or not isinstance(expires, int) or expires < 0):
-            raise CookieRefused("a cookie's expires is whole seconds, or null")
+            raise CookieRefused("a cookie's expires is whole seconds, or null", code="invalid_request")
         size += len(name) + len(val) + len(domain) + len(path)
         cookies.append(Cookie(name, val, domain, path, *flags, expires))
     if size > MAX_BYTES:
-        raise CookieRefused(f"cookies hold at most {MAX_BYTES} bytes")
+        raise CookieRefused(f"cookies hold at most {MAX_BYTES} bytes", code="invalid_request")
     return tuple(cookies)
 
 
