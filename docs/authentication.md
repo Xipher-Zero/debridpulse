@@ -32,7 +32,7 @@ environment:
   PUBLIC_BASE_URL: https://download.example.com
 ```
 
-The equivalent persisted setting is available under **Settings → Authentication → External Authentication Origin → Canonical External URL**. `PUBLIC_BASE_URL` takes precedence when both are present; the UI displays the effective environment override as read-only.
+The equivalent persisted setting is **Public DebridPulse Base URL** in the **OpenID Connect** card under **Settings → Authentication** (shown on a Server installation in the Advanced presentation). `PUBLIC_BASE_URL` takes precedence when both are present; the UI displays the effective environment override as read-only.
 
 Use only an HTTPS origin in `scheme://host[:port]` form, with no path, query, fragment, or credentials. Configuring an external base does not disable direct LAN access: a direct LAN request continues to be evaluated against its own Host/scheme, while a request whose Host matches the configured external authority can be recognized as the canonical HTTPS origin across an internal HTTP reverse-proxy hop.
 
@@ -62,7 +62,7 @@ The server enforces every role on every request, including direct API calls, fil
 | **ReadOnly User** | See the Dashboard, Downloads, every transfer's Details and Statistics. Nothing else. |
 | **Integration** | Bearer-token only: submit, see and withdraw its own requests, scrape `/api/metrics`. |
 
-An OIDC identity admitted by the authorization policy that is not yet linked to an account gets a new account with the configured default role (`auth_oidc_default_role`: `user` or `readonly`). To sign in with OIDC as an Admin, complete **Verify Sign-In** while signed in as that Admin: the proven identity is linked to your account. `GET /api/auth/session` returns the caller's role, capabilities and account generation; disabling an account or changing its role ends its sessions and live event streams at once.
+An OIDC identity admitted by the authorization policy that is not yet linked to an account gets a new account with the configured default role (`auth_oidc_default_role`: `user` or `readonly`). To sign in with OIDC as an Admin, run the OpenID Connect card's **Test** sign-in while signed in as that Admin: the proven identity is linked to your account. `GET /api/auth/session` returns the caller's role, capabilities and account generation; disabling an account ends its sessions and live event streams at once. Changing its role takes effect on its next request without signing it out: its sessions are re-bound to the new role and its connected browsers are told to reset.
 
 ### Requests and withdrawal
 
@@ -130,7 +130,7 @@ A fresh installation that is still in intentional open mode cannot make an **unp
 
 1. configure and enable **Username & Password** together with the proposed OIDC settings;
 2. save the configuration and sign in with the new local password;
-3. use **Verify Sign-In** and complete the real provider flow through the externally reachable HTTPS URL;
+3. use the OpenID Connect card's **Test** button and complete the real provider flow through the externally reachable HTTPS URL;
 4. confirm normal OIDC sign-in works;
 5. only then disable Username & Password if OIDC-only operation is desired.
 
@@ -138,7 +138,7 @@ Username & Password cannot be disabled in favor of OIDC until a **real OIDC logi
 
 When OIDC is already the sole interactive mechanism, security-critical OIDC changes are staged as a pending configuration. The current known-working configuration remains authoritative until the proposed settings themselves complete a successful OIDC login. If another authentication change is committed while that verification is in flight, the pending proposal is considered stale and must be verified again rather than overwriting the newer state. The successful proof is bound to the exact staged OIDC configuration before that configuration can be persisted.
 
-Use **Verify Sign-In** in the Authentication settings tab after entering proposed OIDC changes.
+Use the OpenID Connect card's **Test** button in the Authentication settings tab after entering proposed OIDC changes.
 
 ## API bearer tokens (Integration accounts)
 
@@ -183,7 +183,7 @@ Authentication request bodies are bounded before authentication/configuration mi
 
 ## Reverse proxies
 
-For externally proxied deployments, terminate HTTPS at the public ingress and set **Canonical External URL** in the **External Authentication Origin** card to the canonical external origin. Ensure the proxy preserves the normal Host/protocol information expected by the deployment and does not rewrite the registered callback path.
+For externally proxied deployments, terminate HTTPS at the public ingress and set **Public DebridPulse Base URL** in the **OpenID Connect** card (or `PUBLIC_BASE_URL`) to the canonical external origin. Ensure the proxy preserves the normal Host/protocol information expected by the deployment and does not rewrite the registered callback path.
 
 DebridPulse does not independently trust an arbitrary client-supplied `X-Forwarded-Proto` header when deciding whether Password-session/login-CSRF cookies should use the HTTPS-only `__Host-` form. HTTPS is established from the ASGI request scheme after the server's trusted-proxy handling, or from the operator-configured HTTPS canonical external URL when its authority matches the request Host. This keeps secure-cookie classification tied to trusted deployment state rather than a spoofable request header.
 
@@ -195,7 +195,7 @@ DebridPulse does not require an external authentication proxy when its native Pa
 
 The automated test suite exercises OIDC protocol validation, state/nonce/PKCE handling, authorization policy, pending-configuration lockout protection, session behavior, HTTP Basic coexistence, bearer-token behavior, browser security boundaries, authentication admission limits, and pre-persistence proof/configuration binding with controlled test providers and responses.
 
-Those tests do not prove a particular external identity-provider, public DNS, TLS termination, or reverse-proxy deployment. Before relying on OIDC as the sole interactive mechanism in production, complete **Verify Sign-In** through the actual externally reachable HTTPS URL and configured identity provider while the known-working Password fallback is still available.
+Those tests do not prove a particular external identity-provider, public DNS, TLS termination, or reverse-proxy deployment. Before relying on OIDC as the sole interactive mechanism in production, complete a **Test** sign-in through the actual externally reachable HTTPS URL and configured identity provider while the known-working Password fallback is still available.
 
 ## Recovering access
 

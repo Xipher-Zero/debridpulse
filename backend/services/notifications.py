@@ -5,7 +5,7 @@ Features:
 - Structured embeds with fields instead of raw text
 - Clear color coding per event type
 - Separate webhook URL for transfer-added events
-- Deduplication: same message within 30s is suppressed (keyed on url+title+description)
+- Deduplication: same message within 10s is suppressed (keyed on url+title+description)
 - Rate limiting: minimum 2s between messages per URL
 - Discord 429 handling with retry_after
 - Lazy asyncio.Lock (compatible with IsolatedAsyncioTestCase)
