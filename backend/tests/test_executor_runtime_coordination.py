@@ -411,7 +411,7 @@ async def test_unprovable_reserved_ceiling_engages_available_acquisition_gate(tm
     cancels = lambda: len([call for call in executor.calls if call[0] == "cancel"])  # noqa: E731
     assert cancels() == 0  # the gate stopped acquisition without cancelling anything
     await core.engine.pause_all()
-    fenced = cancels()  # DebridPulse pause fences the one writer: the only cancellation
+    fenced = cancels()  # DownloadPulse pause fences the one writer: the only cancellation
     assert fenced == 1
     await core.engine.resume_all()
     assert executor.gate[-1] is True  # global resume never releases a cap-held gate
@@ -465,7 +465,7 @@ async def test_capability_loss_with_unchanged_assigned_share_blocks_start_and_re
     first = await submit_ledger(core, "item")
     artifact = await artifact_of(core, first.id)
     await core.engine.pause(first.id)
-    assert (await artifact_of(core, first.id)).execution is None  # DebridPulse pause fenced the writer
+    assert (await artifact_of(core, first.id)).execution is None  # DownloadPulse pause fenced the writer
     core.executors[0].runtime_available = frozenset()  # the share (CAP) is unchanged and still "assigned"
     starts = log.count(("exec-a", "start"))
     second = await submit_ledger(core, "second")

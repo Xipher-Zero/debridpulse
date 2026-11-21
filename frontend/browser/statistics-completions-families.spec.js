@@ -30,7 +30,7 @@ async function boot(page, {width = 1272, height = 900, light = false, clock = fa
   });
   await page.goto('/');
   await page.waitForFunction(() => window.DPStatisticsLifecycle && typeof Chart !== 'undefined');
-  if (light) await page.evaluate(() => { document.body.classList.add('light'); document.dispatchEvent(new CustomEvent('debridpulse:theme-changed')); });
+  if (light) await page.evaluate(() => { document.body.classList.add('light'); document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed')); });
   await page.evaluate(() => nav(document.querySelector('[data-view="stats"]')));
 }
 const show = async (page, period) => {
@@ -331,7 +331,7 @@ test('an empty period keeps its three-item legend; swatches follow the theme', a
     .evaluateAll(nodes => nodes.map(node => getComputedStyle(node).backgroundColor));
   const dark = await swatches();
   expect(new Set(dark).size).toBe(3);
-  await page.evaluate(() => { document.body.classList.add('light'); document.dispatchEvent(new CustomEvent('debridpulse:theme-changed')); });
+  await page.evaluate(() => { document.body.classList.add('light'); document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed')); });
   const light = await swatches();
   expect(new Set(light).size).toBe(3);
   expect(light).not.toEqual(dark);

@@ -1,6 +1,6 @@
-"""The internal Usenet acquisition daemon DebridPulse runs and owns.
+"""The internal Usenet acquisition daemon DownloadPulse runs and owns.
 
-The supported deployment bundles this service inside the DebridPulse
+The supported deployment bundles this service inside the DownloadPulse
 container. It is implementation-private: it binds loopback only, its port is
 never published, its web application is never exposed or proxied, and its
 control-plane endpoint and API credential are constructed here and never come
@@ -26,9 +26,9 @@ from core.ports import loopback_port
 from executors.process_ownership import output_lines
 from core.processes import WINDOWLESS
 
-logger = logging.getLogger("debridpulse.usenet")
+logger = logging.getLogger("downloadpulse.usenet")
 
-# Loopback only: the service is reachable from the DebridPulse process and
+# Loopback only: the service is reachable from the DownloadPulse process and
 # from nowhere else. Nothing publishes this port. It is SERVICE_PORT when that
 # is free, else one the operating system chooses (core.ports), chosen again at
 # every start: another program may already listen on 8090, and a taken port
@@ -37,11 +37,11 @@ SERVICE_HOST = "127.0.0.1"
 SERVICE_PORT = 8090
 # The port the running service was started on; None while none runs.
 _service_port: int | None = None
-# Where the service keeps its own configuration/state: beside DebridPulse's
+# Where the service keeps its own configuration/state: beside DownloadPulse's
 # database, as every data-root default (/app/data/usenet in the container).
 CONFIG_ROOT = Path(os.environ.get("USENET_CONFIG_DIR", str(DB_PATH.parent / "usenet")))
 # The bundled service's program: beside the backend (/app/usenet in the
-# container), wherever DebridPulse is laid out.
+# container), wherever DownloadPulse is laid out.
 SERVICE_ROOT = Path(__file__).resolve().parents[2] / "usenet"
 # How long a cold start may take before the runtime reports it unhealthy.
 STARTUP_TIMEOUT_SECONDS = 90
@@ -105,7 +105,7 @@ def _read_ini() -> dict:
 def _write_bootstrap_ini(download_root: str) -> None:
     """Seed the service's configuration so its first start is already correct.
 
-    Only DebridPulse-owned operational values are written; news servers are
+    Only DownloadPulse-owned operational values are written; news servers are
     applied separately through the canonical configuration path. Everything
     else in the file is the service's own and is kept exactly as it saved it.
     """
@@ -128,7 +128,7 @@ def _write_bootstrap_ini(download_root: str) -> None:
         "password": "",
         "download_dir": topology.incomplete_root(download_root),
         "complete_dir": topology.complete_root(download_root),
-        # DebridPulse owns extraction; the service must never unpack.
+        # DownloadPulse owns extraction; the service must never unpack.
         "direct_unpack": "0",
         "enable_filejoin": "0",
         "enable_unrar": "0",
@@ -143,7 +143,7 @@ def _write_bootstrap_ini(download_root: str) -> None:
         "permissions": "",
         "auto_browser": "0",
         "check_new_rel": "0",
-        # Nor a tray icon of its own: DebridPulse's desktop tray is the only
+        # Nor a tray icon of its own: DownloadPulse's desktop tray is the only
         # one (SABnzbd 5.1.3 starts its Windows tray whenever PyWin32 is
         # present and this is on, which is its default).
         "tray_icon": "0",
@@ -209,7 +209,7 @@ class UsenetRuntime:
 
     def _command(self) -> list[str]:
         binary = self._binary()
-        # The bundled service runs on DebridPulse's own interpreter: the one
+        # The bundled service runs on DownloadPulse's own interpreter: the one
         # Python whose locked packages (sabctools among them) it needs.
         command = ([binary] if not str(binary).endswith(".py")
                    else [sys.executable, str(binary)])
@@ -309,7 +309,7 @@ class UsenetRuntime:
         exited = (self._process.returncode
                   if self._process is not None and self._process.returncode is not None else None)
         if exited is not None and not self._last_error:
-            # The service ended without DebridPulse asking it to. Its own
+            # The service ended without DownloadPulse asking it to. Its own
             # output is suppressed (see _drain), so the exit code and the
             # suppressed-line counts are the whole diagnostic -- enough to
             # tell "it died" from "it was never started", with none of what
@@ -352,7 +352,7 @@ class UsenetRuntime:
         The pipes must be read or the child blocks once its buffer fills, but
         the content is the native service's own output: it prints its
         configuration, its API key and news-server details, and none of that
-        has been through DebridPulse's secret boundary. Forwarding it to the
+        has been through DownloadPulse's secret boundary. Forwarding it to the
         application log -- even at DEBUG -- would let native output bypass that
         boundary entirely, so the bytes are drained and discarded. Only the
         fact that a stream ended is worth recording.

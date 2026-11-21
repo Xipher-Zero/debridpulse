@@ -27,8 +27,8 @@ def _settings(**updates):
         "auth_password_enabled": True,
         "auth_oidc_enabled": True,
         "oidc_provider_name": "OpenID Connect",
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
-        "oidc_client_id": "debridpulse-client",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
+        "oidc_client_id": "downloadpulse-client",
         "oidc_client_secret": "secret",
         "oidc_scopes": ["openid", "profile", "email"],
         "oidc_allow_all": True,
@@ -171,7 +171,7 @@ async def test_verified_pending_oidc_commit_rejects_changed_auth_baseline(monkey
     assert await commit_verified_pending_oidc(
         "pending-state",
         expected_configuration_version=candidate_version,
-        issuer="https://id.example/application/o/debridpulse",
+        issuer="https://id.example/application/o/downloadpulse",
         subject="user-1",
     ) is None
     assert config_module.get_settings() is newer
@@ -196,7 +196,7 @@ async def test_pending_oidc_commit_rejects_mismatched_proof_before_persistence(m
     assert await commit_verified_pending_oidc(
         "pending-state",
         expected_configuration_version="proof-from-different-config",
-        issuer="https://id.example/application/o/debridpulse",
+        issuer="https://id.example/application/o/downloadpulse",
         subject="user-1",
     ) is None
     assert saves == []
@@ -232,7 +232,7 @@ async def test_verify_config_stages_only_and_sets_secure_browser_correlation(mon
     )
     assert response.status_code == 200
     assert pending_oidc_store.has("pending-state") is True
-    assert current.oidc_client_id == "debridpulse-client"
+    assert current.oidc_client_id == "downloadpulse-client"
 
     cookie = _response_cookie(response, OIDC_CORRELATION_COOKIE)
     assert cookie is not None
@@ -326,7 +326,7 @@ async def test_successful_pending_callback_commits_before_new_session(monkeypatc
             path="/auth/oidc/callback",
             cookie=(
                 f"{OIDC_CORRELATION_COOKIE}=browser-correlation; "
-                "__Host-debridpulse-session=old-token"
+                "__Host-downloadpulse-session=old-token"
             ),
         ),
         state="pending-state",
@@ -335,6 +335,6 @@ async def test_successful_pending_callback_commits_before_new_session(monkeypatc
     assert response.status_code == 303
     assert response.headers["location"] == "/settings"
     assert events.index("verified") < events.index("committed") < events.index("new-session")
-    issued = _response_cookie(response, "__Host-debridpulse-session")
+    issued = _response_cookie(response, "__Host-downloadpulse-session")
     assert issued is not None
     assert issued.value == "new-token"

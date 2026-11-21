@@ -1,12 +1,12 @@
-"""The one decision behind ``ghcr.io/xipher-zero/debridpulse:1.0.14-testing``.
+"""The one decision behind ``ghcr.io/xipher-zero/downloadpulse:1.0.0-testing``.
 
-``1.0.14-testing`` is a rolling development alias: it follows the newest
-1.0.14 commit whose Fork Image run has published its complete multi-architecture
+``1.0.0-testing`` is a rolling development alias: it follows the newest
+1.0.0 commit whose Image run has published its complete multi-architecture
 image. It is not a qualification or release target -- the six required
 workflows stay independently authoritative, and ``latest`` and the release
 tags stay Release Promotion's.
 
-Fork Image's last job calls ``.github/workflows/testing-alias.yml`` once its own
+Image's last job calls ``.github/workflows/testing-alias.yml`` once its own
 publication succeeded. That job gathers facts -- the branch tip, this commit's
 immutable ``sha-<commit>`` index and what the alias resolves to now -- and this
 module alone decides from them whether the alias moves. A commit that is no
@@ -21,9 +21,9 @@ import re
 import sys
 from pathlib import Path
 
-BRANCH = "1.0.14"
-ALIAS = "1.0.14-testing"
-IMAGE = "ghcr.io/xipher-zero/debridpulse"
+BRANCH = "1.0.0"
+ALIAS = "1.0.0-testing"
+IMAGE = "ghcr.io/xipher-zero/downloadpulse"
 PLATFORMS = ("amd64", "arm64")
 REVISION = "org.opencontainers.image.revision"
 _SHA = re.compile(r"[0-9a-f]{40}")
@@ -50,7 +50,7 @@ def decide(*, tip, sha, digest=None, index=None, alias_digest=None) -> dict:
     """``advance`` (move the alias to ``digest``), ``current`` (it already
     resolves there), ``superseded`` (``sha`` is no longer the tip: no write)
     or ``unchanged`` (a fault, with the reason and a short ``cause``) for the
-    commit ``sha`` whose Fork Image run just published."""
+    commit ``sha`` whose Image run just published."""
     result = {"alias": f"{IMAGE}:{ALIAS}", "branch": BRANCH, "commit": sha, "tip": tip, "source_tag": None,
               "digest": None, "platforms": None, "previous_alias_digest": alias_digest}
 
@@ -64,7 +64,7 @@ def decide(*, tip, sha, digest=None, index=None, alias_digest=None) -> dict:
     result["source_tag"] = f"{IMAGE}:sha-{sha}"
     if tip != sha:
         return {**result, "action": "superseded",
-                "reason": f"{BRANCH} is now {tip[:12]}; its own Fork Image publication moves the alias"}
+                "reason": f"{BRANCH} is now {tip[:12]}; its own Image publication moves the alias"}
     if not isinstance(digest, str) or not _DIGEST.fullmatch(digest):
         return unchanged("this commit's immutable image did not resolve to an index digest", "image unresolved")
     result["digest"] = digest
@@ -80,8 +80,8 @@ def decide(*, tip, sha, digest=None, index=None, alias_digest=None) -> dict:
 
 # GitHub's limit for a commit status description.
 STATUS_LIMIT = 140
-RETRY = "Retry: re-run Fork Image's Testing alias job."
-RECONCILE = "Reconcile: re-run Fork Image's Testing alias job."
+RETRY = "Retry: re-run Image's Testing alias job."
+RECONCILE = "Reconcile: re-run Image's Testing alias job."
 # What the write step observed in the registry after its attempt.
 WRITES = frozenset({"advanced", "unchanged", "unknown", "not_attempted"})
 
@@ -100,7 +100,7 @@ def _status(head: str, detail: str = "", tail: str = "") -> str:
 
 
 def outcome(decision, *, write: str | None = None, previous: str | None = None) -> tuple[str, str]:
-    """The ``1.0.14-testing`` commit status for one evaluation: ``(state,
+    """The ``1.0.0-testing`` commit status for one evaluation: ``(state,
     description)``, every description within ``STATUS_LIMIT``.
 
     ``success`` only when the registry was observed holding this commit's

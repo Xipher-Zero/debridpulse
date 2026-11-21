@@ -189,12 +189,12 @@ def test_legacy_password_migration_persistence_failure_aborts_startup(monkeypatc
 
 
 def test_oidc_issuer_identifier_is_exact_and_trailing_slash_is_preserved():
-    issuer = "https://id.example/application/o/debridpulse/"
+    issuer = "https://id.example/application/o/downloadpulse/"
     settings = SimpleNamespace(
         auth_oidc_enabled=True,
         oidc_provider_name="Authentik",
         oidc_issuer_url=issuer,
-        oidc_client_id="debridpulse-client",
+        oidc_client_id="downloadpulse-client",
         oidc_client_secret="secret",
         oidc_scopes=["openid", "profile", "email"],
         oidc_allow_all=True,
@@ -207,7 +207,7 @@ def test_oidc_issuer_identifier_is_exact_and_trailing_slash_is_preserved():
     config = oidc.oidc_configuration(settings)
     assert config.issuer == issuer
     assert oidc._discovery_url(config.issuer) == (
-        "https://id.example/application/o/debridpulse/.well-known/openid-configuration"
+        "https://id.example/application/o/downloadpulse/.well-known/openid-configuration"
     )
 
     discovered = oidc._parse_discovery(

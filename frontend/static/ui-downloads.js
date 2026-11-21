@@ -1,4 +1,4 @@
-/* DebridPulse — canonical Downloads controller/renderer owner
+/* DownloadPulse — canonical Downloads controller/renderer owner
  * (DP 1.0.12 canonical flattening, CANON-001 closure).
  *
  * Sole owner of: list page state, the bounded /torrents fetch, final row
@@ -16,7 +16,7 @@
 (function () {
 'use strict';
 
-const DATE_PREF_KEY = 'debridpulse.downloads.date-presentation.v1';
+const DATE_PREF_KEY = 'downloadpulse.downloads.date-presentation.v1';
 const DATE_FORMATS = new Set(['friendly', 'us', 'international', 'iso']);
 // The one canonical pause-eligible presentation-status set (also used by
 // Dashboard Recent) is owned by ui-processing-presentation.js, a required
@@ -750,7 +750,7 @@ function rowMarkup(t) {
   // What this caller may do here: ordinary operation by role, destruction by
   // the row's own server-given access (another account's demand withholds it).
   const operable = dpCan('transfers.operate');
-  const destroyable = window.debridPulseAuth?.mayDestroy(t) === true;
+  const destroyable = window.downloadPulseAuth?.mayDestroy(t) === true;
   const rowKey = stableDownloadId(t.id);
   if (rowKey !== null) _rowAccess.set(rowKey, {...(t.access || {}), destroy: destroyable});
   const presentation = window.DPProcessingPresentation
@@ -938,7 +938,7 @@ async function fetchAndRenderTorrents() {
     });
     toast(sanitizeErrorMsg(e.message), 'error');
   }
-  document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered'));
+  document.dispatchEvent(new CustomEvent('downloadpulse:downloads-rendered'));
 }
 
 async function loadTorrents() {
@@ -1527,7 +1527,7 @@ async function bulkAction(action, button) {
     setButtonPending(button, false);
     // Settled means focus has settled too: the notification follows it.
     await settleRemovalFocus(button, restored);
-    document.dispatchEvent(new CustomEvent('debridpulse:downloads-bulk-action-settled', {detail: {action}}));
+    document.dispatchEvent(new CustomEvent('downloadpulse:downloads-bulk-action-settled', {detail: {action}}));
   }
 }
 async function setLabel(id) {
@@ -1553,7 +1553,7 @@ async function setLabel(id) {
 // request), and the control that had focus gets it back -- found by its row's
 // transfer and its action, never by its words -- else its row, else Search.
 let lastTorrentPaint = null;
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   if (lastTrackedCount !== null) updateDownloadsTrackedCopy(lastTrackedCount);
   fitDownloadsSearchPlaceholder();
   syncStatusFilterControl();
@@ -1584,7 +1584,7 @@ function init() {
   body?.addEventListener('pointerdown', onNamePointerDown);
   body?.addEventListener('keydown', onNameKeyDown);
   window.addEventListener('resize', scheduleCapacityCheck, {passive: true});
-  document.addEventListener('debridpulse:navigation', e => {
+  document.addEventListener('downloadpulse:navigation', e => {
     if (e.detail?.view === 'torrents') { observeResize(); scheduleCapacityCheck(); }
   });
 }

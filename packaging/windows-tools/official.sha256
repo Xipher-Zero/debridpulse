@@ -1,11 +1,11 @@
-# The official Windows releases DebridPulse ships unmodified, pinned by
+# The official Windows releases DownloadPulse ships unmodified, pinned by
 # SHA-256: a download that does not match is refused.
 # 7-Zip 25.01 x64 installer (GitHub release ip7z/7zip 25.01; GitHub's published asset digest)
 78afa2a1c773caf3cf7edf62f857d2a8a5da55fb0fff5da416074c0d28b2b55f  7z2501-x64.exe  https://github.com/ip7z/7zip/releases/download/25.01/7z2501-x64.exe
 # 7-Zip 25.01 "extra" (standalone 7za.exe: what SABnzbd runs on Windows, win/7zip/7za.exe)
 cd3cf38085c2cc6839cf72716dafb3175ae425f4fd34faafc6c0b64d618d307f  7z2501-extra.7z  https://github.com/ip7z/7zip/releases/download/25.01/7z2501-extra.7z
 # RARLAB UnRAR for Windows x64 (RARLAB publishes no digest and no versioned URL:
-# pinned to the file first verified for DebridPulse; a new release needs a new pin)
+# pinned to the file first verified for DownloadPulse; a new release needs a new pin)
 89276cb1155b70ce8a1678311b78ce72485c9bebe7127882358da7ed48b85a9c  unrarw64.exe  https://www.rarlab.com/rar/unrarw64.exe
 # par2cmdline-turbo 1.5.0 source (GitHub animetosho/par2cmdline-turbo, tag v1.5.0; GPL-2.0-or-later):
 # built for Windows because SABnzbd's \\?\ long paths are refused by par2cmdline 0.8.1

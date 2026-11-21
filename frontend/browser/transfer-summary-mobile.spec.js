@@ -73,7 +73,7 @@ async function open(page, items, {readOnly = false, width = 390, height = 844, v
     const readonly = authority => ({...authority, role: 'readonly', capabilities: ['interface', 'session', 'statistics.read', 'statistics.summary', 'transfers.read']});
     await page.route(url => url.pathname === '/app.js', async route => {
       const body = await (await route.fetch()).text();
-      const marker = 'window.debridPulseAuthority=Object.freeze(';
+      const marker = 'window.downloadPulseAuthority=Object.freeze(';
       const [head, rest] = body.split(marker);
       const end = rest.indexOf(');');
       return route.fulfill({status: 200, contentType: 'application/javascript', body: head + marker + JSON.stringify(readonly(JSON.parse(rest.slice(0, end)))) + rest.slice(end)});

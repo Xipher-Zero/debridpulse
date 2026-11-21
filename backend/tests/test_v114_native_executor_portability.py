@@ -1,6 +1,6 @@
 """Native executors on every host (1.0.14 desktop WS3).
 
-The executors keep one contract wherever DebridPulse runs; what differs is
+The executors keep one contract wherever DownloadPulse runs; what differs is
 the platform's own behaviour, handled at each existing owner:
 
 * rsync's local arguments (``executors.rsync.executor.local_argument``):
@@ -8,7 +8,7 @@ the platform's own behaviour, handled at each existing owner:
 * the egress guard's tunnel (``open_tunnel``): a socket a CHILD process can
   drive with its own event loop (on Windows a socket the parent's event loop
   has used is bound to the parent's I/O completion port for good);
-* rsync over SSH through DebridPulse's one channel (``services.ssh_channel``):
+* rsync over SSH through DownloadPulse's one channel (``services.ssh_channel``):
   the secret, status and tunnel pass through the native rsync to the channel,
   and the transfer completes byte for byte;
 * the bundled Usenet service's program and state (``executors.sabnzbd.runtime``):
@@ -189,7 +189,7 @@ async def test_rsync_over_ssh_passes_secret_status_and_tunnel_through_the_native
         await guard.stop()
 
 
-# ── the packaged aria2 verifies the very SFTP host key DebridPulse confirms ──
+# ── the packaged aria2 verifies the very SFTP host key DownloadPulse confirms ──
 
 async def _aria2_sftp(tmp_path, origin, fingerprint, attempt):
     from test_v113_transport_evidence_sampling import PASSWORD, USER
@@ -242,7 +242,7 @@ async def test_the_packaged_aria2_verifies_the_host_key_dp_confirms_and_no_other
 
 def test_the_usenet_service_lives_beside_the_backend_and_its_state_beside_the_database(tmp_path):
     script = ("import executors.sabnzbd.runtime as r; print(r.SERVICE_ROOT); print(r.CONFIG_ROOT)")
-    database = tmp_path / "data" / "debridpulse.db"
+    database = tmp_path / "data" / "downloadpulse.db"
     environment = {key: value for key, value in os.environ.items() if key != "USENET_CONFIG_DIR"}
     environment["DB_PATH"] = str(database)
     result = subprocess.run([sys.executable, "-c", script], cwd=BACKEND, env=environment, capture_output=True,

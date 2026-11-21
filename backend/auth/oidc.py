@@ -25,7 +25,7 @@ from auth.policy import oidc_auth_enabled, safe_return_path
 
 
 OIDC_CALLBACK_PATH = "/auth/oidc/callback"
-OIDC_CORRELATION_COOKIE = "__Host-debridpulse-oidc"
+OIDC_CORRELATION_COOKIE = "__Host-downloadpulse-oidc"
 OIDC_TRANSACTION_TTL_SECONDS = 600
 
 

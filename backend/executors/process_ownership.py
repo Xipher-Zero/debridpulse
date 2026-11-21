@@ -2,12 +2,12 @@
 
 An executor whose native job is an operating-system process (rather than a job
 inside a daemon it can query) owns that process through exactly this module.
-One DebridPulse execution attempt owns at most one native process group:
+One DownloadPulse execution attempt owns at most one native process group:
 
 * Before the process exists, a durable marker is created for the attempt and
   an exclusive ``flock`` is taken on it. The descriptor is inherited by the
   whole process group, so the lock is held precisely as long as any process of
-  that group is alive -- across a DebridPulse restart too -- and it is released
+  that group is alive -- across a DownloadPulse restart too -- and it is released
   by the kernel when the last one exits. No command string is matched and no
   PID is trusted on its own: the lock is the liveness proof, and the recorded
   process-group id is only acted on while the lock proves the group exists.
@@ -18,11 +18,11 @@ One DebridPulse execution attempt owns at most one native process group:
   standard input, or inherited descriptors -- never argv, the environment or
   a file.
 * The process runs in its own session (no controlling terminal, so nothing can
-  prompt) with a minimal environment: no inherited DebridPulse configuration,
+  prompt) with a minimal environment: no inherited DownloadPulse configuration,
   no operator shell state, and an empty private home.
 * The group's identity is durable before its program runs. The child first
-  waits at a one-byte gate; DebridPulse records its group id and only then
-  opens the gate. If recording fails, or DebridPulse dies before it opens the
+  waits at a one-byte gate; DownloadPulse records its group id and only then
+  opens the gate. If recording fails, or DownloadPulse dies before it opens the
   gate -- even without any cleanup running -- the gate reads end-of-file and
   the child exits having done nothing, so no live group is ever unidentified.
 
@@ -37,8 +37,8 @@ inside this module:
   member may leave. The gate is assigned to it while it still waits at the
   gate, and checks for itself that it is in the job before it starts the
   program. It holds a query-only handle to the job (inherited by the program
-  too), so the job -- and its name -- outlive a DebridPulse crash for as long
-  as any member lives, and a restarted DebridPulse re-opens it by name.
+  too), so the job -- and its name -- outlive a DownloadPulse crash for as long
+  as any member lives, and a restarted DownloadPulse re-opens it by name.
 * Windows cannot replace a process image, so the gate starts the program,
   waits until every process of the job but itself has ended, and exits with
   the program's code; the recorded group id is the gate's process id.
@@ -97,7 +97,7 @@ _GATE = (
 # the job but itself has ended, with the program's exit code. The gate has no
 # console (its console host would be a member of the job for as long as the
 # gate lives); the program gets a hidden one, whose host ends with it, and
-# the gate's own standard handles -- DebridPulse's pipes -- named explicitly
+# the gate's own standard handles -- DownloadPulse's pipes -- named explicitly
 # (left unnamed, the program would read and write its new console instead).
 _WINDOWS_GATE = (
     "import ctypes, msvcrt, os, subprocess, sys, time\n"
@@ -169,7 +169,7 @@ class ProcessGroupAlive(Exception):
 
 @dataclass
 class OwnedProcess:
-    """The in-memory handle of a group this DebridPulse process started."""
+    """The in-memory handle of a group this DownloadPulse process started."""
     attempt_id: str
     process: asyncio.subprocess.Process
     group: int
@@ -196,9 +196,9 @@ class ProcessOwnership:
     @staticmethod
     def _job_name(marker: Path) -> str:
         """The name of a marker's Windows Job Object: derived from the marker,
-        so a restarted DebridPulse names the same job."""
+        so a restarted DownloadPulse names the same job."""
         digest = hashlib.sha256(os.path.normcase(str(marker)).encode("utf-8")).hexdigest()[:32]
-        return f"Local\\DebridPulse-attempt-{digest}"
+        return f"Local\\DownloadPulse-attempt-{digest}"
 
     def alive(self, attempt_id: str) -> bool | None:
         """``True`` while a group of this attempt lives, ``False`` once none

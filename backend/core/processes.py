@@ -1,4 +1,4 @@
-"""How DebridPulse starts a program directly.
+"""How DownloadPulse starts a program directly.
 
 On Windows the backend runs without a console of its own (the desktop
 application's), so every console program it starts -- download engines,

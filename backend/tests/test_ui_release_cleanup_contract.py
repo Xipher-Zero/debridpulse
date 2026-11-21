@@ -1,4 +1,4 @@
-"""Release-state frontend cleanup contracts for DebridPulse v1.0.11."""
+"""Release-state frontend cleanup contracts for DownloadPulse v1.0.11."""
 
 from pathlib import Path
 

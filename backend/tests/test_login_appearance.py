@@ -17,7 +17,7 @@ Narrow proofs, each at its owner:
   is republished; the wipe keeps it;
 * the anonymous read (``api.auth_routes``): every server-rendered sign-in
   page carries exactly the validated mode and palette at first paint, reads
-  the one row and no account table, falls back to DebridPulse Dark, and keeps
+  the one row and no account table, falls back to DownloadPulse Dark, and keeps
   its CSP, hash-pinned shim and ``no-store``;
 * one palette catalog and one logo source: every catalog palette resolves
   through the application's own palette stylesheet; the inline marks are
@@ -53,7 +53,7 @@ pytestmark = pytest.mark.asyncio
 OWN = "/api/account/appearance"
 PUBLISH = "/api/login-appearance"
 STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
-NATIVE_DARK = {"mode": "dark", "palette": "debridpulse-dark"}
+NATIVE_DARK = {"mode": "dark", "palette": "downloadpulse-dark"}
 _SINGLE_READ = "SELECT mode, palette FROM login_appearance WHERE id=1"
 
 
@@ -143,7 +143,7 @@ async def test_no_personal_choice_changes_the_login_appearance(live):
         assert (await choose(name, **change)).status_code == 200
     assert await _row() == [] and await _login(client) == NATIVE_DARK
     assert await account_appearance.load(live.people["ann"].id) == {
-        "mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "catppuccin-latte"}
+        "mode": "light", "dark_palette": "downloadpulse-dark", "light_palette": "catppuccin-latte"}
     # Published once, a later personal choice still leaves it.
     assert (await live.publish("ann", "light", "catppuccin-latte")).json() == {"mode": "light", "palette": "catppuccin-latte"}
     await choose("ann", mode="dark")
@@ -168,7 +168,7 @@ async def test_only_an_active_admin_publishes_its_own_saved_theme(live):
     # Without the session's CSRF token: refused.
     headers = dict(live.as_("ann"))
     headers.pop("X-CSRF-Token")
-    assert (await client.put(PUBLISH, headers=headers, json={"mode": "dark", "palette": "debridpulse-dark"})).status_code == 403
+    assert (await client.put(PUBLISH, headers=headers, json={"mode": "dark", "palette": "downloadpulse-dark"})).status_code == 403
     # A pair outside the catalog, or another field: refused.
     for body in ({"mode": "dark", "palette": "nord-light"}, {"mode": "dark", "palette": "x"},
                  {"mode": "dark", "palette": "dracula", "account_id": "x"}):
@@ -217,11 +217,11 @@ async def test_a_failed_publication_leaves_the_published_theme(live, monkeypatch
         raise sqlite3.OperationalError("disk I/O error")
 
     monkeypatch.setattr(account_appearance, "_project", broken)
-    response = await live.publish("ann", "light", "debridpulse-light")
+    response = await live.publish("ann", "light", "downloadpulse-light")
     assert response.status_code >= 500
     assert await _row() == [(1, "dark", "dracula")]
     assert await account_appearance.load(live.people["ann"].id) == {
-        "mode": "light", "dark_palette": "dracula", "light_palette": "debridpulse-light"}
+        "mode": "light", "dark_palette": "dracula", "light_palette": "downloadpulse-light"}
 
 
 @pytest.mark.parametrize("first", ["ann", "admin"])
@@ -381,7 +381,7 @@ async def test_a_retired_corrupt_missing_or_unreadable_row_is_a_safe_native_appe
             await db.commit()
 
     await stored("light", "retired-sunset")
-    assert await _login(live.client) == {"mode": "light", "palette": "debridpulse-light"}
+    assert await _login(live.client) == {"mode": "light", "palette": "downloadpulse-light"}
     await stored("dark", 'x" onload="alert(1)')
     page = (await live.client.get("/login")).text
     assert _shown(page) == NATIVE_DARK and "onload" not in page
@@ -439,7 +439,7 @@ async def test_every_catalog_palette_is_drawn_from_the_applications_own_values(l
             assert palettes in page                                              # the application's stylesheet, whole
             block = palettes.split(f'body[data-dp-palette="{palette}"],', 1)[1].split("}", 1)[0]
             assert all(re.search(rf"{token}:\s*[^;]+;", block) for token in _CORE), palette
-    # The page maps decorative names only: the error material keeps DebridPulse's meaning.
+    # The page maps decorative names only: the error material keeps DownloadPulse's meaning.
     mapping = auth_routes._AUTH_PAGE_STYLE.split("body[data-dp-palette] {", 1)[1].split("}", 1)[0]
     assert "--danger" not in mapping and "--dp-state" not in mapping and "--dp-identity" not in mapping
     assert "--danger" not in palettes and "--dp-state-" not in palettes.split("*/", 1)[1]
@@ -466,9 +466,9 @@ async def test_the_inline_marks_are_the_canonical_logo(live):
     assert (STATIC / "ui-logo.css").read_text(encoding="utf-8") in login
     bootstrap = (await live.client.get("/ui-theme-bootstrap.js", headers=live.as_("alice"))).text
     head = bootstrap.split("\n", 1)[0]
-    assert json.loads(re.fullmatch(r"window\.debridPulseLogo=(.*);", head).group(1)) == auth_routes._APP_LOGO_SVG
+    assert json.loads(re.fullmatch(r"window\.downloadPulseLogo=(.*);", head).group(1)) == auth_routes._APP_LOGO_SVG
     index = (STATIC / "index.html").read_text(encoding="utf-8")
-    assert ('<dp-logo class="logo-icon" role="img" aria-label="DebridPulse logo" '
+    assert ('<dp-logo class="logo-icon" role="img" aria-label="DownloadPulse logo" '
             'data-i18n-attr="aria-label:shell.logo_label"></dp-logo>') in index
     assert 'src="/logo.svg' not in index
 

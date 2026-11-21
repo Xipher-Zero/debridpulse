@@ -143,7 +143,7 @@ class GatedProvider(ParcelProvider):
 
 
 class GatedExecutor(MemoryExecutor):
-    """Memory executor whose writer start the test can hold open: DebridPulse
+    """Memory executor whose writer start the test can hold open: DownloadPulse
     Resume continues through a NEW writer, so the start of that writer is
     where Resume's artifact recovery is still in progress."""
 

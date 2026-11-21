@@ -420,13 +420,13 @@ test('a User (no Recover All): Quick Add keeps one header row whose subtitle fit
       await page.locator('button[type="submit"]').click();
     }
     await expect(page).not.toHaveURL(/\/login/);
-    await page.waitForFunction(() => window.debridPulseAuth && document.getElementById('q-transfer-input'));
+    await page.waitForFunction(() => window.downloadPulseAuth && document.getElementById('q-transfer-input'));
     if (username === ADMIN.username && !reuse) adminSession.remember(await context.storageState());
     return {context, page};
   };
   const admin = await signIn(ADMIN, adminSession.get() !== null);
   const account = {username: `dmc-user-${run}`, password: `dmc-user-${run}-pass`};
-  const created = await admin.page.evaluate(async body => (await window.debridPulseAuth.fetch('/api/accounts', {
+  const created = await admin.page.evaluate(async body => (await window.downloadPulseAuth.fetch('/api/accounts', {
     method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})).status,
   {kind: 'local', role: 'user', display_name: `DMC ${run}`, ...account});
   expect(created).toBe(200);

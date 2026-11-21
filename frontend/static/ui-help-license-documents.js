@@ -1,6 +1,6 @@
-/* DebridPulse v1.0.11 bundled Help legal-document overlay.
+/* DownloadPulse v1.0.11 bundled Help legal-document overlay.
  *
- * License actions open the exact document shipped with the running DebridPulse
+ * License actions open the exact document shipped with the running DownloadPulse
  * build. GitHub is never required to read the bundled copy; the only external
  * navigation is the explicit "latest version" link shown inside the overlay.
  *
@@ -177,7 +177,7 @@
     const controller = new AbortController();
     const timeout = window.setTimeout(function () { controller.abort(); }, 8000);
     try {
-      const response = await window.debridPulseAuth.fetch('/api/legal-documents/' + encodeURIComponent(documentId), {
+      const response = await window.downloadPulseAuth.fetch('/api/legal-documents/' + encodeURIComponent(documentId), {
         method: 'GET',
         credentials: 'same-origin',
         cache: 'no-store',
@@ -327,5 +327,5 @@
   }
 
   // The Help owner emits this only after its canonical markup exists.
-  document.addEventListener('debridpulse:help-rendered', enhance);
+  document.addEventListener('downloadpulse:help-rendered', enhance);
 })();

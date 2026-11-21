@@ -6,7 +6,7 @@ fair-use fraction spent) and ``booster_points``. Premiumize names no plan, so
 none is invented here: the account is premium while its paid time is ahead and
 free otherwise. ``space_used`` is deprecated and decides nothing.
 
-What each state may begin through the API DebridPulse uses:
+What each state may begin through the API DownloadPulse uses:
 
 * premium (``premium_until`` ahead): every family this connection offers --
   hoster links, magnets, ``.torrent`` uploads and NZBs;

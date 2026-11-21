@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 universal material tokens.
+/* DownloadPulse v1.0.11 universal material tokens.
  *
  * Dashboard is the calibration/reference surface for the application. These
  * tokens capture the approved material language so pages consume one shared
@@ -162,7 +162,7 @@ body.light,
 
 /* Shell chrome material: the shell, navigation, topbar controls and the
    Dashboard surfaces that were drawn in literal colours, one token per
-   decorative role. The values are the DebridPulse Dark and Light originals;
+   decorative role. The values are the DownloadPulse Dark and Light originals;
    ui-theme-palettes.css derives them for an alternative palette. Semantic
    state and identity colours are never chrome. */
 :root {

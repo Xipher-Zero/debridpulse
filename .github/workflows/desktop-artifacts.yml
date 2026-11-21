@@ -4,7 +4,7 @@
 #                macOS lock, WITH the native executors built here by the
 #                WS3/WS4 macOS recipes (aria2, FFmpeg/ffprobe, par2, zstd,
 #                rsync, 7-Zip, UnRAR) and the Usenet service (SABnzbd at the
-#                image's pin, DebridPulse's one recorded headless patch), the
+#                image's pin, DownloadPulse's one recorded headless patch), the
 #                desktop tests on its runtime, and the ad hoc .app in a DMG
 #                (packaging/desktop/macos/build-app.sh), whose signature,
 #                bundled tools and Usenet service (health, then exit 0 on
@@ -36,7 +36,7 @@
 # notarization or physical-hardware qualification. Nothing is signed (the DMG
 # is ad hoc signed only) and no secret is used.
 #
-# Runs on every push to 1.0.14 that touches the desktop, its recipes or its
+# Runs on every push to 1.0.0 that touches the desktop, its recipes or its
 # legal files. Each platform builds and smoke-tests its own final installer on
 # its own runner and reports the build identity, hashes and results in its job
 # summary. The Actions cache carries only shareable build inputs
@@ -53,10 +53,10 @@
 # once the shared inputs passed, takes exactly the platforms that passed every
 # step -- one EXE, DMG or Flatpak each, stamped with this commit and run and
 # matching its builder's SHA256SUMS --, assembles their corresponding source
-# (DebridPulse-<version>-desktop-sources-*.tar: the recipes' source archives,
+# (DownloadPulse-<version>-desktop-sources-*.tar: the recipes' source archives,
 # patches and recipes -- sources only, never RAR's package --, the MSYS2
 # runtime's and NSIS's sources, the copyleft Python packages, SABnzbd and
-# DebridPulse itself), and publishes, kept 14 days, each platform on its own
+# DownloadPulse itself), and publishes, kept 14 days, each platform on its own
 # (desktop-installers-<sha>-macos, -windows, -linux: the installer and the
 # corresponding source, with MANIFEST.md and SHA256SUMS over all of it), so a
 # platform whose runners are short never holds the others back, and, when all
@@ -70,7 +70,7 @@ name: Desktop Artifacts
 on:
   push:
     branches:
-      - '1.0.14'
+      - '1.0.0'
     paths:
       - 'desktop/**'
       - 'packaging/desktop/**'
@@ -293,7 +293,7 @@ jobs:
           cp "$RUNNER_TEMP"/rsync/sources/* desktop-build/windows-sources/msys2/
           cp "$RUNNER_TEMP"/rsync/out/SOURCES "$RUNNER_TEMP"/rsync/out/PACKAGES desktop-build/windows-sources/
           (cd "$tools" && sha256sum ./*.exe ./*.dll rsync/usr/bin/rsync.exe) | tee "$RUNNER_TEMP/tools-SHA256SUMS"
-      - name: The macOS native shell (Neutralino 6.10.0 from its pinned source with DebridPulse's macOS patch)
+      - name: The macOS native shell (Neutralino 6.10.0 from its pinned source with DownloadPulse's macOS patch)
         if: runner.os == 'macOS'
         shell: bash
         run: bash packaging/desktop/neutralino/build-macos.sh "$RUNNER_TEMP/shell"
@@ -352,7 +352,7 @@ jobs:
           if [ "$RUNNER_OS" = "macOS" ]; then exit 0; fi
           if [ "$RUNNER_OS" = "Windows" ]; then PY="$RUNNER_TEMP/layout/runtime/python/python.exe"; else PY="$RUNNER_TEMP/layout/runtime/python/bin/python3"; fi
           c="$RUNNER_TEMP/usenet-check"; mkdir -p "$c/data" "$c/downloads"
-          DB_PATH="$c/data/debridpulse.db" USENET_CONFIG_DIR="$c/usenet" \
+          DB_PATH="$c/data/downloadpulse.db" USENET_CONFIG_DIR="$c/usenet" \
             "$PY" -B -I "$RUNNER_TEMP/usenet-start.py" "$RUNNER_TEMP/layout/backend" "$c/downloads"
       - name: macOS application and DMG (ad hoc; not signed or notarized), its bundled tools and Usenet service run from the image
         if: runner.os == 'macOS'
@@ -367,7 +367,7 @@ jobs:
           DMGBUILD="$RUNNER_TEMP/dmg-tools/bin/dmgbuild" bash packaging/desktop/macos/build-app.sh "$RUNNER_TEMP/layout" "$RUNNER_TEMP/app"
           dmg="$(ls "$RUNNER_TEMP"/app/*.dmg)"; mnt="$RUNNER_TEMP/mnt"; mkdir -p "$mnt"
           hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
-          codesign --verify --deep --strict "$mnt/DebridPulse.app"
+          codesign --verify --deep --strict "$mnt/DownloadPulse.app"
           # The drag-to-install window: the application, the Applications link, the
           # background (1x and 2x) and the volume icon, laid out as dmg-settings.py says.
           [ "$(readlink "$mnt/Applications")" = /Applications ] || { echo "no Applications link"; exit 1; }
@@ -381,10 +381,10 @@ jobs:
               places = {entry.filename: entry.value for entry in store if entry.code == b"Iloc"}
               view = next(entry.value for entry in store if entry.filename == "." and entry.code == b"icvp")
           print("icon places:", places, "| icon size:", view["iconSize"], "| background type:", view["backgroundType"])
-          assert places == {"DebridPulse.app": (170, 190), "Applications": (490, 190)} and view["backgroundType"] == 2
+          assert places == {"DownloadPulse.app": (170, 190), "Applications": (490, 190)} and view["backgroundType"] == 2
           LAYOUT
-          codesign -dv "$mnt/DebridPulse.app" 2>&1 | grep -E '^(Identifier|Signature|CodeDirectory)'
-          tools="$mnt/DebridPulse.app/Contents/Resources/app/tools"
+          codesign -dv "$mnt/DownloadPulse.app" 2>&1 | grep -E '^(Identifier|Signature|CodeDirectory)'
+          tools="$mnt/DownloadPulse.app/Contents/Resources/app/tools"
           check() { name="$1"; banner="$2"; shift 2
             "$tools/$name" "$@" > "$RUNNER_TEMP/banner.txt" 2>&1 || true
             grep -m1 -E "$banner" "$RUNNER_TEMP/banner.txt" || { echo "$name: no '$banner'"; cat "$RUNNER_TEMP/banner.txt"; exit 1; }; }
@@ -397,9 +397,9 @@ jobs:
           check 7zz '7-Zip' i
           check unrar '^UNRAR 7\.23'
           c="$RUNNER_TEMP/usenet-check"; mkdir -p "$c/data" "$c/downloads"
-          PATH="$tools:/usr/bin:/bin" DB_PATH="$c/data/debridpulse.db" USENET_CONFIG_DIR="$c/usenet" \
-            "$mnt/DebridPulse.app/Contents/Resources/app/runtime/python/bin/python3" -I "$RUNNER_TEMP/usenet-start.py" \
-            "$mnt/DebridPulse.app/Contents/Resources/app/backend" "$c/downloads"
+          PATH="$tools:/usr/bin:/bin" DB_PATH="$c/data/downloadpulse.db" USENET_CONFIG_DIR="$c/usenet" \
+            "$mnt/DownloadPulse.app/Contents/Resources/app/runtime/python/bin/python3" -I "$RUNNER_TEMP/usenet-start.py" \
+            "$mnt/DownloadPulse.app/Contents/Resources/app/backend" "$c/downloads"
           hdiutil detach "$mnt" >/dev/null
           cp "$dmg" "$RUNNER_TEMP/app/SHA256SUMS" "$RUNNER_TEMP/layout/BUILD-INFO.json" desktop-build/macos/
           echo "$GITHUB_SHA" > desktop-build/macos/COMMIT; echo "$GITHUB_RUN_ID" > desktop-build/macos/RUN
@@ -452,15 +452,15 @@ jobs:
           function VcVersion { $vc = Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\X64' -ErrorAction SilentlyContinue
             if ($vc -and $vc.Installed -eq 1) { [version]"$($vc.Major).$($vc.Minor).$($vc.Bld)" } else { $null } }
           $minimum = [version]'14.51.0'
-          $exe = (Get-ChildItem desktop-build\windows\DebridPulse-*-windows-x64.exe).FullName
-          $dir = "$env:LOCALAPPDATA\Programs\DebridPulse"
+          $exe = (Get-ChildItem desktop-build\windows\DownloadPulse-*-windows-x64.exe).FullName
+          $dir = "$env:LOCALAPPDATA\Programs\DownloadPulse"
           $before = VcVersion
           $results += "runner VC++ x64 before: $(if ($before) { $before } else { 'absent' })"
           $refusal = 'not exercised (the runner already had 14.51 or newer)'
           if (-not $before -or $before -lt $minimum) {
             # The refusal path on this runner: a silent install must exit 3 and change nothing.
             $refused = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
-            $wrote = (Test-Path $dir) -or (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DebridPulse')
+            $wrote = (Test-Path $dir) -or (Test-Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DownloadPulse')
             $refusal = "exit $($refused.ExitCode); program or uninstall entry written: $wrote"
             if ($refused.ExitCode -ne 3 -or $wrote) { $results += "refusal: $refusal"; $results | Tee-Object -FilePath desktop-build\windows\RESULTS.txt; exit 1 }
             # Provision it from Microsoft, on this runner only (never cached or handed over).
@@ -475,9 +475,9 @@ jobs:
           if (-not $after -or $after -lt $minimum) { $results | Tee-Object -FilePath desktop-build\windows\RESULTS.txt; "FAILED: VC++ x64 14.51+ is not installed"; exit 1 }
           $install = Start-Process -FilePath $exe -ArgumentList '/S' -Wait -PassThru
           $results += "silent install exit: $($install.ExitCode)"
-          $key = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DebridPulse' -ErrorAction SilentlyContinue
-          $entry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DebridPulse'
-          $shortcut = "$([Environment]::GetFolderPath('Programs'))\DebridPulse.lnk"
+          $key = Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DownloadPulse' -ErrorAction SilentlyContinue
+          $entry = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\DownloadPulse'
+          $shortcut = "$([Environment]::GetFolderPath('Programs'))\DownloadPulse.lnk"
           $installedFiles = (Get-ChildItem -Recurse -File "$dir\app" -ErrorAction SilentlyContinue).Count
           $installed = $installedFiles -gt 0 -and $key -and (Test-Path $shortcut) -and (Test-Path "$dir\uninstall.exe")
           $results += "installed files: $installedFiles; uninstall entry: $(if ($key) { $key.DisplayVersion } else { 'absent' }); shortcut: $(Test-Path $shortcut); uninstaller: $(Test-Path "$dir\uninstall.exe")"
@@ -502,7 +502,7 @@ jobs:
           '@
           $probe | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\usenet-start.py"
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\uc\data", "$env:RUNNER_TEMP\uc\downloads" | Out-Null
-          $env:DB_PATH = "$env:RUNNER_TEMP\uc\data\debridpulse.db"; $env:USENET_CONFIG_DIR = "$env:RUNNER_TEMP\uc\usenet"
+          $env:DB_PATH = "$env:RUNNER_TEMP\uc\data\downloadpulse.db"; $env:USENET_CONFIG_DIR = "$env:RUNNER_TEMP\uc\usenet"
           $out = & $py -B -I "$env:RUNNER_TEMP\usenet-start.py" "$dir\app\backend" "$env:RUNNER_TEMP\uc\downloads" 2>&1
           $usenetExit = $LASTEXITCODE
           $results += "$out (exit $usenetExit)"
@@ -601,8 +601,8 @@ jobs:
         run: |
           version="$(tr -d '[:space:]' < VERSION)"; h="$RUNNER_TEMP/desktop-installers"; mkdir -p "$h"
           platforms=" ${{ steps.passed.outputs.platforms }} "
-          for spec in "macos:DebridPulse-$version-macos-arm64.dmg:*.dmg" "windows:DebridPulse-$version-windows-x64.exe:*.exe" \
-                      "linux:DebridPulse-$version-linux-x86_64.flatpak:*.flatpak"; do
+          for spec in "macos:DownloadPulse-$version-macos-arm64.dmg:*.dmg" "windows:DownloadPulse-$version-windows-x64.exe:*.exe" \
+                      "linux:DownloadPulse-$version-linux-x86_64.flatpak:*.flatpak"; do
             IFS=: read -r os expected pattern <<<"$spec"; dir="desktop-build/$os"
             [[ "$platforms" == *" $os "* ]] || continue                 # not built in this run
             mapfile -t found < <(cd "$dir" || exit; compgen -G "$pattern")
@@ -622,13 +622,13 @@ jobs:
           if [[ "$platforms" == *" linux "* ]]; then cp desktop-build/linux/flatpak-first-run.png "$h/"; fi
       - name: Their corresponding source (the tool builds' own source archives, patches and recipes)
         run: |
-          version="$(tr -d '[:space:]' < VERSION)"; name="DebridPulse-$version-desktop-sources-${GITHUB_SHA:0:12}"
+          version="$(tr -d '[:space:]' < VERSION)"; name="DownloadPulse-$version-desktop-sources-${GITHUB_SHA:0:12}"
           platforms=" ${{ steps.passed.outputs.platforms }} "
-          src="$RUNNER_TEMP/$name"; mkdir -p "$src"/{debridpulse,macos-and-flatpak-tools,windows-tools,sabnzbd,python}
-          # DebridPulse itself at this commit: the application, the desktop shell glue and every recipe.
-          git archive --prefix="debridpulse-$GITHUB_SHA/" -o "$src/debridpulse/debridpulse-$GITHUB_SHA.tar.gz" HEAD
+          src="$RUNNER_TEMP/$name"; mkdir -p "$src"/{downloadpulse,macos-and-flatpak-tools,windows-tools,sabnzbd,python}
+          # DownloadPulse itself at this commit: the application, the desktop shell glue and every recipe.
+          git archive --prefix="downloadpulse-$GITHUB_SHA/" -o "$src/downloadpulse/downloadpulse-$GITHUB_SHA.tar.gz" HEAD
           # The macOS and Flatpak helpers' SOURCES only: Debian's signed source packages (with Debian's
-          # and DebridPulse's patches applied), rsync's and 7-Zip's source -- no binary release.
+          # and DownloadPulse's patches applied), rsync's and 7-Zip's source -- no binary release.
           m=desktop-inputs/macos-sources
           for f in "$m"/*.dsc "$m"/aria2-macos-source.tar.gz "$m"/openssl-source.tar.gz "$m"/c-ares-*.tar.gz \
                    "$m"/libssh2-*.tar.gz "$m"/ffmpeg-*.tar.gz "$m"/par2cmdline-*.tar.gz "$m"/libzstd-*.tar.gz \
@@ -651,9 +651,9 @@ jobs:
           mkdir -p "$src/windows-tools/nsis"
           read -r digest nsis url < <(grep -E '^[0-9a-f]{64}  nsis-3\.11-src\.tar\.bz2 ' packaging/desktop/windows/official.sha256)
           curl -sSfL -o "$src/windows-tools/nsis/$nsis" "$url"; echo "$digest  $src/windows-tools/nsis/$nsis" | sha256sum -c -
-          # The native shell: Neutralino 6.10.0 at its pinned commit, DebridPulse's two patches, how each is built.
+          # The native shell: Neutralino 6.10.0 at its pinned commit, DownloadPulse's two patches, how each is built.
           bash packaging/desktop/neutralino/source.sh "$src/neutralino"
-          # The Usenet service (SABnzbd) at the image's pin, hash-checked (its macOS patch is in the DebridPulse archive).
+          # The Usenet service (SABnzbd) at the image's pin, hash-checked (its macOS patch is in the DownloadPulse archive).
           v="$(sed -n 's/^ARG USENET_SERVICE_VERSION=//p' Dockerfile)"; d="$(sed -n 's/^ARG USENET_SERVICE_SHA256=//p' Dockerfile)"
           curl -sSfL -o "$src/sabnzbd/SABnzbd-$v-src.tar.gz" "https://github.com/sabnzbd/sabnzbd/releases/download/$v/SABnzbd-$v-src.tar.gz"
           echo "$d  $src/sabnzbd/SABnzbd-$v-src.tar.gz" | sha256sum -c -
@@ -668,9 +668,9 @@ jobs:
             [ -s "$src/windows-tools/rsync-and-msys2-runtime/msys2/$(basename "$url")" ] || { echo "MSYS2 source of $package $pkgver is missing"; exit 1; }
           done
           {
-            echo "# Corresponding source of the DebridPulse $version desktop installers built from $GITHUB_SHA"
+            echo "# Corresponding source of the DownloadPulse $version desktop installers built from $GITHUB_SHA"
             echo
-            echo "See SOURCE_OFFER.md (in debridpulse/) for what each part covers. Every file, with its SHA-256:"
+            echo "See SOURCE_OFFER.md (in downloadpulse/) for what each part covers. Every file, with its SHA-256:"
             echo; echo '```'; (cd "$src" && find . -type f ! -name SOURCES.md | sort | xargs sha256sum); echo '```'
           } > "$src/SOURCES.md"
           tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/desktop-installers/$name.tar" "$name"
@@ -679,7 +679,7 @@ jobs:
           h="$RUNNER_TEMP/desktop-installers"; sets="$RUNNER_TEMP/sets"; mkdir -p "$sets"
           for os in ${{ steps.passed.outputs.platforms }}; do
             mkdir -p "$sets/$os"
-            cp "$h"/DebridPulse-*-desktop-sources-*.tar "$h/BUILD-INFO-$os.json" "$sets/$os/"
+            cp "$h"/DownloadPulse-*-desktop-sources-*.tar "$h/BUILD-INFO-$os.json" "$sets/$os/"
             case "$os" in
               macos) cp "$h"/*.dmg "$sets/$os/" ;;
               windows) cp "$h"/*.exe "$h/PREREQUISITES.txt" "$h/TOOLCHAIN.txt" "$sets/$os/" ;;
@@ -695,7 +695,7 @@ jobs:
             cd "$set"; set_name="$(basename "$set")"
             payload=$(find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name MANIFEST.md -printf '%f\n' | sort)
             {
-              echo "# DebridPulse desktop TEST installers (unsigned; not a release)"
+              echo "# DownloadPulse desktop TEST installers (unsigned; not a release)"
               echo
               echo "- Set: $set_name (each platform that passed is published on its own; the complete set only when all three passed in one run)"
               echo "- Source commit: $GITHUB_SHA"

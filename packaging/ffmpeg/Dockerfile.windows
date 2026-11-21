@@ -1,4 +1,4 @@
-# DebridPulse's FFmpeg for Windows x64, built on the same pinned Debian base as
+# DownloadPulse's FFmpeg for Windows x64, built on the same pinned Debian base as
 # the Linux package (packaging/ffmpeg/Dockerfile) with Debian's mingw-w64
 # cross toolchain. Build context: the repository root.
 #   podman build -f packaging/ffmpeg/Dockerfile.windows -o <out-dir> .

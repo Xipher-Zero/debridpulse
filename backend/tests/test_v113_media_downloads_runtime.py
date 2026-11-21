@@ -136,7 +136,7 @@ async def test_the_public_route_reaches_only_public_destinations_judged_at_each_
         # guard itself, at the connection, saying so (RFC 9209).
         for host in ("private.test", "mixed.test", PRIVATE):
             refused = await _ask(guard, get(host))
-            assert refused.startswith(b"HTTP/1.1 403") and b"Proxy-Status: debridpulse" in refused, host
+            assert refused.startswith(b"HTTP/1.1 403") and b"Proxy-Status: downloadpulse" in refused, host
         assert (await _ask(guard, get("rebind.test"))).startswith(b"HTTP/1.1 200")
         assert (await _ask(guard, get("rebind.test"))).startswith(b"HTTP/1.1 403")
         # A redirect is a new request, judged on its own.
@@ -147,7 +147,7 @@ async def test_the_public_route_reaches_only_public_destinations_judged_at_each_
         # revoked route admits nothing.
         assert guard._admits(user, token, "media.test", 22) is None
         assert guard._admits(user, token, "media.test", 443) == (False, None, "yt_dlp")
-        assert guard._admits(f"debridpulse.public.{'b' * 32}", token, "media.test", 443) is None
+        assert guard._admits(f"downloadpulse.public.{'b' * 32}", token, "media.test", 443) is None
         guard.revoke_public_route("a" * 32)
         assert (await _ask(guard, get("media.test"))).startswith(b"HTTP/1.1 407")
         assert origin.requests.count("GET /file HTTP/1.1") == 2
@@ -365,7 +365,7 @@ async def test_one_owned_group_per_attempt_cancelled_whole_and_reconciled_after_
     running = await executor.observe(handle)
     assert running.progress.completed_bytes == 1000 and running.activity.network_active
 
-    # DebridPulse restarts: a new executor finds the still-running group by
+    # DownloadPulse restarts: a new executor finds the still-running group by
     # its durable ownership, and stops all of it.
     restarted = MediaExecutor(str(root), str(runtime), _allowed, sandbox=FakeSandbox(str(runtime)))
     assert (await restarted.observe(handle)).state == ExecutionState.RUNNING
@@ -494,7 +494,7 @@ async def test_every_native_helper_runs_with_no_usable_network(tmp_path):
 
         assert run(confined["ffmpeg"], "-version").returncode == 0
         fetched = run(confined["ffmpeg"], "-hide_banner", "-i", f"http://{PUBLIC}:{port}/x", "-f", "null", "-")
-        # DebridPulse's FFmpeg has no network protocol at all; an FFmpeg that
+        # DownloadPulse's FFmpeg has no network protocol at all; an FFmpeg that
         # had one would still be refused by the kernel.
         assert fetched.returncode != 0 and ("Protocol not found" in fetched.stderr
                                             or "Permission denied" in fetched.stderr)
@@ -579,7 +579,7 @@ def test_every_finalization_shape_copies_every_selected_stream_unchanged(tmp_pat
     container, components, subtitle, copies = SHAPES[shape]
     confined = MediaSandbox(str(tmp_path / "runtime")).confined_tools()
     MediaSandbox._workspace(tmp_path)   # the finalizer works inside the attempt workspace
-    # DebridPulse's FFmpeg has no encoder: whatever it writes can only be a copy.
+    # DownloadPulse's FFmpeg has no encoder: whatever it writes can only be a copy.
     encoders = subprocess.run([confined["ffmpeg"], "-hide_banner", "-encoders"], check=True, capture_output=True,
                               text=True).stdout
     assert not encoders.split("------", 1)[1].strip(), "the finalizer can encode"

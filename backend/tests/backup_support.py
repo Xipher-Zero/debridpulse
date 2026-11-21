@@ -1,4 +1,4 @@
-"""Test support for proofs whose subject is what a DebridPulse backup captures.
+"""Test support for proofs whose subject is what a DownloadPulse backup captures.
 
 A restore point is created only from a complete installation: a database the
 v1.0.12 schema owner has marked current, and a persisted configuration. These
@@ -26,5 +26,5 @@ async def restore_point_database(tmp_path: Path, monkeypatch) -> Path:
 
     await prepare_backup_installation(tmp_path, monkeypatch)
     point = await backup.create_restore_point()
-    manifest = json.loads((point.path / ".debridpulse-backup.json").read_text(encoding="utf-8"))
+    manifest = json.loads((point.path / ".downloadpulse-backup.json").read_text(encoding="utf-8"))
     return point.path / manifest["database"]

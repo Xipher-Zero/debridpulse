@@ -183,7 +183,7 @@ async def timeline(tmp_path, monkeypatch, *, inventory_offsets=(), during_pass=F
     run. ``ready``: when Real-Debrid can deliver once selected -- ``"now"``
     (at once: the selection pass's own read-back finds it), ``"remote"``
     (only later, between passes: it becomes ready just before the first
-    inventory run, which is how that readiness reaches DebridPulse), or a
+    inventory run, which is how that readiness reaches DownloadPulse), or a
     number of seconds after the selection pass (an asynchronous transition
     nothing but the ordinary backup poll observes). Default: ``"remote"``
     with inventory, ``"now"`` without. Returns (world, scheduler, marks)."""

@@ -1,4 +1,4 @@
-"""Contract tests for the v1.0.11 DebridPulse design token system."""
+"""Contract tests for the v1.0.11 DownloadPulse design token system."""
 
 from __future__ import annotations
 

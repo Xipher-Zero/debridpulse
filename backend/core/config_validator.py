@@ -19,7 +19,7 @@ from typing import Any, Dict, List, Tuple
 
 from core.logging_utils import sanitize_log_value
 
-logger = logging.getLogger("debridpulse.config")
+logger = logging.getLogger("downloadpulse.config")
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -59,8 +59,8 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
         "AllDebrid-Torrent-Client",
     }
     if getattr(cfg, "discord_username", "") in legacy_names:
-        warn("discord_username", "legacy notification identity migrated to DebridPulse",
-             cfg.discord_username, "DebridPulse")
+        warn("discord_username", "legacy notification identity migrated to DownloadPulse",
+             cfg.discord_username, "DownloadPulse")
 
 
     # ── URLs ──────────────────────────────────────────────────────────────────

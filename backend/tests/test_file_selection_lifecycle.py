@@ -830,7 +830,7 @@ async def test_engine_confirmed_subset_never_broadens_when_late_manifest_drops_a
 
 
 # --------------------------------------------------------------------------- #
-# TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+# TASK_DownloadPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
 # Section 10/14.2 -- resolve_pending() must surface the exact transfer id(s)
 # whose canonical selected-manifest commitment changed THIS cycle, so the
 # application layer can target the existing semantic _publish() instead of

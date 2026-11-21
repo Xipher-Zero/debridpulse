@@ -1,11 +1,11 @@
 {
- "schema": "debridpulse-locale-manifest/1",
+ "schema": "downloadpulse-locale-manifest/1",
  "default": "en",
  "statuses": {
   "canonical": "The source language and the fallback for every key.",
   "planned": "A target language with no reviewed catalog yet: not supported, never offered and never admitted as an account's language; a value stored for it reads as English.",
   "supported": "A target language with a reviewed catalog and zero translation debt at release (validate.mjs --release); admitted as an account's language while its catalog is readable.",
-  "pseudo": "A developer test locale generated from English; never offered, and accepted only where DEBRIDPULSE_I18N_TEST_LOCALES=1."
+  "pseudo": "A developer test locale generated from English; never offered, and accepted only where DOWNLOADPULSE_I18N_TEST_LOCALES=1."
  },
  "locales": {
   "en": {"name": "English", "native": "English", "dir": "ltr", "status": "canonical"},

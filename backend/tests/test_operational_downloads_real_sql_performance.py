@@ -1,7 +1,7 @@
 """Real-SQLite regression coverage for the DP 1.0.12 Workstream A performance
 correction, updated for DP 1.0.12 recovery leveling Section 14/20.
 
-Original proven defect (live evidence, `ghcr.io/xipher-zero/debridpulse:sha-836f792`):
+Original proven defect (live evidence, `ghcr.io/xipher-zero/downloadpulse:sha-836f792`):
 the operational Downloads bounded projection's per-artifact latest recovery-
 snapshot lookup (``api/operational_downloads.py``,
 ``artifact_presentation_facts``) was a CORRELATED SCALAR SUBQUERY against

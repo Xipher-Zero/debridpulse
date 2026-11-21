@@ -21,7 +21,7 @@ const { test, expect } = require('@playwright/test');
 
 /* The development preview (Test First-Run Wizard) is hidden unless the server
  * offers it (`setup_preview`: a development build started with
- * DEBRIDPULSE_SETUP_PREVIEW=1, proven in backend/tests/test_setup_lifecycle.py).
+ * DOWNLOADPULSE_SETUP_PREVIEW=1, proven in backend/tests/test_setup_lifecycle.py).
  * These cases use the preview to reach the first-run pages, so the page reads
  * `setup_preview: true` in the one setup-state answer -- a labelled mock of
  * that one server fact, standing for the opt-in; W11 reads the real default. */
@@ -56,7 +56,7 @@ async function load(page, {width = 1280, height = 900, motion = false, preview =
 const wizard = page => page.locator('.dp-modal-dialog.dp-setup-dialog');
 const t = (page, key, values) => page.evaluate(([key, values]) => window.DPI18n.t(key, values), [key, values]);
 const setLocale = (page, locale) => page.evaluate(locale => window.DPI18n.setLocale(locale), locale);
-const call = (page, method, path, body) => page.evaluate(([method, path, body]) => window.debridPulseAuth.fetch(path, {
+const call = (page, method, path, body) => page.evaluate(([method, path, body]) => window.downloadPulseAuth.fetch(path, {
   method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined,
 }).then(async response => ({status: response.status, body: await response.json().catch(() => null)})), [method, path, body]);
 // Next (or Save, or Finish), and its answer: while an accept is pending the dialog is busy
@@ -117,8 +117,8 @@ async function end(page) {
 async function newInstallation(page, {deployment, phase, administrator = 'none'}) {
   const state = {initial: {complete: false, phase, administrator}, rerun: null};
   await page.route(url => url.pathname === '/app.js', async route => {
-    const body = (await (await route.fetch()).text()).replace(/^window\.debridPulseAuthority=Object\.freeze\((.*)\);$/m,
-      (_, json) => `window.debridPulseAuthority=Object.freeze(${JSON.stringify({...JSON.parse(json), deployment_type: deployment})});`);
+    const body = (await (await route.fetch()).text()).replace(/^window\.downloadPulseAuthority=Object\.freeze\((.*)\);$/m,
+      (_, json) => `window.downloadPulseAuthority=Object.freeze(${JSON.stringify({...JSON.parse(json), deployment_type: deployment})});`);
     await route.fulfill({status: 200, contentType: 'application/javascript', body});
   });
   await page.route(url => url.pathname === '/api/setup/state', route => route.fulfill({status: 200,
@@ -205,7 +205,7 @@ test('R02: the language view is a view of the same dialog: Back and Escape retur
   expect((await call(page, 'GET', '/api/settings/default-locale')).body.configured).toBe('de');
   await end(page);
   await call(page, 'PUT', '/api/settings/default-locale', {locale: before.configured || before.locale});
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/account/locale').then(response => response.json())
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/account/locale').then(response => response.json())
     .then(own => window.DPLanguagePicker.language(own.locale)).then(window.DPLanguagePicker.apply));
 });
 
@@ -351,7 +351,7 @@ test('R06: Administrator Setup explains why only where an account is created, wi
   expect(firstNote.top).toBeGreaterThan(last.bottom);
   await end(page);
   // The rerun's guidance: no creation explanation.
-  if (await page.evaluate(() => window.debridPulseAuth.authority.deployment_type) === 'server') {
+  if (await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type) === 'server') {
     await rerun(page);
     await accept(page); await accept(page);
     await expect(wizard(page).locator('.dp-setup-administrator')).toBeVisible();
@@ -864,7 +864,7 @@ const saved = async page => {
   const settings = (await call(page, 'GET', '/api/settings')).body;
   return {folder: settings.download_folder, locale: (await call(page, 'GET', '/api/settings/default-locale')).body,
     own: (await call(page, 'GET', '/api/account/locale')).body,
-    deployment: await page.evaluate(() => window.debridPulseAuth.authority.deployment_type),
+    deployment: await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type),
     initial: (await call(page, 'GET', '/api/setup/state')).body.initial};
 };
 
@@ -910,8 +910,8 @@ for (const stop of ['premium', 'getting-started']) {
 
 test('R19: a Standalone installation\'s rerun also starts at Welcome, with its own four pages and no Administrator page (emulated deployment type)', async ({page}) => {
   await page.route(url => url.pathname === '/app.js', async route => {
-    const body = (await (await route.fetch()).text()).replace(/^window\.debridPulseAuthority=Object\.freeze\((.*)\);$/m,
-      (_, json) => `window.debridPulseAuthority=Object.freeze(${JSON.stringify({...JSON.parse(json), deployment_type: 'standalone'})});`);
+    const body = (await (await route.fetch()).text()).replace(/^window\.downloadPulseAuthority=Object\.freeze\((.*)\);$/m,
+      (_, json) => `window.downloadPulseAuthority=Object.freeze(${JSON.stringify({...JSON.parse(json), deployment_type: 'standalone'})});`);
     await route.fulfill({status: 200, contentType: 'application/javascript', body});
   });
   await load(page);
@@ -1063,7 +1063,7 @@ test('R23: the art takes no part in the layout: without it every control is wher
 
 test('R29: a rerun\'s Administrator guidance reads centred above Open Users & Access', async ({page}) => {
   await load(page);
-  if (await page.evaluate(() => window.debridPulseAuth.authority.deployment_type) !== 'server') return;
+  if (await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type) !== 'server') return;
   await rerun(page);
   await accept(page); await accept(page);
   await expect(wizard(page).locator('[data-setup-users]')).toBeVisible();

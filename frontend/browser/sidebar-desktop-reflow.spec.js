@@ -908,7 +908,7 @@ test('the rail names what it no longer writes with DP tooltips and stable access
   expect(await tiers.first().evaluate(tier => getComputedStyle(tier).borderTopStyle)).toBe('none');
 
   // The crown alone for a premium account, its account in the tooltip.
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: [
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:provider-status', {detail: {entries: [
     {id: 'alldebrid', name: 'AllDebrid', state: 'healthy', status: {account: {service_class: 'premium', entitlement: 'ready',
       plan: 'Premium', expires_at: Date.now() / 1000 + 82.5 * 86400}}}]}})));
   const crown = page.locator('#premium-row');

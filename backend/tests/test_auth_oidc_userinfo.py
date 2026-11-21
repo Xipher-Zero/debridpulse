@@ -10,8 +10,8 @@ def _settings(**updates):
     values = {
         "auth_oidc_enabled": True,
         "oidc_provider_name": "OpenID Connect",
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
-        "oidc_client_id": "debridpulse-client",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
+        "oidc_client_id": "downloadpulse-client",
         "oidc_client_secret": "secret",
         "oidc_scopes": ["openid", "profile", "email"],
         "oidc_allow_all": False,

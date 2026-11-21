@@ -98,7 +98,7 @@ async def withdraw_external_job(job_id: str, request: Request,
 @router.post(PREFIX + "/jobs/{job_id}/controls")
 async def request_external_control(job_id: str, request: Request, body: Annotated[dict, Body()],
                                    application: ApplicationService = Depends(get_application)):
-    """An advisory pause or resume request: DebridPulse's decision
+    """An advisory pause or resume request: DownloadPulse's decision
     (``honored``/``declined``/``revoked``), its reason and the observed
     effect. Idempotent per ``request_key``."""
     return await _call(ExternalClients(application).control(_principal(request), job_id, body))

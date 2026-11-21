@@ -108,7 +108,7 @@ def test_specialist_authority_is_documented_for_the_whole_submission_not_per_lin
     ):
         assert phrase in rule, phrase
     # The retired per-download reduction must not return.
-    assert "When a specialist service claims a download, DebridPulse does not also hand it" not in panel
+    assert "When a specialist service claims a download, DownloadPulse does not also hand it" not in panel
 
 
 def test_services_document_every_registered_user_facing_integration():
@@ -163,7 +163,7 @@ def test_media_downloads_guidance_claims_neither_transcoding_nor_authenticated_m
     media = panel[panel.index("accordion('Media Downloads'"):]
 
     for phrase in (
-        "without re-encoding", "DebridPulse never converts media",
+        "without re-encoding", "DownloadPulse never converts media",
         "Preferred Subtitle Language", "Current Video", "Playlist",
         "media that needs a sign-in, cookies or a subscription",
         "starts that item again from the beginning",
@@ -202,7 +202,7 @@ def test_settings_reference_matches_the_seven_current_settings_tabs_and_save_sem
         "Local Network Connections", "Skip Local Connection Confirmation",
         "Delete Archives After Extraction", "Archive Passwords", "Clear Passwords",
         "Authentication Status", "Username & Password", "OpenID Connect",
-        "Public DebridPulse Base URL", "OIDC Callback URL", "PUBLIC_BASE_URL",
+        "Public DownloadPulse Base URL", "OIDC Callback URL", "PUBLIC_BASE_URL",
         "Default Role for New OIDC Users", "Add Local Account", "Edit User",
         "Integration Accounts", "Issue Token", "Authorization: Bearer <token>",
         "finished downloads are never touched", "removing keeps the account's history",

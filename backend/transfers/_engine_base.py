@@ -1681,7 +1681,7 @@ class TransferEngine:
                         break
 
                     if desired_paused:
-                        # DebridPulse owns pause: a writer still able to make
+                        # DownloadPulse owns pause: a writer still able to make
                         # progress is retired through the one writer
                         # retirement below, never merely paused natively --
                         # including a parked job observed acquiring again. Only
@@ -1820,7 +1820,7 @@ class TransferEngine:
                     current = await self._current_artifact(transfer_id, artifact.id)
                     if current is None or current.execution is None \
                             or current.execution.attempt_id != observed.handle.attempt_id:
-                        # Retired meanwhile (DebridPulse Pause): no writer left.
+                        # Retired meanwhile (DownloadPulse Pause): no writer left.
                         continue
                     await self._execution_result(artifact, executor, observed, defer_verification=True,
                                                  expected_writes=expected)
@@ -1869,7 +1869,7 @@ class TransferEngine:
         # while observing a resource the provider already holds
         # (``waiting``) keeps retrying that resource under its budget and
         # the Stalled Timeout, and a refusal before any route attempt ran
-        # (``routed`` false: DebridPulse's own health gate on the bound route)
+        # (``routed`` false: DownloadPulse's own health gate on the bound route)
         # is no failure of the provider's route -- health drift alone never
         # re-decides a bound route.
         provider_local = record.parent_id is None and not waiting and routed and provider_attributable(error)
@@ -2956,7 +2956,7 @@ class TransferEngine:
     async def _discard_foreign_native_state(self, artifact: Artifact, executor, work: ExecutionWork) -> None:
         """A different executor is about to write this FILE artifact: the
         previous writer's private native state (a resume/control file) means
-        nothing to it and is never translated. Discarded only when DebridPulse
+        nothing to it and is never translated. Discarded only when DownloadPulse
         owns it; the payload itself is untouched -- the plan governs it."""
         previous = await self.repository.previous_writer(artifact.id)
         if previous is None or previous.handle.executor_id == executor.descriptor.id or not previous.owned:
@@ -2977,7 +2977,7 @@ class TransferEngine:
     async def _possessed(self, artifact: Artifact, candidate: TransferCandidate, work: ExecutionWork,
                          footprint: ExecutionFootprint, state=None, facts=None) -> bool:
         """THE possession rule: an artifact needs no execution only when
-        DebridPulse material already covers its whole known payload (and the
+        DownloadPulse material already covers its whole known payload (and the
         payload still has exactly that length), or strong integrity evidence
         verifies the stable payload -- never because a file has the right
         length."""
@@ -2998,7 +2998,7 @@ class TransferEngine:
         """One material checkpoint of the current writer, in the only legal
         order: the writer already reported ``ranges`` completely written, the
         payload is then flushed to stable storage, and only after that does
-        DebridPulse durably commit -- fenced to this writer and material
+        DownloadPulse durably commit -- fenced to this writer and material
         generation. Nothing is committed when durability cannot be proven."""
         if artifact.execution is None:
             return None
@@ -3071,7 +3071,7 @@ class TransferEngine:
         return observed, mode, committed
 
     async def _pause_writer(self, artifact: Artifact) -> NormalizedError | None:
-        """DebridPulse Pause of one artifact's writer, through the one writer
+        """DownloadPulse Pause of one artifact's writer, through the one writer
         retirement every replacement uses: quiesce, forced checkpoint, fence.
         Afterwards no writer is authorized to make acquisition progress; the
         artifact's material stays exactly as committed. Returns an error only
@@ -3095,11 +3095,11 @@ class TransferEngine:
     async def _retire_lost_parked_writer(self, artifact: Artifact, observed: ExecutionObservation) -> bool:
         """A writer Pause parked whose native job is then found gone -- an
         executor that keeps no paused job across its own restart -- lost
-        nothing DebridPulse owns: its material was checkpointed when it parked.
+        nothing DownloadPulse owns: its material was checkpointed when it parked.
         That is not a failure of the transfer, so it is not handed to recovery
         as an orphan. The absence is recorded and the writer detached exactly
         as Pause detaches a writer it retired outright; the next start plans
-        from DebridPulse material alone. Applies only to the artifact's current
+        from DownloadPulse material alone. Applies only to the artifact's current
         writer whose durable state is still the PAUSED its parking left
         (read before this observation is recorded). Returns whether it did."""
         if observed.state != ExecutionState.ABSENT:
@@ -3118,7 +3118,7 @@ class TransferEngine:
                                    observed: ExecutionObservation) -> ExecutionObservation:
         """A parked writer whose material generation went stale is never
         resumed: it is retired through the one writer retirement, and the next
-        admission plans portably from DebridPulse material alone."""
+        admission plans portably from DownloadPulse material alone."""
         candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
         retired = await retire_writer(self, artifact, candidate, artifact, candidate, boundary="stale_material")
         if retired.reason:
@@ -4589,7 +4589,7 @@ class TransferEngine:
             await self._cleanup_resources(transfer_id, explicit=True)
         elif owned_cleanup:
             # Retired by its final external demand: every resource of it --
-            # the route's and each backup's -- that DebridPulse created or
+            # the route's and each backup's -- that DownloadPulse created or
             # adopted is given back; nothing it merely observed.
             await self._cleanup_resources(transfer_id, explicit=False)
 
@@ -4661,8 +4661,8 @@ class TransferEngine:
 
     async def _retire_detached_material(self, transfer_id: int) -> None:
         """A DELETED transfer's incomplete material that no writer holds any
-        more (a DebridPulse Pause fenced it, or it failed) is still
-        DebridPulse's to reclaim when -- and only when -- the artifact's latest
+        more (a DownloadPulse Pause fenced it, or it failed) is still
+        DownloadPulse's to reclaim when -- and only when -- the artifact's latest
         writer durably owned it. Unowned material is never touched; a live
         writer's material is reclaimed by the execution-cleanup obligation.
 
@@ -4864,7 +4864,7 @@ class TransferEngine:
                             on_readiness()
                 elif item.request:
                     # Inventory is evidence that a resource exists, never new
-                    # demand for one DebridPulse already bound -- by a live
+                    # demand for one DownloadPulse already bound -- by a live
                     # transfer or by one that was deleted, withdrawn or
                     # finished (its native identity, never its content hash).
                     # A deleted transfer's resource that is still listed is

@@ -82,7 +82,7 @@ async def test_restore_point_database_includes_operational_tables(tmp_path, monk
     finally:
         conn.close()
     assert "transfer_pause_intents" in tables
-    assert "debridpulse_aria2_owned_gids" not in tables
+    assert "downloadpulse_aria2_owned_gids" not in tables
 
 
 @pytest.mark.asyncio

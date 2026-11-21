@@ -545,7 +545,7 @@ test('keyboard: Enter on either list launcher opens only the chooser, never Deta
   // ready() does not imply the first Recent render (the startup read is chained behind the boot's /api/stats), so park the
   // owner's NEXT read only after the authoritative first render has completed and the launcher exists (see the Recent
   // anchoring case below); parking earlier can park the FIRST read and leave the table at "Loading…".
-  await page.addInitScript(() => { window.__recentEvents = 0; document.addEventListener('debridpulse:dashboard-recent-rendered', () => { window.__recentEvents += 1; }); });
+  await page.addInitScript(() => { window.__recentEvents = 0; document.addEventListener('downloadpulse:dashboard-recent-rendered', () => { window.__recentEvents += 1; }); });
   await ready(page);
   await page.waitForFunction(() => window.__recentEvents > 0);
   await expect(page.locator('#dash-tbody tr[data-torrent-id="95"] .dp-group-candidate-launcher')).toHaveCount(1);
@@ -906,7 +906,7 @@ test('Recent: the chooser opens adjacent to the launcher, not at the viewport or
   // render. Count the authoritative render event from the first document on (the ui-regression-restoration.spec.js pattern) and
   // park the owner's NEXT read only once that first render has completed; parking earlier can park the FIRST read and leave the
   // table at "Loading…" with no launcher to measure.
-  await page.addInitScript(() => { window.__recentEvents = 0; document.addEventListener('debridpulse:dashboard-recent-rendered', () => { window.__recentEvents += 1; }); });
+  await page.addInitScript(() => { window.__recentEvents = 0; document.addEventListener('downloadpulse:dashboard-recent-rendered', () => { window.__recentEvents += 1; }); });
   await ready(page);
   await page.waitForFunction(() => window.__recentEvents > 0);
   const launcher = page.locator('#dash-tbody tr[data-torrent-id="230"] .dp-group-candidate-launcher');

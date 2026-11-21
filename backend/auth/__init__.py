@@ -1,4 +1,4 @@
-"""DebridPulse authentication and browser-security boundary."""
+"""DownloadPulse authentication and browser-security boundary."""
 
 from auth.models import AuthMechanism, Principal
 

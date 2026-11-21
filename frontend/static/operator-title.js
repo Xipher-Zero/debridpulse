@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 canonical Lucide presentation integration.
+/* DownloadPulse v1.0.11 canonical Lucide presentation integration.
  *
  * Locally vendored Lucide subset; no runtime CDN. Geometry is sourced from
  * lucide-icons/lucide commit 23f9abc4ed0146cffededd3d7f94c1018bfdf693.
@@ -402,7 +402,7 @@
     if (host.dataset.dpToastLaneBound !== '1') {
       window.addEventListener('resize', scheduleToastHostPosition, {passive: true});
       if (window.visualViewport) window.visualViewport.addEventListener('resize', scheduleToastHostPosition, {passive: true});
-      document.addEventListener('debridpulse:navigation', scheduleToastHostPosition);
+      document.addEventListener('downloadpulse:navigation', scheduleToastHostPosition);
       const topbar = document.getElementById('topbar');
       if (topbar && 'ResizeObserver' in window) {
         toastTopbarResizeObserver = new ResizeObserver(scheduleToastHostPosition);

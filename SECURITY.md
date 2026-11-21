@@ -25,24 +25,24 @@ Report security issues through a private GitHub Security Advisory (preferred), o
 
 The AllDebrid API key, local authentication password verifier, OIDC client secret, Discord webhook URLs, aria2 credentials, and extraction passwords are sensitive configuration. The main persistent settings live in `config/config.json`; the API bearer-token verifier is stored separately as `config/api-token.json`.
 
-Keep the configuration directory private. DebridPulse attempts to enforce owner-only permissions (`0700` directory / `0600` credential files) where the host filesystem supports them.
+Keep the configuration directory private. DownloadPulse attempts to enforce owner-only permissions (`0700` directory / `0600` credential files) where the host filesystem supports them.
 
 Do not publish the config volume or commit it to version control. API responses intentionally redact configured secret values and capability-bearing provider/download URLs. The plaintext local password, raw API bearer token, OIDC authorization code/tokens, PKCE verifier, session identifier, and CSRF token must not be logged.
 
 ### Native web UI and API authentication
 
-DebridPulse authentication is configured under **Settings → Authentication**. Intentional no-auth operation remains supported for trusted standalone/LAN deployments; if both interactive mechanisms are deliberately disabled, the REST API is open as well.
+DownloadPulse authentication is configured under **Settings → Authentication**. Intentional no-auth operation remains supported for trusted standalone/LAN deployments; if both interactive mechanisms are deliberately disabled, the REST API is open as well.
 
-DebridPulse supports optional HTTP Basic Authentication for REST clients whenever Username & Password authentication is enabled. HTTP Basic uses the same username and Argon2id password verifier as the browser login; it remains a first-class machine-access path rather than the browser authentication UX.
+DownloadPulse supports optional HTTP Basic Authentication for REST clients whenever Username & Password authentication is enabled. HTTP Basic uses the same username and Argon2id password verifier as the browser login; it remains a first-class machine-access path rather than the browser authentication UX.
 
-When authentication is enabled, DebridPulse supports:
+When authentication is enabled, DownloadPulse supports:
 
 - **Username & Password** browser sign-in using a server-side application session. The local password is stored only as an Argon2id verifier.
 - **HTTP Basic** for REST clients whenever Username & Password authentication is enabled, using the same username and Argon2id password verifier.
-- **OpenID Connect** browser sign-in using Authorization Code + PKCE with state, nonce, issuer/audience validation, and DebridPulse authorization policy.
+- **OpenID Connect** browser sign-in using Authorization Code + PKCE with state, nonce, issuer/audience validation, and DownloadPulse authorization policy.
 - **Bearer API token** for automation and monitoring. The raw `dp_...` token is shown only at generation/rotation and is never persisted; only its SHA-256 verifier is stored.
 
-For protected requests, a valid DebridPulse browser session is authoritative, followed by Bearer authentication, then HTTP Basic.
+For protected requests, a valid DownloadPulse browser session is authoritative, followed by Bearer authentication, then HTTP Basic.
 
 State-changing requests made through browser application sessions require CSRF validation. Cross-site browser mutations are rejected independently of the configured authentication mechanism, including in intentional open mode.
 
@@ -64,17 +64,17 @@ See [`docs/authentication.md`](docs/authentication.md) for the complete deployme
 
 OIDC deployments require a canonical externally reachable HTTPS origin. Configure **Public Base URL** to that origin and register the exact derived callback (`/auth/oidc/callback`) with the identity provider.
 
-The reverse proxy must not rewrite the registered callback path. Treat the proxy as a transport/perimeter component; native DebridPulse authorization and lockout protections remain authoritative when native authentication is configured.
+The reverse proxy must not rewrite the registered callback path. Treat the proxy as a transport/perimeter component; native DownloadPulse authorization and lockout protections remain authoritative when native authentication is configured.
 
 ### Network exposure
 
-For any network you do not fully trust, enable native DebridPulse authentication and/or place the application behind an independently authenticated reverse proxy such as Authentik, Authelia, or an equivalent access-control layer.
+For any network you do not fully trust, enable native DownloadPulse authentication and/or place the application behind an independently authenticated reverse proxy such as Authentik, Authelia, or an equivalent access-control layer.
 
 **Do not expose port 8095 directly to the public internet.** The generic Compose example uses bridge networking with an explicit port mapping so exposure remains visible and can be bound/restricted by the operator. Host networking should be an explicit deployment choice, not the generic default.
 
 ### aria2
 
-DebridPulse runs its own aria2 daemon. Its JSON-RPC interface listens on loopback only and is never exposed as a setting or a published port. Every job is routed through the DebridPulse egress guard with per-job proxy, credential, and host-key options, and per-GID actions are permitted only for downloads DebridPulse owns.
+DownloadPulse runs its own aria2 daemon. Its JSON-RPC interface listens on loopback only and is never exposed as a setting or a published port. Every job is routed through the DownloadPulse egress guard with per-job proxy, credential, and host-key options, and per-GID actions are permitted only for downloads DownloadPulse owns.
 
 ### Archive extraction
 
@@ -82,7 +82,7 @@ Archive extraction enforces member-path/type checks plus file-count, expanded-si
 
 ### Backups and database maintenance
 
-Database wipe first closes and drains application mutation/execution admission (including all state-changing HTTP requests), then suspends scheduler activity and drains provider/materialization work before holding an exclusive database-maintenance gate that rejects concurrent non-owner application DB sessions; it also fails closed if a required pre-wipe backup fails. The SQLite online-backup API may hold a separate read-only source connection, but it cannot mutate or repopulate the live database. Backup rotation only recursively removes DebridPulse-owned directories carrying the expected ownership manifest.
+Database wipe first closes and drains application mutation/execution admission (including all state-changing HTTP requests), then suspends scheduler activity and drains provider/materialization work before holding an exclusive database-maintenance gate that rejects concurrent non-owner application DB sessions; it also fails closed if a required pre-wipe backup fails. The SQLite online-backup API may hold a separate read-only source connection, but it cannot mutate or repopulate the live database. Backup rotation only recursively removes DownloadPulse-owned directories carrying the expected ownership manifest.
 
 ### Discord webhook URL
 
@@ -101,11 +101,11 @@ The following are **in scope** for security reports:
 - configured-authentication fail-open behavior or lockout-prevention bypass;
 - remote code execution;
 - path traversal or unsafe archive extraction;
-- aria2 jobs bypassing the egress guard or acting on downloads DebridPulse does not own;
+- aria2 jobs bypassing the egress guard or acting on downloads DownloadPulse does not own;
 - unsafe destructive database/backup behavior.
 
 The following are **out of scope**:
 
 - issues in AllDebrid's own service/API;
 - vulnerabilities that exist solely in an unmodified third-party dependency (report upstream as well);
-- resource exhaustion requiring trusted local access with no network exposure, unless it crosses a documented DebridPulse safety boundary.
+- resource exhaustion requiring trusted local access with no network exposure, unless it crosses a documented DownloadPulse safety boundary.

@@ -62,7 +62,7 @@ class _FakeGlobalOptionsClient:
 
 @pytest.mark.asyncio
 async def test_apply_memory_tuning_never_mirrors_global_policy_into_native_options():
-    """Universal Executor Leveling: DebridPulse global concurrency and global
+    """Universal Executor Leveling: DownloadPulse global concurrency and global
     bandwidth have one core owner each. aria2 tuning reapplies only aria2-owned
     options: its native queue width is an executor-local constant (never the
     DP global concurrency), and its download ceiling is changed only through
@@ -99,7 +99,7 @@ async def test_waiting_count_prevents_restart_even_when_snapshot_window_is_empty
 
 async def _baseline_authorize(handle, action):
     """``TransferRepository.authorize_execution`` as it stood before
-    (DebridPulse 1.0.14, 523d3c7b), verbatim: the per-handle oracle."""
+    (DownloadPulse 1.0.14, 523d3c7b), verbatim: the per-handle oracle."""
     from db.database import get_db
     from transfers import codec
     from transfers.repository import TransferRepository

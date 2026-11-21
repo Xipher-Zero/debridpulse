@@ -8,7 +8,7 @@ certification.
 
 `hachoir` is characterized, not assumed: it is a hard, unguarded top-level
 import in the service's own `sabnzbd/misc.py`, so the service cannot start
-without it. It is therefore required by DebridPulse's supported
+without it. It is therefore required by DownloadPulse's supported
 acquisition + PAR2-repair path and is retained.
 """
 from __future__ import annotations
@@ -45,14 +45,14 @@ def test_the_inventory_does_not_claim_an_approved_or_proven_conclusion():
 
 
 def test_the_copyleft_section_records_the_disposition_without_certifying_it():
-    """The 1.0.13 licensing review closed the DebridPulse-level question on
+    """The 1.0.13 licensing review closed the DownloadPulse-level question on
     separate-program evidence. The inventory records that disposition, keeps
     the SABnzbd-internal question as upstream's, and does not present either
     as a legal certification."""
     body = text()
     section = body.split("## Copyleft review", 1)[1].split("\n## ", 1)[0]
     lowered = section.lower()
-    assert "### Recorded disposition (1.0.13)" in section
+    assert "### Recorded disposition" in section
     flat = " ".join(lowered.split())
     assert "separate program" in flat and "application code imports no sabnzbd code" in flat
     assert "belongs to upstream sabnzbd" in flat

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Canonical candidate-vs-anchor failure classifier for DebridPulse qualification.
+"""Canonical candidate-vs-anchor failure classifier for DownloadPulse qualification.
 
 This file is the sole semantic owner of:
 

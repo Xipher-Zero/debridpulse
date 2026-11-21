@@ -138,7 +138,7 @@ async def _repair_legacy_statuses(db) -> None:
 
 
 def _identity(kind, value):
-    return uuid5(NAMESPACE_URL, f"debridpulse:v112:{kind}:{value}").hex
+    return uuid5(NAMESPACE_URL, f"downloadpulse:v112:{kind}:{value}").hex
 
 
 async def _backup() -> Path:

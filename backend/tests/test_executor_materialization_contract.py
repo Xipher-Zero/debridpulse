@@ -373,7 +373,7 @@ async def test_retry_attempt_inherits_its_artifacts_material_ownership(tmp_path,
         row = await db.fetchone("SELECT target_initially_absent,material_owner_attempt_id FROM execution_attempts WHERE id=?",
                                 (second.attempt_id,))
     assert row["target_initially_absent"] == 0                # material was present at its admission...
-    assert row["material_owner_attempt_id"] == first.attempt_id  # ...and is DebridPulse's own lineage
+    assert row["material_owner_attempt_id"] == first.attempt_id  # ...and is DownloadPulse's own lineage
     assert await core.repository.execution_owns_target(second)
 
 

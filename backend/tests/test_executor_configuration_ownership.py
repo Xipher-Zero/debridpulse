@@ -33,12 +33,12 @@ DEFINITIONS = (alldebrid_definition, general_http_definition, aria2_definition)
 
 def aria2_global_options(cfg):
     """Native tuning dict for the aria2-owned namespace of ``cfg`` -- never
-    DebridPulse global concurrency or bandwidth."""
+    DownloadPulse global concurrency or bandwidth."""
     return build_aria2_global_options(_canonical_aria2_options(cfg))
 
 
 # The exact current aria2 schema: tuning and lifecycle options of the one
-# DebridPulse-owned daemon. A positive allowlist -- a field is either listed here
+# DownloadPulse-owned daemon. A positive allowlist -- a field is either listed here
 # or does not exist.
 CURRENT_ARIA2_OPTIONS = frozenset({
     "operation_timeout_seconds", "split", "min_split_size", "max_connection_per_server",
@@ -52,7 +52,7 @@ CURRENT_ARIA2_OPTIONS = frozenset({
 
 def test_aria2_options_is_exactly_the_current_daemon_schema():
     assert set(Aria2Options.model_fields) == CURRENT_ARIA2_OPTIONS
-    # DebridPulse constructs the RPC endpoint and secret itself: nothing in the
+    # DownloadPulse constructs the RPC endpoint and secret itself: nothing in the
     # schema is a credential or a connection identity.
     assert aria2_definition.secret_fields == frozenset()
     assert aria2_definition.ownership_fields == frozenset()
@@ -96,7 +96,7 @@ def test_legacy_flat_fields_migrate_into_canonical_integration_namespace():
     assert options["disk_cache"] == "128M"
     assert options["file_allocation"] == "none"
     assert options["lowest_speed_limit"] == "10K"
-    # Retired with BitTorrent (DebridPulse's aria2 never uploads): a legacy
+    # Retired with BitTorrent (DownloadPulse's aria2 never uploads): a legacy
     # upload limit is accepted on load and dropped, never migrated.
     assert "max_upload_limit" not in options
     assert options["purge_interval_minutes"] == 15

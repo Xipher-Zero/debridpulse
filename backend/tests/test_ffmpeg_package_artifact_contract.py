@@ -1,4 +1,4 @@
-"""DebridPulse's FFmpeg is one immutable supply-chain artifact.
+"""DownloadPulse's FFmpeg is one immutable supply-chain artifact.
 
 Debian's ffmpeg source (Debian's own patches, nothing added), configured by ONE
 script for local stream copy only -- file/pipe protocols, the finalization
@@ -6,7 +6,7 @@ containers and subtitle formats, parsers, bitstream filters and native
 decoders; no encoder, device, network protocol or external library -- packaged
 as Debian's `ffmpeg` +dp1 with its Debian source recorded, qualified against
 the installed binaries' own reports, built natively per architecture and
-published write-once to ghcr.io/xipher-zero/debridpulse-ffmpeg
+published write-once to ghcr.io/xipher-zero/downloadpulse-ffmpeg
 (docs/SUPPLY_CHAIN_POLICY.md 4b).
 """
 from __future__ import annotations
@@ -81,7 +81,7 @@ def test_the_package_image_is_built_natively_and_published_write_once() -> None:
     workflow = _workflow()
     on = workflow["on"]
     assert on["push"]["paths"] == ["packaging/ffmpeg/**", ".github/workflows/ffmpeg-package.yml"]
-    assert workflow["env"]["IMAGE_NAME"] == "ghcr.io/xipher-zero/debridpulse-ffmpeg"
+    assert workflow["env"]["IMAGE_NAME"] == "ghcr.io/xipher-zero/downloadpulse-ffmpeg"
     jobs = workflow["jobs"]
     assert jobs["build-amd64"]["runs-on"] == "ubuntu-24.04"
     assert jobs["build-arm64"]["runs-on"] == "ubuntu-24.04-arm"
@@ -93,7 +93,7 @@ def test_the_package_image_is_built_natively_and_published_write_once() -> None:
     assert "setup-qemu" not in text  # never emulated
     # The epoch never reaches a tag; inputs bind a version to exact bytes.
     assert 'tag="${version#*:}"' in text and 'echo "tag=${tag//+/-}"' in text
-    assert "git ls-files -z packaging/ffmpeg" in text and "io.debridpulse.ffmpeg.inputs" in text
+    assert "git ls-files -z packaging/ffmpeg" in text and "io.downloadpulse.ffmpeg.inputs" in text
     assert "refusing to overwrite it" in text
     assert workflow["concurrency"] == {"group": "ffmpeg-package", "cancel-in-progress": False}
     # Every action is pinned by commit, like every other workflow.
@@ -103,14 +103,14 @@ def test_the_package_image_is_built_natively_and_published_write_once() -> None:
 
 def test_the_image_and_the_runtime_layer_install_the_one_published_package() -> None:
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    (image,) = re.findall(r"^FROM (ghcr\.io/xipher-zero/debridpulse-ffmpeg@sha256:[0-9a-f]{64}) AS ffmpeg-packages$",
+    (image,) = re.findall(r"^FROM (ghcr\.io/xipher-zero/(?:downloadpulse|debridpulse)-ffmpeg@sha256:[0-9a-f]{64}) AS ffmpeg-packages$",
                           dockerfile, re.M)
     assert "ARG FFMPEG_PACKAGE_VERSION=7:7.1.5-0+deb13u1+dp1" in dockerfile
     workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
     # The runtime layer takes the package from the digest the Dockerfile pins,
     # verifies it as the image does, and never installs the archive's FFmpeg
     # (or any other finalizer).
-    assert "debridpulse-ffmpeg@sha256" in workflow.split("AS ffmpeg-packages")[0]
+    assert re.search(r"(?:downloadpulse|debridpulse)-ffmpeg@sha256", workflow.split("AS ffmpeg-packages")[0])
     assert '"$RUNNER_TEMP"/ffmpeg/ffmpeg_*.deb' in workflow
     assert 'bash "$GITHUB_WORKSPACE/packaging/ffmpeg/verify-features.sh" "$FFMPEG_PACKAGE_VERSION"' in workflow
     assert not re.search(r"apt-get install[^\n]*\s(ffmpeg|mkvtoolnix)(\s|$)", workflow, re.M)

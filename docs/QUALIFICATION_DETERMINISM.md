@@ -1,6 +1,6 @@
 # Qualification determinism policy
 
-Canonical human policy for how DebridPulse qualification classifies failures. The
+Canonical human policy for how DownloadPulse qualification classifies failures. The
 machine owner of every rule below is
 [`.github/qualification/failure_classifier.py`](../.github/qualification/failure_classifier.py);
 workflows own execution only. This document, the classifier, the registry and
@@ -209,10 +209,10 @@ Corrected under this policy (each reproduced on the pre-change tree, then stress
 
 * the mirror-failover oracle derives the active and alternate candidate by ID;
 * Details candidate refresh uses revision-stamped reads and a gated refresh;
-* WS1-P2 staged Enable and the Settings directory-browser Confirm/Save test wait for the
+* the staged Enable test (`ui-fix-ws1-p2.spec.js`) and the Settings directory-browser Confirm/Save test wait for the
   Apply control to return to idle before continuing (the save-completion re-render restores
   the saved form, so an edit made before it lands is lost);
-* WS2-P1 single-row Remove parks the Downloads owner's next list read so no render can replace
+* the single-row Remove test (`ui-fix-ws2-p1.spec.js`) parks the Downloads owner's next list read so no render can replace
   the opener mid-dialog;
 * the Dashboard geometry tests park the Dashboard Recent owner's next read so the injected
   rows are measured in a DOM no render can replace;
@@ -312,7 +312,7 @@ tree under test.
 ### 10.2 Resolved product finding
 
 One **product** finding was carried here while it was deliberately left unfixed, and is now
-**resolved** by the Canonical Release Remediation: *focus restoration across a background list
+**resolved**: *focus restoration across a background list
 refresh.* The old confirmation dialog restored focus to the element that was focused when it
 opened only if that element was still connected, so a Downloads refresh that landed while the
 dialog was open (measured-capacity refresh, SSE `torrent_updated`, the 15 s polling fallback)
@@ -321,7 +321,7 @@ owner, `frontend/static/ui-settings-modal.js`, and restoration is resolved at it
 boundary: the initiating control if it is still focusable, otherwise its equivalent replacement
 inside the nearest surviving ancestor, otherwise the first focusable control of the nearest
 surviving region. Focus is never parked on `<body>` and a detached control is never focused.
-The WS2-P1 tests no longer park the owner's list reads to avoid the defect; dedicated
+The `ui-fix-ws2-p1.spec.js` tests do not park the owner's list reads to avoid the defect; dedicated
 tests let a refresh land while the dialog is open and assert the restored target.
 
 ## 11. Test layers, ownership and the blocking budget
@@ -344,8 +344,8 @@ Each layer is partitioned by test node id across independent runners (`DP_TEST_S
 tests exactly once, and no two shards share a process, port, file or database. The contract
 layer runs on eight runners and the runtime layer on three. The unit is the test, not the module:
 a module whose scale scenarios cost minutes of real work (`test_v113_identity_anchor.py`,
-`test_v113_root_provider_switch_corrective.py`) no longer holds one runner past the budget while
-the others idle (1.0.13 WS9, QUAL-001). The partition is weighted by measured duration: the
+`test_v113_root_provider_switch_corrective.py`) never holds one runner past the budget while
+the others idle. The partition is weighted by measured duration: the
 committed `.github/qualification/pytest_seconds.json` lists the seconds hosted runners took per
 test of 0.5 s or more; each listed test is placed, longest first, on the least-loaded shard of
 its layer, a test listed as isolated (the transfer-595 scenario) owns contract shard 1/8 alone
@@ -373,10 +373,9 @@ to them.
 own candidate containers. Each shard runs a set of **whole** spec files planned by
 `.github/qualification/shard_inventory.py browser-plan` from the committed
 `browser_spec_seconds.json` (longest first onto the least-loaded shard; a spec file never
-splits), so the files of one shard share one backend exactly as before, and no two shards share
+splits), so the files of one shard share one backend, and no two shards share
 any. Each shard runs its files with **one** Playwright worker (`--workers=1`), so no two of them
-drive that one backend at once -- the same isolation the classifier's own bounded runs already use
-(1.0.13 WS9, QUAL-002: hosted failures that never reproduced in isolation). The suite runs on
+drive that one backend at once -- the same isolation the classifier's own bounded runs use. The suite runs on
 **nine** runners, so one worker's serial time per shard stays under fifteen minutes and a failing
 shard's bounded classification fits inside the job.
 
@@ -403,19 +402,18 @@ test matrix with its own conclusion.
 cached by the exact aria2 source package (`.dsc` name and hash) the runner's archive serves,
 `packaging/aria2/` and the OS release; its rsync build by the pinned version and checksum, the OS
 release and the workflow; Browser Runtime's locked Playwright Chromium and the Ubuntu packages its
-`--with-deps` installs by the lock file and the OS release. A miss builds and verifies exactly as
-before. A runtime hit is held to the same prerequisite assertions as a fresh build (the `+dp2`
+`--with-deps` installs by the lock file and the OS release. A miss builds and verifies from
+scratch. A runtime hit is held to the same prerequisite assertions as a fresh build (the `+dp2`
 version and the feature verifier for aria2, the path and version for rsync), and those caches
 are saved only after the assertions passed; apt verifies every cached Ubuntu package Playwright's
 `--with-deps` installs against its signed index; the cached Chromium is identified by the lock
 file alone.
 
-**Milestone manifests are records, not owners.** A milestone qualification list
-(`post_audit_qualification.txt`, `two_provider_checkpoint_qualification.txt`) is evidence of what
-was run when that milestone qualified. It does not become another forever-running blocking layer:
+**Milestone manifests are records, not owners.** A milestone qualification list is
+evidence of what was run when that milestone qualified. It does not become another forever-running blocking layer:
 every test it names is part of the maintained suite and runs there once. A future regression
 belongs in the canonical invariant owner, not in a new list. (`ws3p1_adversarial_qualification.txt`
-remains the input of the separate, non-required `WS3 Adversarial` workflow.)
+is the input of the separate, non-required `WS3 Adversarial` workflow.)
 
 **Budget.** The normal blocking path completes within **20 minutes** wall-clock. The workflow's
 job timeout sits slightly above it to stop a severe regression; it is never raised to hide

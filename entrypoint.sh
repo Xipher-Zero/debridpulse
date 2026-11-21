@@ -1,5 +1,5 @@
 #!/bin/sh
-# DebridPulse container entrypoint.
+# DownloadPulse container entrypoint.
 #
 # Supports PUID / PGID environment variables so that downloaded files are owned
 # by the same user as other host processes that consume downloaded files.
@@ -9,7 +9,7 @@
 #     - PUID=1000
 #     - PGID=1000
 #
-# When PUID/PGID are omitted DebridPulse uses the image defaults (99:100).
+# When PUID/PGID are omitted DownloadPulse uses the image defaults (99:100).
 # To run as root deliberately set PUID=0.
 
 set -e

@@ -1,7 +1,7 @@
 {
-  "name": "debridpulse-browser-contract",
+  "name": "downloadpulse-browser-contract",
   "private": true,
-  "version": "1.0.14",
+  "version": "1.0.0",
   "scripts": {
     "test": "playwright test --config=playwright.config.js"
   },

@@ -3,7 +3,7 @@ const { test, expect } = require('@playwright/test');
 /* DP 1.0.13 Executor Work.
  *
  * One neutral projection, one renderer, two unrelated executors. Every
- * assertion below is about what the browser does with DebridPulse facts: it
+ * assertion below is about what the browser does with DownloadPulse facts: it
  * must render rows it has never seen the shape of before, offer exactly the
  * controls the projection declared legal, address them by the DURABLE attempt
  * id, and know nothing whatsoever about a GID, an NZO id, a native status name
@@ -127,7 +127,7 @@ test('the browser holds no native executor identity, status or action', async ({
   // re-read it makes when execution activity changes asks only the projection.
   const requested = [];
   page.on('request', request => requested.push(new URL(request.url()).pathname));
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:execution-activity-changed')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:execution-activity-changed')));
   await expect.poll(() => requested.filter(p => p.startsWith('/api/executor-work')).length, {timeout: 12000})
     .toBeGreaterThan(0);
   // (The window now spans the spaced re-read, so it also sees the shell's own
@@ -271,7 +271,7 @@ test('the execution state badge is the DP 6px rounded rectangle, and pill contro
 /* DP 1.0.14: Download Engine Activity follows the application's one stream.
  *
  * SIMULATED: the stream's signals are dispatched as the document events app.js
- * bridges them to (debridpulse:execution-activity-changed, -pulse-connected),
+ * bridges them to (downloadpulse:execution-activity-changed, -pulse-connected),
  * and the authoritative projection is the mocked GET /executor-work, whose
  * answer is the payload committed when each request STARTS -- so a held
  * request answers with what was true when it was asked. Nothing here is live
@@ -291,7 +291,7 @@ async function liveExecutorWork(page, payload = PAYLOAD) {
   return state;
 }
 
-const signal = (page, name = 'debridpulse:execution-activity-changed') =>
+const signal = (page, name = 'downloadpulse:execution-activity-changed') =>
   page.evaluate(event => document.dispatchEvent(new CustomEvent(event)), name);
 const names = page => rows(page).evaluateAll(items => items.map(item =>
   item.querySelector('.dp-executor-work-name').textContent.trim()));
@@ -387,7 +387,7 @@ test('nothing is read while the card is off screen or for a non-Admin; arriving 
   await page.waitForTimeout(SPACING_MS + 100);
   const baseline = state.starts.length;
   const quiet = async label => {
-    for (const name of ['debridpulse:execution-activity-changed', 'debridpulse:pulse-connected']) {
+    for (const name of ['downloadpulse:execution-activity-changed', 'downloadpulse:pulse-connected']) {
       for (let index = 0; index < 5; index += 1) await signal(page, name);
     }
     await page.waitForTimeout(SPACING_MS + 300);
@@ -405,7 +405,7 @@ test('nothing is read while the card is off screen or for a non-Admin; arriving 
   await expect.poll(() => state.starts.length).toBe(baseline + 1);
   // A reconnected stream re-reads once.
   await page.waitForTimeout(SPACING_MS + 100);
-  await signal(page, 'debridpulse:pulse-connected');
+  await signal(page, 'downloadpulse:pulse-connected');
   await expect.poll(() => state.starts.length, {timeout: SPACING_MS + 2000}).toBe(baseline + 2);
   // Without the Admin's authority (the application's own predicate) nothing
   // is read, however the stream signals.

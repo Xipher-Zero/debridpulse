@@ -81,7 +81,7 @@ async def test_transition_guard_matches_pydantic_true_string_for_password_clear(
 
 def test_oidc_email_allowlist_requires_verified_email_and_requests_userinfo_completion():
     cfg = oidc.OidcConfiguration(
-        issuer="https://id.example/application/o/debridpulse", client_id="client",
+        issuer="https://id.example/application/o/downloadpulse", client_id="client",
         client_secret="", scopes=("openid", "email"),
         callback_url="https://pulse.example/auth/oidc/callback", provider_name="OIDC",
         allow_all=False, allowed_subjects=(), allowed_emails=("operator@example.com",),
@@ -196,7 +196,7 @@ def test_prospective_oidc_readiness_does_not_treat_false_string_as_allow_all():
     current = SimpleNamespace(
         auth_oidc_enabled=False,
         oidc_provider_name="OIDC",
-        oidc_issuer_url="https://id.example/application/o/debridpulse/",
+        oidc_issuer_url="https://id.example/application/o/downloadpulse/",
         oidc_client_id="client",
         oidc_client_secret="",
         oidc_scopes=["openid", "email"],

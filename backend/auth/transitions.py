@@ -233,7 +233,7 @@ async def settings_transition_rejection(
     # usable-mechanism rule below, which counts the default Admin alone).
     if standalone_deployment(current) and proposed_oidc:
         return JSONResponse(
-            {"detail": "OpenID Connect cannot be enabled while DebridPulse is Standalone"},
+            {"detail": "OpenID Connect cannot be enabled while DownloadPulse is Standalone"},
             status_code=409,
         )
 

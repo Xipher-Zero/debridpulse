@@ -1,4 +1,4 @@
-/* DebridPulse's one localization runtime (window.DPI18n).
+/* DownloadPulse's one localization runtime (window.DPI18n).
  *
  * Every first-party message the interface shows is a key in a catalog
  * (/i18n/<locale>.json, served as /i18n/<locale>.js): English is the
@@ -16,7 +16,7 @@
  * text and never markup.
  *
  * The page's language is decided before its first paint: the server prepends
- * window.debridPulseLocale to /ui-theme-bootstrap.js (the account's own
+ * window.downloadPulseLocale to /ui-theme-bootstrap.js (the account's own
  * choice, the default Admin's while sign-in is off; null when unread), and
  * this parser-blocking script runs right after it, before the body is parsed:
  * it sets the document's lang and dir and, for a page not in English, keeps
@@ -32,7 +32,7 @@
  * names its keys (data-i18n="key" for its text, data-i18n-attr="attr:key;…"
  * for attributes). When the language changes -- the late arrival of the
  * page's catalog, or setLocale(tag), the substrate a later language choice
- * uses -- 'debridpulse:locale-changed' is dispatched and each owner renders
+ * uses -- 'downloadpulse:locale-changed' is dispatched and each owner renders
  * its own messages again; nothing here rewrites text it does not own.
  *
  * Pseudo locales (en-XA: accented and ~40% longer; ar-XB: right-to-left)
@@ -48,7 +48,7 @@
   // The FormatJS AST element types (vendor/intl-messageformat.esm.js TYPE).
   const LITERAL = 0, ARGUMENT = 1, SELECT = 5, PLURAL = 6, TAG = 8;
 
-  const stated = window.debridPulseLocale || {};
+  const stated = window.downloadPulseLocale || {};
   const catalogs = new Map();            // tag -> messages
   const staleKeys = new Map();           // tag -> Set of keys withheld as stale (server-named)
   const formatters = new Map();          // `${tag}\0${key}` -> IntlMessageFormat
@@ -66,7 +66,7 @@
 
   function note(kind, detail) {
     problems.push({kind, detail: String(detail || '')});
-    try { console.warn(`DebridPulse localization: ${kind}`, detail || ''); } catch (_) {}
+    try { console.warn(`DownloadPulse localization: ${kind}`, detail || ''); } catch (_) {}
   }
 
   // ── catalogs ──────────────────────────────────────────────────────────────
@@ -332,7 +332,7 @@
     document.documentElement.removeAttribute(PENDING);
     resolveReady(shown);
     if (previous !== shown) {
-      document.dispatchEvent(new CustomEvent('debridpulse:locale-changed', {detail: {locale: shown, previous}}));
+      document.dispatchEvent(new CustomEvent('downloadpulse:locale-changed', {detail: {locale: shown, previous}}));
     }
   }
 

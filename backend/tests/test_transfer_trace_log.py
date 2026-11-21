@@ -103,7 +103,7 @@ async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inve
     trace = await transfer_trace.build(traced.later.id, traced.application)
     metadata = trace["metadata"]
     assert metadata["requested_transfer_id"] == metadata["primary_transfer_id"] == traced.later.id
-    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 7
+    assert metadata["trace_format"] == "downloadpulse.transfer-trace" and metadata["trace_format_version"] == 7
     assert metadata["sanitization"]["applied"] is True and metadata["sanitization"]["replaced_values"] > 0
     assert metadata["generated_at"].endswith("Z") and metadata["application_version"]
     assert re.fullmatch(r"[0-9a-f]{64}", metadata["schema"]["columns_sha256"])
@@ -260,7 +260,7 @@ async def test_trace_endpoint_returns_a_downloadable_json_file(traced):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
     assert re.fullmatch(
-        rf'attachment; filename="debridpulse-transfer-{traced.later.id}-trace-\d{{8}}T\d{{6}}Z\.json"',
+        rf'attachment; filename="downloadpulse-transfer-{traced.later.id}-trace-\d{{8}}T\d{{6}}Z\.json"',
         response.headers["content-disposition"])
     assert response.json()["metadata"]["requested_transfer_id"] == traced.later.id
     assert missing.status_code == 404 and missing.json() == {"detail": "Transfer not found"}

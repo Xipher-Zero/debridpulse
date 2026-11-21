@@ -17,7 +17,7 @@ seconds of premium time left, a duration, never a date.
   whose time has run out (``premiumLeft`` zero or negative) is held to the
   free baseline at once and, having lost torrents, is degraded.
 
-What each class may begin through the API DebridPulse uses:
+What each class may begin through the API DownloadPulse uses:
 
 * premium (type 1 with time left): hoster links, magnets and ``.torrent``
   uploads;

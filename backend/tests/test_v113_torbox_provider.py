@@ -135,7 +135,7 @@ async def test_device_authorization_start_pending_completion_and_expiry():
     assert started == {"state": "pending", "user_code": "ABC123", "verification_url": "https://torbox.app/oauth/device",
                        "interval": 5, "expires_in": 600}
     assert "DEV" not in json.dumps(started)
-    assert transport.calls[0]["params"] == {"app": "DebridPulse"}
+    assert transport.calls[0]["params"] == {"app": "DownloadPulse"}
     assert (await admin.poll_authorization(service=client, clock=lambda: clock[0]))["state"] == "pending"
     clock[0] += 5
     assert (await admin.poll_authorization(service=client, clock=lambda: clock[0]))["state"] == "pending"

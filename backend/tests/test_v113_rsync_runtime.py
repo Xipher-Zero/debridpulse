@@ -1,4 +1,4 @@
-"""DP 1.0.13 real-runtime proof: rsync participates in DebridPulse-owned
+"""DP 1.0.13 real-runtime proof: rsync participates in DownloadPulse-owned
 material, continuation, lifecycle, recovery and switching.
 
 Real owners end to end: the convergence ``TransferEngine``, the real
@@ -448,7 +448,7 @@ async def test_http_aria2_partial_continues_under_rsync_and_rsync_material_conti
     """The strongest acceptance proof, and its reverse, on one artifact: which
     writer the canonical selection starts with is not part of the contract, so
     the operator switches to the other executor and back -- proving both
-    aria2 -> rsync and rsync -> aria2 continuation from DebridPulse material."""
+    aria2 -> rsync and rsync -> aria2 continuation from DownloadPulse material."""
     server, port, served = await start_origin(rate=1 * MIB)
     write_tree(tmp_path / "srv", {"movie.bin": BODY})
     daemon = RsyncDaemon(tmp_path / "daemon", {"pub": {"path": tmp_path / "srv"}}, bwlimit=1024).start()
@@ -527,7 +527,7 @@ async def _collection_under_limit(tmp_path, monkeypatch, parts, limit, *, bwlimi
             held = await db.fetchall("SELECT equivalence_disposition FROM transfer_requests WHERE transfer_id=? "
                                      "AND equivalence_disposition IN ('exhausted','unverified')", (transfer.id,))
         # The daemon's own record of every connection it refused for its limit,
-        # whichever DebridPulse stage (discovery, proof or execution) met it.
+        # whichever DownloadPulse stage (discovery, proof or execution) met it.
         at_limit = (daemon.root / "rsyncd.log").read_text().count(f"max connections ({limit}) reached")
         return [json.loads(row["error"]) for row in rows if row["error"]], held, at_limit
     finally:
@@ -537,13 +537,13 @@ async def _collection_under_limit(tmp_path, monkeypatch, parts, limit, *, bwlimi
 
 @pytest.mark.real_runtime
 async def test_a_daemon_connection_limit_below_dp_concurrency_never_becomes_a_false_failure(tmp_path, monkeypatch):
-    """Four executions admitted by DebridPulse against a one-connection module:
+    """Four executions admitted by DownloadPulse against a one-connection module:
     the daemon refuses the excess outright (characterized: it never queues),
     every refusal is the neutral remote-capacity fact, and the collection
     completes without a failed member, an operator hold or a second scheduler."""
     parts = {f"part{index}.bin": BODY[:(index + 1) * MIB] for index in range(4)}  # distinct sizes: no duplicate proof
     # A slow daemon (512 KiB/s: 2-8 s a part) keeps each admitted execution
-    # running while DebridPulse admits the next, so the one-slot limit is met.
+    # running while DownloadPulse admits the next, so the one-slot limit is met.
     refused, held, at_limit = await _collection_under_limit(tmp_path, monkeypatch, parts, limit=1, bwlimit=512)
     assert at_limit, "the daemon never refused a connection: the scenario did not exercise its limit"
     assert all((item["domain"], item["category"], item["retryability"]) == ("network", "concurrency_limited", "backoff")

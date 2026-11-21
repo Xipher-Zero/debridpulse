@@ -7,7 +7,7 @@ request. This provider translates all three into the neutral provider-resource
 lifecycle: create (or adopt) the remote object, persist its family-scoped
 identity, observe it, publish its file manifest, and resolve each member into
 fresh HTTP material for the ordinary executors. Routing, failover, retry,
-placement and file selection are DebridPulse's.
+placement and file selection are DownloadPulse's.
 """
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ class TorBoxProvider:
         """Torrent active slots: the current plan's maximum, lowered by the
         operator's "Maximum Active Torrents" when set; occupancy is every
         torrent on the account TorBox reports ``active`` -- including ones
-        DebridPulse did not add, never a cached one. Not a torrent: ``None``."""
+        DownloadPulse did not add, never a cached one. Not a torrent: ``None``."""
         if request.kind not in BITTORRENT_REQUEST_KINDS or request.kind not in self.descriptor.request_types:
             return None
         maximum = active_slot_maximum(self.entitlements)
@@ -190,7 +190,7 @@ class TorBoxProvider:
     async def _owned(self, value: ProviderResource, request: TransferRequest) -> ResolutionResult:
         """The resolution of an object TorBox just created or adopted.
 
-        Its native identity is known, so it reaches DebridPulse's durable
+        Its native identity is known, so it reaches DownloadPulse's durable
         provider-resource boundary even when the first observation fails:
         that failure is no proof the object is gone, and raising here would
         lose the only record of it -- nothing could observe it again or clean
@@ -288,7 +288,7 @@ class TorBoxProvider:
                                                     Retryability.NEVER, origin=Origin.USER,
                                                     integration_id=INTEGRATION_ID))
             # TorBox always acquires the WHOLE torrent -- it has no upstream
-            # file selection. DebridPulse's own file selection decides which of
+            # file selection. DownloadPulse's own file selection decides which of
             # the resulting files it materializes.
             return (await self.client.create_torrent(metainfo=request.payload, name=request.name or ""),
                     Ownership.CREATED)
@@ -319,7 +319,7 @@ class TorBoxProvider:
 
     async def _usenet(self, request: TransferRequest) -> str:
         """Submit the canonical staged NZB as a file. The posting is the bytes
-        DebridPulse already holds: however it arrived -- upload, inline bytes
+        DownloadPulse already holds: however it arrived -- upload, inline bytes
         or a link fetched at ingress -- nothing here can tell, refetch or
         route by its origin."""
         name = request.name or "posting.nzb"

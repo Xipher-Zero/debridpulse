@@ -84,14 +84,14 @@ configure_logging(
     bool(getattr(_log_cfg, "log_pretty", False)),
     getattr(_log_cfg, "log_format", "plain"),
 )
-logger = logging.getLogger("debridpulse.main")
+logger = logging.getLogger("downloadpulse.main")
 
 # persistence initialization on startup
 
 
 def _quiet_closed_connections(loop, context: dict) -> None:
     """Windows' Proactor event loop reports a peer that reset or aborted a
-    connection DebridPulse was already closing (WinError 10054/10053, a browser
+    connection DownloadPulse was already closing (WinError 10054/10053, a browser
     or client simply going away) as an unhandled error with a traceback. That
     is the connection ending, nothing more: it is dropped, and every other
     loop error reaches the default handler unchanged."""
@@ -147,12 +147,12 @@ async def lifespan(app: FastAPI):
         auth=("+".join(auth_mechanisms) if auth_mechanisms else "disabled"),
     )
     if not interactive_enabled:
-        logger.warning("Interactive authentication is disabled; DebridPulse is intentionally operating in open mode")
+        logger.warning("Interactive authentication is disabled; DownloadPulse is intentionally operating in open mode")
     from auth.accounts import usable_admin_present
     if not await usable_admin_present(cfg):
         logger.error(
             "No active Admin account can sign in with the enabled authentication methods. To recover, stop "
-            "DebridPulse and either set auth_username and a plaintext auth_password in config.json (installed on "
+            "DownloadPulse and either set auth_username and a plaintext auth_password in config.json (installed on "
             "the default Admin account at start) or set auth_password_enabled and auth_oidc_enabled to false"
         )
     if oidc_enabled:
@@ -275,7 +275,7 @@ class RequestBodyLimitMiddleware:
 
 
 try:
-    _MAX_REQUEST_BODY_BYTES = max(1024 * 1024, min(100 * 1024 * 1024, int(os.getenv("DEBRIDPULSE_MAX_REQUEST_BYTES", str(20 * 1024 * 1024)))))
+    _MAX_REQUEST_BODY_BYTES = max(1024 * 1024, min(100 * 1024 * 1024, int(os.getenv("DOWNLOADPULSE_MAX_REQUEST_BYTES", str(20 * 1024 * 1024)))))
 except ValueError:
     _MAX_REQUEST_BODY_BYTES = 20 * 1024 * 1024
 
@@ -283,7 +283,7 @@ except ValueError:
 app = FastAPI(
     title=APP_METADATA_TITLE,
     description=(
-        "Self-hosted DebridPulse runtime built around the Universal Transfer Core for "
+        "Self-hosted DownloadPulse runtime built around the Universal Transfer Core for "
         "direct links, magnets, torrent, NZB and Metalink files, and media pages. Its "
         "acquisition providers are AllDebrid, Real-Debrid, TorBox, Debrid-Link and Premiumize; "
         "General HTTP(S), FTP/SFTP, SCP, rsync and WebDAV sources; Metalink; Usenet; and Media "
@@ -454,7 +454,7 @@ async def request_validation_error_handler(_request: Request, exc: RequestValida
     )
 
 
-_RESTORE_UNRESOLVED = ("A restore could neither finish nor be undone. DebridPulse has stopped using its stored state; "
+_RESTORE_UNRESOLVED = ("A restore could neither finish nor be undone. DownloadPulse has stopped using its stored state; "
                        "restart it to put the previous state back.")
 
 
@@ -503,12 +503,12 @@ def configured_cors_origins(raw: str) -> list[str]:
     CORS here always allows credentials, so an origin listed is trusted with
     the signed-in session. ``*`` would make every web page such an origin
     (Starlette reflects the requesting origin when credentials are allowed), so
-    it is refused, and DebridPulse does not start with it: name each origin
+    it is refused, and DownloadPulse does not start with it: name each origin
     that may call the API instead."""
     origins = [origin.strip() for origin in str(raw or "").split(",") if origin.strip()]
     if "*" in origins:
         raise RuntimeError(
-            "CORS_ORIGINS=* is refused: DebridPulse's CORS allows credentials, so a wildcard would let "
+            "CORS_ORIGINS=* is refused: DownloadPulse's CORS allows credentials, so a wildcard would let "
             "every website use a signed-in session. List the exact origins (scheme://host[:port]) "
             "that may call the API, or leave CORS_ORIGINS unset.")
     return origins

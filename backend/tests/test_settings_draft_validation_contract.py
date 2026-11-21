@@ -122,25 +122,25 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
         "API key configured for your {provider} account.",
         "Remove the stored {provider} API key",
         "Remove",
-        "Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.",
+        "Limits how many requests DownloadPulse sends to AllDebrid each minute. Set to 0 for no local limit.",
     )
     # The polling, sync and resolution-retry settings apply beyond AllDebrid, so
     # their explanations live with them under Downloads -> Download Behavior &
     # Limits -> Advanced Settings, and name neither AllDebrid nor uploads.
     advanced = section(runtime, "function downloadBehaviorAdvanced(", "function projectPrivateLanDependency")
     for text in (
-        "How often DebridPulse checks a service for progress on work it is preparing, such as a torrent or cloud copy. Shorter intervals update status sooner but send more requests.",
-        "How often DebridPulse reconciles its downloads with every enabled premium service account that can list its transfers. Set to 0 to disable scheduled full syncs.",
-        "How many times DebridPulse retries when a service fails to resolve a download into something it can fetch, for any service including Network Sources, before trying another service or giving up. Set to 0 to disable these retries.",
-        "How long DebridPulse waits before trying to resolve a download again after such a failure. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.",
+        "How often DownloadPulse checks a service for progress on work it is preparing, such as a torrent or cloud copy. Shorter intervals update status sooner but send more requests.",
+        "How often DownloadPulse reconciles its downloads with every enabled premium service account that can list its transfers. Set to 0 to disable scheduled full syncs.",
+        "How many times DownloadPulse retries when a service fails to resolve a download into something it can fetch, for any service including Network Sources, before trying another service or giving up. Set to 0 to disable these retries.",
+        "How long DownloadPulse waits before trying to resolve a download again after such a failure. A plain retry doubles the wait after each failure but never waits more than 5 minutes. Set to 0 to retry immediately.",
     ):
         assert says(advanced, text), text
     for retired in ("checks AllDebrid for updates", "complete reconciliation with AllDebrid", "failed provider upload",
                     "resolving a failed upload"):
         assert retired not in runtime, retired
     # The provider cards' top body row is reserved and blank: no descriptions.
-    assert "Connect DebridPulse to AllDebrid" not in runtime
-    assert "Add the news servers DebridPulse should download from." not in runtime
+    assert "Connect DownloadPulse to AllDebrid" not in runtime
+    assert "Add the news servers DownloadPulse should download from." not in runtime
     for text in expected:
         assert says(sources, text), text
 

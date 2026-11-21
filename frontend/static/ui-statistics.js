@@ -1,4 +1,4 @@
-/* DebridPulse Statistics canonical runtime.
+/* DownloadPulse Statistics canonical runtime.
  *
  * The accepted Statistics composition is encoded directly in index.html and
  * ui-statistics-page.css. This runtime owns Statistics data hydration,
@@ -10,8 +10,8 @@
  *
  * Live while shown: every figure, list and the chart come from ONE accepted
  * GET /stats/detail answer for the selected period. The application's one
- * stream says when to re-read (debridpulse:statistics-invalidated) and keeps
- * time (debridpulse:pulse-heartbeat, at least every 30 s), never what to show.
+ * stream says when to re-read (downloadpulse:statistics-invalidated) and keeps
+ * time (downloadpulse:pulse-heartbeat, at least every 30 s), never what to show.
  * At most one request is in flight; re-reads are spaced by REFRESH_SPACING_MS
  * (measured), a re-read asked for meanwhile runs once that one settles, and a
  * period choice or re-entry runs as soon as nothing is in flight. An answer
@@ -558,7 +558,7 @@
     renderBreakdown(BREAKDOWNS[2], stats.event_levels);
     renderBreakdown(BREAKDOWNS[3], stats.transfer_methods);
     renderCompletionChart(stats.daily_completions || [], live);
-    document.dispatchEvent(new CustomEvent('debridpulse:statistics-rendered', {detail: {period: period, live: live}}));
+    document.dispatchEvent(new CustomEvent('downloadpulse:statistics-rendered', {detail: {period: period, live: live}}));
   }
 
   // One request; its answer is shown only if it is still the current one.
@@ -821,11 +821,11 @@
   const statisticsHeader = document.querySelector('#view-stats > .dp-stats-master-header');
   if (statisticsHeader) new ResizeObserver(fitStatisticsHeader).observe(statisticsHeader);
   if (document.fonts) document.fonts.addEventListener('loadingdone', fitStatisticsHeader);
-  document.addEventListener('debridpulse:theme-changed', applyChartPalette);
+  document.addEventListener('downloadpulse:theme-changed', applyChartPalette);
   // A language change: the answer on screen is drawn again in the new words
   // (the chart anew, so its labels, legend and tooltips follow), the chart's
   // subtitle, the period control and the header's fitted wordings too.
-  document.addEventListener('debridpulse:locale-changed', function () {
+  document.addEventListener('downloadpulse:locale-changed', function () {
     const chartTitle = document.getElementById('chart-title');
     if (chartTitle && currentPeriod) chartTitle.textContent = t('stats.chart.subtitle', {period: periodWord(currentPeriod)});
     syncPeriodControl();
@@ -851,17 +851,17 @@
     }
     fitStatisticsHeader();
   });
-  document.addEventListener('debridpulse:statistics-invalidated', invalidated);
+  document.addEventListener('downloadpulse:statistics-invalidated', invalidated);
   // A reconnected stream may have missed changes: re-read once.
-  document.addEventListener('debridpulse:pulse-connected', invalidated);
-  document.addEventListener('debridpulse:pulse-heartbeat', function () {
+  document.addEventListener('downloadpulse:pulse-connected', invalidated);
+  document.addEventListener('downloadpulse:pulse-heartbeat', function () {
     if (Date.now() - lastAccepted >= AGING_MS) invalidated();
   });
-  document.addEventListener('debridpulse:navigation', function (event) {
+  document.addEventListener('downloadpulse:navigation', function (event) {
     if (event.detail?.view !== 'stats') retire();
   });
   // Arrived on Statistics: the same chart takes its settled container's size.
-  document.addEventListener('debridpulse:navigation-settled', function (event) {
+  document.addEventListener('downloadpulse:navigation-settled', function (event) {
     if (event.detail?.view === 'stats') document.getElementById('daily-chart')?._ci?.resize();
   });
 })();

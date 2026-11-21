@@ -5,8 +5,8 @@ Bundled notice for a runtime dependency that ships no license file inside its
 distribution. Reproduced here so the shipped image still carries the upstream
 licensing statement.
 
-sgmllib3k reaches DebridPulse as a dependency of `feedparser`, which is a
-dependency of the bundled Usenet acquisition service (SABnzbd). DebridPulse
+sgmllib3k reaches DownloadPulse as a dependency of `feedparser`, which is a
+dependency of the bundled Usenet acquisition service (SABnzbd). DownloadPulse
 does not import it.
 
 Upstream metadata (sgmllib3k-1.0.0/PKG-INFO, verbatim)

@@ -6,7 +6,7 @@ executor (execution) both translate it here, so one fact never means two
 things on the two halves of the integration.
 
 Every outcome is a fact about the submitted media, its source, this machine or
-DebridPulse policy -- never about a provider service that another provider
+DownloadPulse policy -- never about a provider service that another provider
 could replace. None is ``transfers.policy.provider_attributable``, so a medium
 Media Downloads claimed is never handed to another provider (generic HTTP
 included) because resolving or acquiring it failed.
@@ -59,7 +59,7 @@ _OUTCOMES = {
     "egress_refused": (Domain.SECURITY, Category.EGRESS_POLICY_VIOLATION, Retryability.NEVER,
                        Origin.SECURITY_POLICY),
     "path_refused": (Domain.SECURITY, Category.PATH_POLICY_VIOLATION, Retryability.NEVER, Origin.SECURITY_POLICY),
-    # The attempt's route ended under it (DebridPulse restarted): a fresh
+    # The attempt's route ended under it (DownloadPulse restarted): a fresh
     # attempt starts from zero.
     "route_revoked": (Domain.EXECUTOR, Category.TRANSFER_INTERRUPTED, Retryability.BACKOFF, Origin.LOCAL_SYSTEM),
     "identity_changed": (Domain.RESOLUTION, Category.CANDIDATE_EXPIRED, Retryability.AFTER_RERESOLUTION,

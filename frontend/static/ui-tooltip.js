@@ -1,4 +1,4 @@
-/* DebridPulse informational tooltips: the one owner.
+/* DownloadPulse informational tooltips: the one owner.
  *
  * Every application-owned informational tooltip is declared by its own render
  * owner as `data-tooltip="text"` on the element it describes -- never `title`,
@@ -422,11 +422,11 @@
   }, true);
   window.addEventListener('resize', hide);
   window.addEventListener('blur', hide);
-  document.addEventListener('debridpulse:navigation', hide);
+  document.addEventListener('downloadpulse:navigation', hide);
   // The same edges end a dwell still waiting.
   window.addEventListener('resize', stopDwell);
   window.addEventListener('blur', stopDwell);
-  document.addEventListener('debridpulse:navigation', stopDwell);
+  document.addEventListener('downloadpulse:navigation', stopDwell);
 
   window.DPTooltip = Object.freeze({hide});
 })();

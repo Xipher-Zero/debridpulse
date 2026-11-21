@@ -278,7 +278,7 @@ def test_every_current_event_toggle_moved_into_the_compact_cells():
         ("discord_notify_finished", "Download Completed", "Send a notification when a download finishes successfully."),
         ("discord_notify_error", "Download Error", "Send a notification when a download fails."),
         ("discord_notify_extract", "Extraction Result", "Send a notification when archive extraction completes or fails."),
-        ("discord_notify_update", "Update Available", "Send a notification when a newer DebridPulse release is detected."),
+        ("discord_notify_update", "Update Available", "Send a notification when a newer DownloadPulse release is detected."),
     ]
     assert "tuningCells(" in cells
     for key, title, flavor in expected:
@@ -318,7 +318,7 @@ def test_update_check_interval_moved_and_states_its_unit_inside_the_field():
     assert labelled(cells, "input('update_check_interval_hours', ", "Update Check Interval")
     assert "Update Check Interval (Hours Between Checks)" not in source(RUNTIME)
     assert "type: 'number', min: 0, max: 168, step: 1," in cells
-    assert says(cells, "Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.")
+    assert says(cells, "Set how often DownloadPulse checks for a newer release. Enter 0 to disable update checks.")
     assert "embedAction: fieldUnit(say('settings.unit.hours'))" in cells
     # The delivery row no longer holds it.
     delivery = block(card, "dp-settings-notifications-delivery-row", "disclosureSection(")
@@ -333,7 +333,7 @@ def test_statistics_reporting_is_three_standard_controls_and_no_disclosure():
     assert "webhookField('stats_report_webhook_url'" in card
     assert labelled(card, "input('stats_report_interval_hours', ", "Automatic Report Interval")
     assert "Automatic Report Interval (Hours Between Reports)" not in source(RUNTIME)
-    assert says(card, "Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.")
+    assert says(card, "Set how often DownloadPulse sends statistics reports. Enter 0 to disable automatic reports.")
     assert "embedAction: fieldUnit(say('settings.unit.hours'))" in card
     assert labelled(card, "selectField('stats_report_window_hours', ", "Report Window")
     assert says(card, "Choose how much recent activity each statistics report includes.")

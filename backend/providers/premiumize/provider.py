@@ -13,8 +13,8 @@ first:
   Premiumize file ids, whose links are generated on demand.
 
 Both end in ordinary HTTP material for the existing executors. Routing,
-failover, retry, placement and file selection are DebridPulse's; Premiumize's
-cloud is never managed here beyond the transfer DebridPulse created.
+failover, retry, placement and file selection are DownloadPulse's; Premiumize's
+cloud is never managed here beyond the transfer DownloadPulse created.
 """
 from __future__ import annotations
 
@@ -330,7 +330,7 @@ class PremiumizeProvider:
             return ""
 
     async def _create_nzb(self, request: TransferRequest) -> str:
-        """Upload the canonical staged NZB -- the bytes DebridPulse already
+        """Upload the canonical staged NZB -- the bytes DownloadPulse already
         holds, however it arrived; nothing here refetches it."""
         name = request.name or "posting.nzb"
         payload = request.payload
@@ -350,7 +350,7 @@ class PremiumizeProvider:
 
     async def _owned(self, value: ProviderResource, request: TransferRequest) -> ResolutionResult:
         """The resolution of a transfer Premiumize just created. Its id is
-        known, so it reaches DebridPulse's durable provider-resource boundary
+        known, so it reaches DownloadPulse's durable provider-resource boundary
         even when the first observation fails: that failure is no proof the
         transfer is gone. It is handed over unready (``UNKNOWN``) and the
         ordinary observation of a bound resource decides what happens next."""
@@ -582,7 +582,7 @@ class PremiumizeProvider:
     @normalized_boundary(Stage.RECONCILIATION)
     async def inventory(self) -> ResourceSnapshot:
         """Every transfer on the account (``transfer/list``) -- transfers,
-        never the cloud's files, which are not DebridPulse's resources."""
+        never the cloud's files, which are not DownloadPulse's resources."""
         observations = []
         for record in await self._call(self.client.list_transfers, stage=Stage.RECONCILIATION):
             transfer_id = native_id(record.get("id")) if isinstance(record, dict) else None
@@ -594,7 +594,7 @@ class PremiumizeProvider:
 
     @normalized_boundary(Stage.CLEANUP)
     async def cleanup(self, directive: CleanupDirective) -> TransferOutcome:
-        """Only the transfer DebridPulse created or adopted, through
+        """Only the transfer DownloadPulse created or adopted, through
         ``transfer/delete``. An immediate result owns nothing on Premiumize,
         and no cloud file or folder is ever deleted here."""
         resource_value = directive.resource

@@ -48,7 +48,7 @@ def test_the_one_version_datum_follows_the_active_master_surface_never_the_windo
     index = read(STATIC / "index.html")
     assert index.count('id="sidebar-version"') == 1
     content = index[index.index('<div id="content"'):index.index('<!-- Modal -->')]
-    assert ('<div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version" '
+    assert ('<div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DownloadPulse version" '
             'data-i18n-attr="aria-label:shell.version_label">v…</div>') in content
     brand = read(STATIC / "ui-shell-brand.css")
     rule = brand[brand.index("#content > #sidebar-version.dp-app-version {"):].split("}", 1)[0]

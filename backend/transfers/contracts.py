@@ -198,7 +198,7 @@ class Manifest(Protocol):
 @runtime_checkable
 class UpstreamSelection(Protocol):
     """A manifest provider that executes only the files selected on its own
-    resource: until DebridPulse's authorized selection is synchronized there,
+    resource: until DownloadPulse's authorized selection is synchronized there,
     the resource is observable and its file list selectable, but none of its
     members is executable.
 

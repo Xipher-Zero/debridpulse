@@ -138,7 +138,7 @@ test('Dashboard runtime hydrates KPI values beside decorative sparklines and sub
   await expect(page.locator('.dp-card-spark')).toHaveCount(6);
   await expect(page.locator('.dp-card-spark-line')).toHaveCount(6);
   await expect(page.locator('#s-total')).not.toHaveText('—');
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('debridpulse.dashboard.metric-history.v2'))).toBeNull();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('downloadpulse.dashboard.metric-history.v2'))).toBeNull();
 
   const input = page.locator('#q-transfer-input');
   await expect(input).toBeVisible();

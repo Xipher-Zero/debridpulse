@@ -1,4 +1,4 @@
-/* DebridPulse Settings contextual help.
+/* DownloadPulse Settings contextual help.
  *
  * The ONE owner of what each Settings card's help says. Every Settings card
  * (ui-settings-page.js, the sole Settings markup owner) renders one help chip
@@ -23,7 +23,7 @@
  * wording, never a sentence joined from parts.
  *
  * A topic explains the interface its reader actually has. The one context
- * is the interface's own (auth.js `debridPulseAuth.presentation.context`:
+ * is the interface's own (auth.js `downloadPulseAuth.presentation.context`:
  * the role's capabilities, the deployment type, Easy or Advanced and the
  * Easy list's omissions), plus any facts the opener states about its own
  * subject (My Account's profile) or about where it is read: the setup
@@ -152,7 +152,7 @@
         ]},
         {heading: 'help.topic.heading.downloads_recovery', list: [
           'help.topic.usenet.downloads_recovery.usenet_download',
-          'help.topic.usenet.downloads_recovery.debridpulse_verifies_repairs',
+          'help.topic.usenet.downloads_recovery.downloadpulse_verifies_repairs',
           {text: 'help.topic.usenet.downloads_recovery.behavior_shared_every',
             when: c => inSettings(c) && c.shows('transfer-method-settings')},
         ]},
@@ -294,9 +294,9 @@
           'help.topic.torbox.connecting.disconnect_forgets_stored',
         ]},
         {heading: 'help.topic.heading.what_plan_can', list: [
-          'help.topic.torbox.what_plan_can.debridpulse_follows_torbox',
+          'help.topic.torbox.what_plan_can.downloadpulse_follows_torbox',
           'help.topic.torbox.what_plan_can.nzbs_only_where',
-          'help.topic.torbox.what_plan_can.debridpulse',
+          'help.topic.torbox.what_plan_can.downloadpulse',
           'help.topic.torbox.what_plan_can.torbox',
         ]},
         {heading: 'help.topic.heading.additional_settings', when: shown('provider-additional-settings'), list: [
@@ -568,7 +568,7 @@
           'help.topic.oidc.intro.lets_people_sign',
         ]},
         {heading: 'help.topic.heading.connection', list: [
-          say('help.topic.oidc.connection.public_debridpulse_base', {variable: 'PUBLIC_BASE_URL'}),
+          say('help.topic.oidc.connection.public_downloadpulse_base', {variable: 'PUBLIC_BASE_URL'}),
           'help.topic.oidc.connection.issuer_url_client',
           say('help.topic.oidc.connection.scopes', {scope: 'openid'}),
           'help.topic.oidc.connection.test_signs_through',
@@ -604,7 +604,7 @@
           'help.topic.user_accounts.account_actions.every_person_has',
           'help.topic.user_accounts.account_actions.disabling_account_ends',
           'help.topic.user_accounts.account_actions.merge_combines_accounts',
-          'help.topic.user_accounts.account_actions.debridpulse_always_keeps',
+          'help.topic.user_accounts.account_actions.downloadpulse_always_keeps',
         ]},
       ],
     },
@@ -722,7 +722,7 @@
       title: 'settings.reports.title',
       sections: [
         {text: [
-          'help.topic.statistics_reporting.intro.outbound_summary_debridpulse',
+          'help.topic.statistics_reporting.intro.outbound_summary_downloadpulse',
         ]},
         {heading: 'help.topic.heading.who_receives', list: [
           'help.topic.statistics_reporting.who_receives.only_configured_destination',
@@ -779,7 +779,7 @@
       title: 'settings.events.title',
       sections: [
         {text: [
-          'help.topic.event_logging.intro.debridpulse_records_event',
+          'help.topic.event_logging.intro.downloadpulse_records_event',
         ]},
         {heading: 'help.topic.heading.principal_controls', list: [
           'help.topic.event_logging.principal_controls.activity_log_page',
@@ -801,11 +801,11 @@
           {text: 'help.topic.backups.backups.restoring_makes_safety', when: omitted('database-reset')},
         ]},
         {heading: 'help.topic.heading.statistics_snapshots', when: shown('backup-additional-settings'), list: [
-          'help.topic.backups.statistics_snapshots.separately_debridpulse_saves',
+          'help.topic.backups.statistics_snapshots.separately_downloadpulse_saves',
           'help.topic.backups.statistics_snapshots.snapshots',
         ]},
         {heading: 'help.topic.heading.statistics_snapshots', when: omitted('backup-additional-settings'), list: [
-          'help.topic.backups.statistics_snapshots.debridpulse_keeps_saving',
+          'help.topic.backups.statistics_snapshots.downloadpulse_keeps_saving',
         ]},
       ],
     },
@@ -813,7 +813,7 @@
       title: 'settings.reset.title',
       sections: [
         {text: [
-          'help.topic.database_reset.intro.erases_debridpulse_download',
+          'help.topic.database_reset.intro.erases_downloadpulse_download',
         ]},
         {heading: 'help.topic.heading.what_removed_kept', list: [
           'help.topic.database_reset.what_removed_kept.removed',
@@ -990,7 +990,7 @@
     easy: false, advanced: true, shows: () => true});
 
   function context(facts = {}) {
-    const c = {...(window.debridPulseAuth?.presentation?.context?.() || UNREAD), ...facts};
+    const c = {...(window.downloadPulseAuth?.presentation?.context?.() || UNREAD), ...facts};
     // The wizard draws every service as Easy does, with no Additional
     // Settings (ui-settings-page.js, the wizard surface), whatever the
     // reader's presentation.

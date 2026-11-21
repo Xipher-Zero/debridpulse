@@ -1,5 +1,5 @@
-# Artifact-centric runtime/container security gate for DebridPulse.
-# This workflow never rebuilds the candidate. It waits for Fork Image to publish
+# Artifact-centric runtime/container security gate for DownloadPulse.
+# This workflow never rebuilds the candidate. It waits for Image to publish
 # the immutable SHA artifact, resolves the exact manifest/child digests, and
 # scans those registry objects directly.
 name: Container Security
@@ -8,10 +8,7 @@ on:
   push:
     branches:
       - main
-      - '1.0.11'
-      - '1.0.12'
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
       - 'audit/**'
     tags:
@@ -29,9 +26,9 @@ permissions:
   attestations: write
 
 env:
-  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse
+  IMAGE_NAME: ghcr.io/xipher-zero/downloadpulse
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  SECURITY_PREDICATE_TYPE: https://github.com/Xipher-Zero/debridpulse/attestations/container-security/v1
+  SECURITY_PREDICATE_TYPE: https://github.com/Xipher-Zero/downloadpulse/attestations/container-security/v1
 
 jobs:
   identity:
@@ -70,7 +67,7 @@ jobs:
           manifest_digest=""
           manifest_json=""
 
-          # Wait on this commit's own Fork Image run, not on a clock: while it
+          # Wait on this commit's own Image run, not on a clock: while it
           # is queued or running (a re-run included) the candidate may still
           # come; once it finished without publishing, fail saying so. Bounded.
           python3 .github/qualification/candidate_image.py --sha "$GITHUB_SHA" --ref "$source_ref"

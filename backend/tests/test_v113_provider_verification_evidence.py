@@ -102,7 +102,7 @@ def test_verification_evidence_is_never_exposed_publicly():
 
 
 def test_a_fingerprint_is_deterministic_and_never_the_credential():
-    material = {"api_key": "secret-key", "agent": "DebridPulse"}
+    material = {"api_key": "secret-key", "agent": "DownloadPulse"}
     first = verification_fingerprint(material)
     assert first == verification_fingerprint(dict(reversed(list(material.items()))))
     assert first != verification_fingerprint({**material, "api_key": "other"})
@@ -112,7 +112,7 @@ def test_a_fingerprint_is_deterministic_and_never_the_credential():
 # ── what each integration's Test actually proves ─────────────────────────────
 
 def test_alldebrid_verification_covers_the_tested_credential_only():
-    base = {"api_key": "secret-key", "agent": "DebridPulse", "rate_limit_per_minute": 60}
+    base = {"api_key": "secret-key", "agent": "DownloadPulse", "rate_limit_per_minute": 60}
     original = _fingerprints(alldebrid_definition, base)
     assert len(original) == 1
     # Local rate limiting is not what the connection Test proves.
@@ -263,7 +263,7 @@ def test_a_failed_test_of_an_unsaved_draft_revokes_nothing():
     settings = _settings(alldebrid=IntegrationSettings(
         enabled=True, options=options,
         verification=_fingerprints(alldebrid_definition, options)))
-    other = verification_fingerprint({"api_key": "some-other-draft", "agent": "DebridPulse"})
+    other = verification_fingerprint({"api_key": "some-other-draft", "agent": "DownloadPulse"})
     assert record_verification_outcome(settings, alldebrid_definition, other, False) is None
     assert public_integrations(settings, DEFINITIONS)["alldebrid"]["verified"] is True
 

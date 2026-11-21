@@ -1,14 +1,14 @@
-; DebridPulse for Windows x64 -- the per-user installer (NSIS 3.11, the pinned
+; DownloadPulse for Windows x64 -- the per-user installer (NSIS 3.11, the pinned
 ; Debian package; built by packaging/desktop/windows/build-installer.sh).
 ;
-; * Per-user: no elevation for DebridPulse itself; the program goes to
-;   %LOCALAPPDATA%\Programs\DebridPulse, its data stays in
-;   %LOCALAPPDATA%\DebridPulse (the supervisor's data root), whose content
+; * Per-user: no elevation for DownloadPulse itself; the program goes to
+;   %LOCALAPPDATA%\Programs\DownloadPulse, its data stays in
+;   %LOCALAPPDATA%\DownloadPulse (the supervisor's data root), whose content
 ;   neither an upgrade nor the uninstaller changes (they only hold its
 ;   desktop.lock, below). No configuration file is written, so the first run
 ;   is always the setup wizard.
 ; * Silent: /S installs or uninstalls without a page.
-; * Prerequisites, before any DebridPulse file is written:
+; * Prerequisites, before any DownloadPulse file is written:
 ;     - Microsoft Visual C++ x64 Redistributable >= VCREDIST_MIN, read where
 ;       Microsoft documents it (HKLM\SOFTWARE\Microsoft\VisualStudio\14.0\VC\
 ;       Runtimes\X64, 64-bit view: Installed=1, Major/Minor/Bld), checked
@@ -44,7 +44,7 @@ Unicode true
   !error "STAGE (the assembled application directory) is required"
 !endif
 !ifndef OUTFILE
-  !define OUTFILE "DebridPulse-${VERSION}-windows-x64.exe"
+  !define OUTFILE "DownloadPulse-${VERSION}-windows-x64.exe"
 !endif
 !ifndef VCREDIST_MIN_MAJOR
   !define VCREDIST_MIN_MAJOR 14
@@ -57,12 +57,12 @@ Unicode true
 ; (learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
 !define VCREDIST_DOWNLOAD "https://aka.ms/vc14/vc_redist.x64.exe"
 !define WEBVIEW2_CLIENT "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-!define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DebridPulse"
+!define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\DownloadPulse"
 
-Name "DebridPulse"
+Name "DownloadPulse"
 OutFile "${OUTFILE}"
 RequestExecutionLevel user
-InstallDir "$LOCALAPPDATA\Programs\DebridPulse"
+InstallDir "$LOCALAPPDATA\Programs\DownloadPulse"
 InstallDirRegKey HKCU "${UNINSTALL_KEY}" "InstallLocation"
 SetCompressor /SOLID lzma
 ShowInstDetails show
@@ -71,15 +71,15 @@ ShowInstDetails show
 ManifestDPIAware true
 ManifestSupportedOS Win10
 XPStyle on
-BrandingText "DebridPulse ${VERSION}"
+BrandingText "DownloadPulse ${VERSION}"
 VIProductVersion "${VERSION}.0"
-VIAddVersionKey "ProductName" "DebridPulse"
+VIAddVersionKey "ProductName" "DownloadPulse"
 VIAddVersionKey "FileVersion" "${VERSION}"
-VIAddVersionKey "FileDescription" "DebridPulse installer"
+VIAddVersionKey "FileDescription" "DownloadPulse installer"
 VIAddVersionKey "LegalCopyright" "GPL-2.0-or-later"
 
-; Modern UI 2: Welcome, License, Location, Progress, Finish (Launch DebridPulse),
-; and the uninstaller's Confirm, Progress and Finish -- in DebridPulse's own
+; Modern UI 2: Welcome, License, Location, Progress, Finish (Launch DownloadPulse),
+; and the uninstaller's Confirm, Progress and Finish -- in DownloadPulse's own
 ; pictures (packaging/desktop/assemble.py installer_bitmaps: the sign-in
 ; page's field, the mark and the page title's EKG; the mark on the header).
 !define DP_ICONS "${STAGE}\desktop\shell\resources\icons"
@@ -94,10 +94,10 @@ VIAddVersionKey "LegalCopyright" "GPL-2.0-or-later"
 !define MUI_ABORTWARNING
 !define MUI_UNABORTWARNING
 ; Launch from the Finish page: by then .onInstSuccess has let go of the data
-; root's lock, so the DebridPulse it starts can take it.
+; root's lock, so the DownloadPulse it starts can take it.
 !define MUI_FINISHPAGE_RUN
-!define MUI_FINISHPAGE_RUN_TEXT "Launch DebridPulse"
-!define MUI_FINISHPAGE_RUN_FUNCTION LaunchDebridPulse
+!define MUI_FINISHPAGE_RUN_TEXT "Launch DownloadPulse"
+!define MUI_FINISHPAGE_RUN_FUNCTION LaunchDownloadPulse
 
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${STAGE}\LICENSE"
@@ -109,7 +109,7 @@ VIAddVersionKey "LegalCopyright" "GPL-2.0-or-later"
 !insertmacro MUI_UNPAGE_FINISH
 !insertmacro MUI_LANGUAGE "English"
 
-Function LaunchDebridPulse
+Function LaunchDownloadPulse
   ; The Start-menu shortcut's own command.
   Exec '"$INSTDIR\app\runtime\python\pythonw.exe" -I "$INSTDIR\app\desktop\supervisor.py"'
 FunctionEnd
@@ -119,39 +119,39 @@ Var vcMinor
 Var vcBld
 
 ; One owner of the data root at a time: the supervisor's lock -- an exclusive
-; lock on the first byte of %LOCALAPPDATA%\DebridPulse\desktop.lock, held for as
-; long as DebridPulse runs (desktop/supervisor.py single_instance). The
+; lock on the first byte of %LOCALAPPDATA%\DownloadPulse\desktop.lock, held for as
+; long as DownloadPulse runs (desktop/supervisor.py single_instance). The
 ; installer and the uninstaller take that same byte before they change
-; anything and hold it until they end, so DebridPulse cannot be running while
+; anything and hold it until they end, so DownloadPulse cannot be running while
 ; its program files, shortcut or uninstall entry change (a running program
-; keeps files open: a half-installed or half-removed DebridPulse), and a
-; DebridPulse started meanwhile finds the lock taken and ends before it starts.
+; keeps files open: a half-installed or half-removed DownloadPulse), and a
+; DownloadPulse started meanwhile finds the lock taken and ends before it starts.
 ; A first installation creates the data root only to hold the lock, and removes
-; what it created when it lets go (DebridPulse creates it on its first run).
+; what it created when it lets go (DownloadPulse creates it on its first run).
 Var dpLock
 Var dpRootCreated
 
 !macro DP_DATA_ROOT_LOCK UN
 Function ${UN}TakeDataRootLock
   StrCpy $dpRootCreated 0
-  ${IfNot} ${FileExists} "$LOCALAPPDATA\DebridPulse\*.*"
-    CreateDirectory "$LOCALAPPDATA\DebridPulse"
+  ${IfNot} ${FileExists} "$LOCALAPPDATA\DownloadPulse\*.*"
+    CreateDirectory "$LOCALAPPDATA\DownloadPulse"
     StrCpy $dpRootCreated 1
   ${EndIf}
   ; GENERIC_READ|GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE (the
   ; supervisor's own open), OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL
-  System::Call 'kernel32::CreateFileW(w "$LOCALAPPDATA\DebridPulse\desktop.lock", i 0xC0000000, i 3, p 0, i 4, i 0x80, p 0) p .r1'
+  System::Call 'kernel32::CreateFileW(w "$LOCALAPPDATA\DownloadPulse\desktop.lock", i 0xC0000000, i 3, p 0, i 4, i 0x80, p 0) p .r1'
   ${If} $1 == -1
     ${If} $dpRootCreated == 1
-      RMDir "$LOCALAPPDATA\DebridPulse"
+      RMDir "$LOCALAPPDATA\DownloadPulse"
     ${EndIf}
-    MessageBox MB_ICONSTOP|MB_OK "$LOCALAPPDATA\DebridPulse\desktop.lock cannot be opened, so it is not known whether DebridPulse is running. Nothing was changed." /SD IDOK
+    MessageBox MB_ICONSTOP|MB_OK "$LOCALAPPDATA\DownloadPulse\desktop.lock cannot be opened, so it is not known whether DownloadPulse is running. Nothing was changed." /SD IDOK
     Abort
   ${EndIf}
   System::Call 'kernel32::LockFile(p r1, i 0, i 0, i 1, i 0) i .r2'
   ${If} $2 == 0
     System::Call 'kernel32::CloseHandle(p r1)'
-    MessageBox MB_ICONSTOP|MB_OK "DebridPulse is running. Quit it from its tray menu (Quit), then run this again." /SD IDOK
+    MessageBox MB_ICONSTOP|MB_OK "DownloadPulse is running. Quit it from its tray menu (Quit), then run this again." /SD IDOK
     Abort
   ${EndIf}
   StrCpy $dpLock $1
@@ -163,8 +163,8 @@ Function ${UN}ReleaseDataRootLock
     System::Call 'kernel32::CloseHandle(p $dpLock)'
     StrCpy $dpLock ""
     ${If} $dpRootCreated == 1
-      Delete "$LOCALAPPDATA\DebridPulse\desktop.lock"
-      RMDir "$LOCALAPPDATA\DebridPulse"
+      Delete "$LOCALAPPDATA\DownloadPulse\desktop.lock"
+      RMDir "$LOCALAPPDATA\DownloadPulse"
     ${EndIf}
   ${EndIf}
 FunctionEnd
@@ -174,7 +174,7 @@ FunctionEnd
 
 ; Taken first, before any page or section; let go once the run has ended,
 ; whichever way it ended (the system also lets go when the process ends).
-; Removing the program files. The lock keeps DebridPulse from starting, but a
+; Removing the program files. The lock keeps DownloadPulse from starting, but a
 ; launch from the Start-menu shortcut meanwhile still loads the bundled
 ; interpreter from these files before its supervisor finds the lock taken and
 ; ends -- holding them open for that moment. Removal is retried while that
@@ -201,7 +201,7 @@ FunctionEnd
 
 Function .onInit
   ${IfNot} ${RunningX64}
-    MessageBox MB_ICONSTOP|MB_OK "DebridPulse for Windows needs 64-bit Windows." /SD IDOK
+    MessageBox MB_ICONSTOP|MB_OK "DownloadPulse for Windows needs 64-bit Windows." /SD IDOK
     Abort
   ${EndIf}
   Call RequireVcRedist      ; before the data-root lock and any file: nothing is changed without it
@@ -269,7 +269,7 @@ Function RequireVcRedist
     ; No page: say so where the caller can read it -- the standard output it
     ; gave the installer (a redirect or a pipe), else the console that started
     ; it -- and fail with a distinct code before anything is changed.
-    StrCpy $4 "DebridPulse setup: the Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer is required (found: $2). Install it from Microsoft (${VCREDIST_DOWNLOAD}) and run setup again. Nothing was changed.$\r$\n"
+    StrCpy $4 "DownloadPulse setup: the Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer is required (found: $2). Install it from Microsoft (${VCREDIST_DOWNLOAD}) and run setup again. Nothing was changed.$\r$\n"
     StrLen $5 $4
     System::Call 'kernel32::GetStdHandle(i -11) p .r6'
     System::Call 'kernel32::GetFileType(p r6) i .r7'
@@ -286,7 +286,7 @@ Function RequireVcRedist
     SetErrorLevel 3
     Quit
   ${EndIf}
-  MessageBox MB_ICONINFORMATION|MB_OKCANCEL "DebridPulse needs the Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer (found on this computer: $2).$\n$\nSetup will now open Microsoft's installer for it. Read and accept Microsoft's license terms there; Windows will ask for permission to install it.$\n$\nCancel: quit setup (nothing has been changed)" IDOK vcInstall
+  MessageBox MB_ICONINFORMATION|MB_OKCANCEL "DownloadPulse needs the Microsoft Visual C++ x64 Redistributable ${VCREDIST_MIN_MAJOR}.${VCREDIST_MIN_MINOR} or newer (found on this computer: $2).$\n$\nSetup will now open Microsoft's installer for it. Read and accept Microsoft's license terms there; Windows will ask for permission to install it.$\n$\nCancel: quit setup (nothing has been changed)" IDOK vcInstall
   SetErrorLevel 3
   Quit
   vcInstall:
@@ -300,7 +300,7 @@ Function RequireVcRedist
   ${If} $0 == 1
     Return
   ${EndIf}
-  MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "The Microsoft Visual C++ x64 Redistributable was not installed, so DebridPulse cannot be installed yet.$\n$\nRetry: open Microsoft's installer again$\nCancel: quit setup (nothing has been changed)" IDRETRY vcInstall
+  MessageBox MB_ICONEXCLAMATION|MB_RETRYCANCEL "The Microsoft Visual C++ x64 Redistributable was not installed, so DownloadPulse cannot be installed yet.$\n$\nRetry: open Microsoft's installer again$\nCancel: quit setup (nothing has been changed)" IDRETRY vcInstall
   SetErrorLevel 3
   Quit
 FunctionEnd
@@ -335,19 +335,19 @@ Section "Prerequisites" SecPrerequisites
     Call WebView2Satisfied
     Pop $0
     ${If} $0 != 1
-      MessageBox MB_ICONSTOP|MB_OK "The Microsoft Edge WebView2 Runtime could not be installed (exit $2). Nothing of DebridPulse was installed." /SD IDOK
+      MessageBox MB_ICONSTOP|MB_OK "The Microsoft Edge WebView2 Runtime could not be installed (exit $2). Nothing of DownloadPulse was installed." /SD IDOK
       Abort "The Microsoft Edge WebView2 Runtime is missing."
     ${EndIf}
   ${EndIf}
 SectionEnd
 
-Section "DebridPulse" SecMain
+Section "DownloadPulse" SecMain
   SectionIn RO
   SetOutPath "$INSTDIR"
   ; An upgrade replaces the program files in place; the data root is elsewhere.
   Call RemoveProgramFiles
   ${If} ${FileExists} "$INSTDIR\app\*.*"
-    MessageBox MB_ICONSTOP|MB_OK "The installed DebridPulse program files could not be replaced: some of them are in use ($INSTDIR\app). Close what is using them, then run this installer again. The existing uninstall entry is kept." /SD IDOK
+    MessageBox MB_ICONSTOP|MB_OK "The installed DownloadPulse program files could not be replaced: some of them are in use ($INSTDIR\app). Close what is using them, then run this installer again. The existing uninstall entry is kept." /SD IDOK
     Abort "Program files in use: nothing was replaced."
   ${EndIf}
   ; The uninstall entry first: whatever happens next, it can remove or repair.
@@ -357,16 +357,16 @@ Section "DebridPulse" SecMain
   ClearErrors
   File /r "${STAGE}\*.*"
   ${If} ${Errors}
-    MessageBox MB_ICONSTOP|MB_OK "Some DebridPulse program files could not be written ($INSTDIR\app). Close what is using them, then run this installer again; the uninstall entry is kept." /SD IDOK
+    MessageBox MB_ICONSTOP|MB_OK "Some DownloadPulse program files could not be written ($INSTDIR\app). Close what is using them, then run this installer again; the uninstall entry is kept." /SD IDOK
     Abort "Program files could not be written."
   ${EndIf}
-  CreateShortcut "$SMPROGRAMS\DebridPulse.lnk" "$INSTDIR\app\runtime\python\pythonw.exe" '-I "$INSTDIR\app\desktop\supervisor.py"' "$INSTDIR\app\desktop\shell\resources\icons\app.ico"
+  CreateShortcut "$SMPROGRAMS\DownloadPulse.lnk" "$INSTDIR\app\runtime\python\pythonw.exe" '-I "$INSTDIR\app\desktop\supervisor.py"' "$INSTDIR\app\desktop\shell\resources\icons\app.ico"
 SectionEnd
 
 Function WriteUninstallEntry
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "DebridPulse"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayName" "DownloadPulse"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "DebridPulse"
+  WriteRegStr HKCU "${UNINSTALL_KEY}" "Publisher" "DownloadPulse"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "DisplayIcon" "$INSTDIR\app\desktop\shell\resources\icons\app.ico"
   WriteRegStr HKCU "${UNINSTALL_KEY}" "UninstallString" '"$INSTDIR\uninstall.exe"'
@@ -377,16 +377,16 @@ FunctionEnd
 
 Section "Uninstall"
   ; The shortcut first: no new launch from it while the files go.
-  Delete "$SMPROGRAMS\DebridPulse.lnk"
+  Delete "$SMPROGRAMS\DownloadPulse.lnk"
   Call un.RemoveProgramFiles
   ${If} ${FileExists} "$INSTDIR\app\*.*"
-    MessageBox MB_ICONSTOP|MB_OK "Some DebridPulse program files could not be removed: they are in use ($INSTDIR\app). Close what is using them, then uninstall DebridPulse again (Settings > Apps, or $INSTDIR\uninstall.exe). Your settings, database and downloads were not touched." /SD IDOK
+    MessageBox MB_ICONSTOP|MB_OK "Some DownloadPulse program files could not be removed: they are in use ($INSTDIR\app). Close what is using them, then uninstall DownloadPulse again (Settings > Apps, or $INSTDIR\uninstall.exe). Your settings, database and downloads were not touched." /SD IDOK
     Abort "Program files in use: the uninstall entry is kept."
   ${EndIf}
   ; The Media Downloads helpers' AppContainer profile (executors.media.netless).
-  System::Call 'userenv::DeleteAppContainerProfile(w "DebridPulse.MediaHelpers") i .r0'
+  System::Call 'userenv::DeleteAppContainerProfile(w "DownloadPulse.MediaHelpers") i .r0'
   Delete "$INSTDIR\uninstall.exe"
   RMDir "$INSTDIR"
   DeleteRegKey HKCU "${UNINSTALL_KEY}"
-  ; %LOCALAPPDATA%\DebridPulse (settings, database, logs) and every download stay.
+  ; %LOCALAPPDATA%\DownloadPulse (settings, database, logs) and every download stay.
 SectionEnd

@@ -40,7 +40,7 @@ def test_tar_lzma_uses_exact_codec_then_validated_tar(tmp_path):
     extracted = dest / "nested" / "payload.txt"
     assert extracted.read_text() == "release-safe composite extraction\n"
     assert extracted in created
-    assert not (dest / ".debridpulse-composite.tar").exists()
+    assert not (dest / ".downloadpulse-composite.tar").exists()
 
 
 def test_retry_delay_zero_is_a_valid_immediate_retry_configuration():

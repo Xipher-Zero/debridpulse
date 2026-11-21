@@ -75,7 +75,7 @@ def test_destructive_settings_actions_share_confirmation_primitive():
     secret = block(js, "async function clearOidcSecret", "function clearOidcResources(")
     token = block(js, "async function revokeToken(", "const readActivity = account =>")
 
-    # Opening DebridPulse is a property of the ACT, so it is asked in ONE place
+    # Opening DownloadPulse is a property of the ACT, so it is asked in ONE place
     # for every act that can perform it.
     assert js.count("'settings.auth.open_mode_accept'") == 1 and english("settings.auth.open_mode_accept") == "Continue to Open Mode"
     assert "window.DPSettingsModal.confirm({" in open_mode

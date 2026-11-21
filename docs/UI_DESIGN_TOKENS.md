@@ -1,6 +1,6 @@
-# DebridPulse v1.0.11 Design Token Contract
+# Design Token Contract
 
-This document is the visual source of truth for color, surfaces, semantic states, shadows, glows, and gradient use in the v1.0.11 interface. The canonical CSS values live in `frontend/static/design-tokens.css`.
+This document is the visual source of truth for color, surfaces, semantic states, shadows, glows, and gradient use in the interface. The canonical CSS values live in `frontend/static/design-tokens.css`.
 
 ## Reconstruction policy
 
@@ -16,7 +16,7 @@ When implementation differs from the accepted UI, prefer the token contract unle
 - Sidebar remains slightly differentiated from the main canvas without becoming a separate gray slab.
 - Cards use dark blue/navy surfaces with subtle borders and restrained elevation.
 - Primary text is cool white; secondary and metadata text use blue-lavender slate.
-- Purple is the DebridPulse identity/accent color.
+- Purple is the DownloadPulse identity/accent color.
 - Blue supports active/download concepts and forms the cool end of primary gradients.
 - Cyan is reserved for connectivity semantics.
 - Semantic green, amber, and red remain immediately legible on dark surfaces.
@@ -116,14 +116,14 @@ Likewise use the `--dp-border-*` and `--dp-text-*` hierarchy rather than selecti
 
 The application still contains inherited markup and the canonical `style.css` compatibility stylesheet. `design-tokens.css` supplies compatibility aliases such as `--bg`, `--surface`, `--accent`, `--green`, and `--red` because live inherited selectors still consume them.
 
-For v1.0.11 maintenance:
+For maintenance:
 
-1. `style.css` remains the single canonical import graph; the compatibility aliases it used to carry as literal rules (via the retired `ui-legacy-foundation.css`) now live directly in `design-tokens.css`'s own `:root`/`body.light` blocks alongside the `--dp-*` tokens.
+1. `style.css` remains the single canonical import graph and carries no literal rules; the compatibility aliases live directly in `design-tokens.css`'s own `:root`/`body.light` blocks alongside the `--dp-*` tokens.
 2. `design-tokens.css` remains authoritative for shared semantic values.
 3. New or deliberately rebuilt components use `--dp-*` tokens directly.
 4. Page-local literal colors are removed when ownership is intentionally refactored, not through speculative release cleanup.
 5. Compatibility aliases are removed only after a repository-wide live-usage audit proves no accepted runtime depends on them.
-6. The retired `style-legacy.css` duplicate must not be reintroduced; it was byte-identical to `style.css` and unreachable from the production bootstrap graph.
+6. No duplicate of `style.css` (such as a `style-legacy.css`) may be reintroduced outside the production bootstrap graph.
 
 ## Relationship to icon system
 
@@ -133,6 +133,6 @@ See `docs/UI_ICON_SYSTEM.md` for the custom-vs-Lucide boundary and true-vector S
 
 ## Visual acceptance
 
-The consolidated pre-release candidate for `1.0.11` was browser-compared with the accepted pre-consolidation local build and found visually/behaviorally equivalent from the user perspective. That comparison validates the current token/cascade output; it does not make live calibration layers dead source.
+Browser comparison validates the current token/cascade output; it does not make live calibration layers dead source.
 
 When future maintenance changes a shared token or folds a live calibration layer, repeat browser validation in both themes and relevant responsive layouts before accepting the new candidate boundary.

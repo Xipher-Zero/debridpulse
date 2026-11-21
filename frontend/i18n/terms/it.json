@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "it",
  "register": "Italian software register: buttons and menu commands use the imperative-style verbs standard in Italian UIs (Salva, Annulla, Riprova); headings and labels use nouns. Help prefers impersonal forms (Per aggiungere…, fare clic su…) and the formal 'Lei' where an address is needed. Italian typography: « » or “ ” quotes. Standard Italian software terminology; established loan words where Italian IT usage is settled (download, server, account, token, dashboard, provider).",
  "terms": {

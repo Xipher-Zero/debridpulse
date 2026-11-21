@@ -1,6 +1,6 @@
 """Native defaults of the decorative material and chrome tokens.
 
-The reviewed DebridPulse Dark and Light values that page owners once stated as
+The reviewed DownloadPulse Dark and Light values that page owners once stated as
 literals are the defaults of the tokens those owners now consume
 (frontend/static/ui-language-tokens.css). A contract that protects such a
 value asserts both halves: the owner uses the token, and the token's native

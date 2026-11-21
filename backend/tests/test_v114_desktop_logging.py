@@ -2,7 +2,7 @@
 
 * Its startup banner names the desktop application and the window's own
   address, never "Docker / Unraid" and 0.0.0.0 (a server's are unchanged).
-* A peer resetting or aborting a connection DebridPulse was closing (Windows'
+* A peer resetting or aborting a connection DownloadPulse was closing (Windows'
   WinError 10054/10053, a page going away) is not logged as an error with a
   traceback; every other event-loop error still is.
 """
@@ -56,7 +56,7 @@ def test_the_desktop_application_verifies_certificates_with_the_systems_trust():
         assert "truststore==0.10.4 \\\n" in lock
     assert "truststore" not in (BACKEND / "requirements.txt").read_text(encoding="utf-8")   # never the server image
     # Here (Linux, not the desktop application): nothing is injected.
-    env = {key: value for key, value in os.environ.items() if key != "DEBRIDPULSE_DESKTOP"}
+    env = {key: value for key, value in os.environ.items() if key != "DOWNLOADPULSE_DESKTOP"}
     done = subprocess.run([sys.executable, "-c", "import main; print(main.SYSTEM_TRUST)"], cwd=BACKEND, env=env,
                           capture_output=True, text=True, timeout=120)
     assert done.returncode == 0 and done.stdout.strip().splitlines()[-1] == "False", done.stderr[-1500:]

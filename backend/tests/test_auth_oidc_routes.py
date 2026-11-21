@@ -18,8 +18,8 @@ def _settings(**updates):
         "auth_password_enabled": True,
         "auth_oidc_enabled": True,
         "oidc_provider_name": "Authentik",
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
-        "oidc_client_id": "debridpulse-client",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
+        "oidc_client_id": "downloadpulse-client",
         "oidc_client_secret": "secret",
         "oidc_scopes": ["openid", "profile", "email"],
         "oidc_allow_all": True,
@@ -129,7 +129,7 @@ async def test_oidc_callback_rotates_old_session_and_forces_secure_application_c
     config_version = oidc_configuration_version(cfg)
     monkeypatch.setattr(auth_routes, "get_settings", lambda: cfg)
     await account_database(tmp_path, monkeypatch)
-    issuer = "https://id.example/application/o/debridpulse"
+    issuer = "https://id.example/application/o/downloadpulse"
     await bind_verified_oidc(issuer, "user-1", DEFAULT_ADMIN_ID)
     session_store.clear()
     old_token, _ = session_store.create(
@@ -144,7 +144,7 @@ async def test_oidc_callback_rotates_old_session_and_forces_secure_application_c
         assert correlation == "browser-correlation"
         return (
             Principal.oidc_session(
-                "https://id.example/application/o/debridpulse|user-1",
+                "https://id.example/application/o/downloadpulse|user-1",
                 display_name="Operator",
                 claims={"iss": issuer, "sub": "user-1"},
                 credential_version=config_version,
@@ -158,7 +158,7 @@ async def test_oidc_callback_rotates_old_session_and_forces_secure_application_c
         headers={
             "Host": "pulse.example",
             "Cookie": (
-                f"debridpulse-session={old_token}; "
+                f"downloadpulse-session={old_token}; "
                 f"{OIDC_CORRELATION_COOKIE}=browser-correlation"
             ),
         },
@@ -195,7 +195,7 @@ async def test_oidc_callback_rejects_proof_from_stale_configuration(monkeypatch)
     async def fake_complete(**_kwargs):
         return (
             Principal.oidc_session(
-                "https://id.example/application/o/debridpulse|user-1",
+                "https://id.example/application/o/downloadpulse|user-1",
                 credential_version=oidc_configuration_version(old),
             ),
             "/stats",

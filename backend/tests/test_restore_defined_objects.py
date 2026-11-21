@@ -87,7 +87,7 @@ async def test_a_point_whose_indexes_triggers_or_views_differ_is_refused_and_cha
 
     assert restored.status_code == 400
     assert restored.json()["detail"] == ("Backup could not be restored. The backup is not a valid "
-                                         "DebridPulse backup. The current DebridPulse state was left unchanged.")
+                                         "DownloadPulse backup. The current DownloadPulse state was left unchanged.")
     assert _defined(database.DB_PATH) == before and "dp_swallow" not in before
     # The live state goes on working exactly as before.
     later = await _submit(app, client, "later")
@@ -119,7 +119,7 @@ async def test_a_pre_index_point_with_other_rules_is_refused_after_its_staged_up
     with zipfile.ZipFile(out, "w") as target:
         for info in source.infolist():
             data = source.read(info.filename)
-            if info.filename == "debridpulse.db":
+            if info.filename == "downloadpulse.db":
                 scratch = database.DB_PATH.parent / "altered-pre-index.db"
                 scratch.write_bytes(data)
                 with sqlite3.connect(scratch) as conn:
@@ -134,7 +134,7 @@ async def test_a_pre_index_point_with_other_rules_is_refused_after_its_staged_up
 
     assert restored.status_code == 400
     assert restored.json()["detail"] == ("Backup could not be restored. The backup is not a valid "
-                                         "DebridPulse backup. The current DebridPulse state was left unchanged.")
+                                         "DownloadPulse backup. The current DownloadPulse state was left unchanged.")
     assert _defined(database.DB_PATH) == before
     later = await _submit(app, client, "later")
     assert sorted(item.id for item in await app.state.application.repository.active()) == sorted([kept, later])

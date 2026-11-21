@@ -1,7 +1,7 @@
 // @ts-check
 const {test, expect} = require('@playwright/test');
 
-/* DebridPulse 1.0.14 localization, WS3a: the application shell and shared
+/* DownloadPulse 1.0.14 localization, WS3a: the application shell and shared
  * UI -- the sidebar and topbar, Dashboard, Activity Log, Statistics, and the
  * shared owners they draw with (status badges, progress, toasts, pager,
  * storage and provider status) -- say every word through the catalog.
@@ -15,7 +15,7 @@ const {test, expect} = require('@playwright/test');
  * events, so the lists show their empty states. */
 
 // Proper names (the product wordmark is two text nodes: Debrid + Pulse).
-const NAMES = /^(DebridPulse|Debrid|Pulse|aria2|SQLite|AllDebrid|Debrid-Link|Premiumize|Real-Debrid|TorBox|Usenet|WebDAV|rsync|SCP|SFTP|FTP|HTTP|HTTPS)$/;
+const NAMES = /^(DownloadPulse|Download|Debrid|Pulse|aria2|SQLite|AllDebrid|Debrid-Link|Premiumize|Real-Debrid|TorBox|Usenet|WebDAV|rsync|SCP|SFTP|FTP|HTTP|HTTPS)$/;
 
 async function isolateFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));

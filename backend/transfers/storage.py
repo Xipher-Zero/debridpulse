@@ -31,9 +31,9 @@ from transfers.errors import (
     TransferError,
 )
 
-logger = logging.getLogger("debridpulse.storage")
+logger = logging.getLogger("downloadpulse.storage")
 _GIB = 1024 ** 3
-_PROBE_PAYLOAD = b"debridpulse-storage-probe\n"
+_PROBE_PAYLOAD = b"downloadpulse-storage-probe\n"
 _FSYNC_UNSUPPORTED_ERRNOS = frozenset(
     code
     for code in (
@@ -240,7 +240,7 @@ class DiskCapacity:
         self.root = str(root)
         self.minimum_gb = max(0.0, float(minimum_gb or 0))
         self.hysteresis_gb = max(0.0, float(hysteresis_gb or 0))
-        self.application_path = str(application_path or os.getenv("DB_PATH", "/app/data/debridpulse.db"))
+        self.application_path = str(application_path or os.getenv("DB_PATH", "/app/data/downloadpulse.db"))
         self._states: dict[StorageDomain, StorageSnapshot] = {}
         self._reset_snapshots()
 
@@ -447,7 +447,7 @@ class DiskCapacity:
 
         try:
             primary_reason = StorageReason.IO_ERROR
-            fd, probe_name = tempfile.mkstemp(prefix=".debridpulse-probe-", dir=str(path))
+            fd, probe_name = tempfile.mkstemp(prefix=".downloadpulse-probe-", dir=str(path))
             try:
                 handle = os.fdopen(fd, "wb", closefd=True)
                 fd = None

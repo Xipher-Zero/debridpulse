@@ -44,7 +44,7 @@ async function openAccount(page) {
   await expect(account(page).locator('[data-account-language] .dp-language-name')).toHaveText('English');
 }
 
-const put = (page, path, body) => page.evaluate(([path, body]) => window.debridPulseAuth.fetch(path, {method: 'PUT',
+const put = (page, path, body) => page.evaluate(([path, body]) => window.downloadPulseAuth.fetch(path, {method: 'PUT',
   headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)}).then(response => response.status), [path, body]);
 
 async function reset(page) {

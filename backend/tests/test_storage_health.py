@@ -39,7 +39,7 @@ def _capacity(tmp_path, *, minimum=0, hysteresis=0.5):
         download,
         minimum,
         hysteresis,
-        application_path=app / "debridpulse.db",
+        application_path=app / "downloadpulse.db",
     ), app, download
 
 
@@ -261,7 +261,7 @@ async def test_recovery_clears_containment_without_restart(tmp_path, monkeypatch
 
 @pytest.mark.asyncio
 async def test_health_endpoint_is_reachable_without_database_access(tmp_path):
-    missing_app = tmp_path / "missing-app" / "debridpulse.db"
+    missing_app = tmp_path / "missing-app" / "downloadpulse.db"
     download = tmp_path / "download"
     download.mkdir()
     capacity = DiskCapacity(download, application_path=missing_app)

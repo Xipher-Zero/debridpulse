@@ -1,4 +1,4 @@
-"""DebridPulse's side of the Media Downloads worker (``executors.media.worker``).
+"""DownloadPulse's side of the Media Downloads worker (``executors.media.worker``).
 
 Every yt-dlp invocation -- the provider's read-only extraction and the
 executor's acquisition alike -- runs here, the same way:

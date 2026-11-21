@@ -1,10 +1,10 @@
-"""DebridPulse's aria2 is one immutable supply-chain artifact.
+"""DownloadPulse's aria2 is one immutable supply-chain artifact.
 
 Debian's aria2 source, rebuilt by ONE script with exactly the repo-owned
 changes in packaging/aria2/ (the CONNECT exact-read patch and BitTorrent
 compiled out), versioned +dp2, qualified against the installed binary's own
 feature report, built natively per architecture and published write-once to
-ghcr.io/xipher-zero/debridpulse-aria2 (docs/SUPPLY_CHAIN_POLICY.md 4a).
+ghcr.io/xipher-zero/downloadpulse-aria2 (docs/SUPPLY_CHAIN_POLICY.md 4a).
 """
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ def test_the_artifact_is_built_natively_per_architecture_and_published_write_onc
     existing = next(step for step in jobs["identity"]["steps"] if step.get("id") == "existing")["run"]
     # A published version is never rebuilt from different inputs, and the
     # publish job re-checks with its write credentials before creating the tag.
-    assert "io.debridpulse.aria2.inputs" in existing and "bump ARIA2_PACKAGE_VERSION" in existing
+    assert "io.downloadpulse.aria2.inputs" in existing and "bump ARIA2_PACKAGE_VERSION" in existing
     create = next(step for step in jobs["publish"]["steps"] if "imagetools create" in step.get("run", ""))["run"]
     assert create.index("refusing to overwrite") < create.index("imagetools create")
     assert jobs["publish"]["if"] == "github.event_name != 'pull_request' && needs.identity.outputs.exists != 'true'"

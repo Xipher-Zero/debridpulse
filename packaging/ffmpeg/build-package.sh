@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# THE one build of DebridPulse's FFmpeg (docs/SUPPLY_CHAIN_POLICY.md section 4b).
+# THE one build of DownloadPulse's FFmpeg (docs/SUPPLY_CHAIN_POLICY.md section 4b).
 #
 # Debian's own ffmpeg source package -- Debian's patches included -- fetched
 # from the configured (signed) deb-src repository and configured for exactly
@@ -72,11 +72,11 @@ strip --strip-unneeded "$stage/usr/bin/ffmpeg" "$stage/usr/bin/ffprobe"
 install -D -m 0644 debian/copyright "$stage/usr/share/doc/ffmpeg/copyright"
 {
   printf 'ffmpeg (%s) %s; urgency=medium\n\n' "$version" "$(dpkg-parsechangelog -SDistribution)"
-  printf '  * DebridPulse: stream-copy tools only (local file/pipe protocols, the\n'
+  printf '  * DownloadPulse: stream-copy tools only (local file/pipe protocols, the\n'
   printf '    demuxers, muxers, parsers, bitstream filters and decoders of\n'
   printf '    packaging/ffmpeg/build-package.sh); no encoder, device, network\n'
   printf '    protocol or external library; ffplay not built.\n\n'
-  printf ' -- DebridPulse <noreply@github.com>  %s\n\n' "$(date -R -u -d "@$SOURCE_DATE_EPOCH")"
+  printf ' -- DownloadPulse <noreply@github.com>  %s\n\n' "$(date -R -u -d "@$SOURCE_DATE_EPOCH")"
   cat debian/changelog
 } | gzip -9n > "$stage/usr/share/doc/ffmpeg/changelog.Debian.gz"
 chmod 0644 "$stage/usr/share/doc/ffmpeg/changelog.Debian.gz"
@@ -96,13 +96,13 @@ Package: ffmpeg
 Source: ffmpeg (${source_version})
 Version: ${version}
 Architecture: ${arch}
-Maintainer: DebridPulse <noreply@github.com>
+Maintainer: DownloadPulse <noreply@github.com>
 Installed-Size: $(du -sk --exclude=DEBIAN "$stage" | cut -f1)
 Depends: ${depends}
 Section: video
 Priority: optional
 Homepage: https://ffmpeg.org/
-Description: FFmpeg stream-copy tools for DebridPulse
+Description: FFmpeg stream-copy tools for DownloadPulse
  Debian's FFmpeg source built with only what lossless remuxing of local
  media needs: local file and pipe protocols, container demuxers and muxers,
  parsers, bitstream filters and native decoders. No encoder, device, network

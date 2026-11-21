@@ -29,7 +29,7 @@
  * starts on again; it is nothing the server keeps. On, it follows the journal
  * through the application's
  * one live stream (app.js forwards activity_journal_changed as
- * debridpulse:activity-journal-changed, a hint carrying only the newest
+ * downloadpulse:activity-journal-changed, a hint carrying only the newest
  * committed id): while the newest page is shown from its top, a burst of hints
  * is coalesced into ONE ordinary new investigation at the newest event -- the
  * same request Refresh makes, through the same search identity, filters and
@@ -195,7 +195,7 @@ const time=row.querySelector('.dp-activity-time');if(time)time.textContent=forma
 let lastShown=null;// {payload,c}: the page on screen
 function render(payload,c){const list=document.getElementById('event-list');if(!list)return;lastShown={payload,c};list.replaceChildren();const items=Array.isArray(payload?.items)?payload.items:[];if(!items.length){if(search.completeness()!=='complete')empty(list,T('activity.empty.searched_so_far'));else if(filters(search.accepted()))empty(list,T('activity.empty.filtered'));else empty(list,payload?.history_started_at?T('activity.empty.history_begins',{date:formatTimestamp(payload.history_started_at)}):T('activity.empty.none'));}
 for(const event of items){const row=document.createElement('div');row.className='dp-activity-row';row.dataset.eventType=String(event.type||'');const sev=String(event.severity||'info').toLowerCase();const level=document.createElement('div');level.className=`elevel dp-activity-level ${sev==='warning'?'warn':sev==='error'?'error':'info'}`;level.setAttribute('role','img');level.setAttribute('aria-label',levelWords(sev));const copy=document.createElement('div');copy.className='dp-activity-copy';const msg=document.createElement('div');msg.className='emsg dp-activity-message';msg.textContent=String(event.message??'');copy.appendChild(msg);const subject=document.createElement('div');subject.className='ename dp-activity-transfer';subject.textContent=subjectLine(event);copy.appendChild(subject);if(event.detail){const detail=document.createElement('details');detail.className='dp-activity-detail';const summary=document.createElement('summary');summary.textContent=T('activity.details');const body=document.createElement('div');body.className='dp-activity-detail-text';body.textContent=String(event.detail);detail.append(summary,body);copy.appendChild(detail);}const time=document.createElement('div');time.className='etime dp-activity-time';time.textContent=formatTimestamp(event.occurred_at);row._dpEvent=event;row.append(level,copy,time);list.appendChild(row);}
-document.dispatchEvent(new CustomEvent('debridpulse:activity-rendered'));}
+document.dispatchEvent(new CustomEvent('downloadpulse:activity-rendered'));}
 // The page an answer to a `kind` request lands on, from the page it left.
 function pageOf(kind,from,payload){let page=kind==='next'?from+1:kind==='previous'?from-1:kind==='last'?Number(payload?.page)||1:1;if(kind==='previous'&&payload?.has_newer===false)page=1;return Math.max(1,page);}
 function accept(payload){const items=Array.isArray(payload?.items)?payload.items:[];const previous=nav||{page:1,pages:null,lastUnavailable:null};const kind=request.kind;
@@ -232,11 +232,11 @@ void probeNewer(c);}
 async function probeNewer(c){const snapshot=cursor.snapshot,mine=investigation;if(snapshot===null)return;
 try{const payload=await api('GET',`/events?limit=1&snapshot=${encodeURIComponent(String(snapshot))}`);if(mine===investigation&&live&&payload?.newer_available)renderPagination({newer_available:true},c);}catch(_){}}
 function hint(event){const latest=Number(event?.detail?.latest);if(Number.isInteger(latest)&&latest>=0)hinted=latest;if(!live||!active())return;if(hinted!==null&&hinted===cursor.snapshot)return;schedule();}
-document.addEventListener('debridpulse:activity-journal-changed',hint);
-document.addEventListener('debridpulse:pulse-connected',()=>{hinted=null;syncLive();if(live)catchUp();});
-document.addEventListener('debridpulse:pulse-lost',()=>{hinted=null;syncLive();});
+document.addEventListener('downloadpulse:activity-journal-changed',hint);
+document.addEventListener('downloadpulse:pulse-connected',()=>{hinted=null;syncLive();if(live)catchUp();});
+document.addEventListener('downloadpulse:pulse-lost',()=>{hinted=null;syncLive();});
 // Every entry to the page restores the session's choice; a departure stops following.
-document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&wanted();stopFollowing();syncLive();const panel=document.getElementById('ev-filter-panel');if(event.detail?.view!=='events'&&panel?.matches(':popover-open'))panel.hidePopover();});
+document.addEventListener('downloadpulse:navigation',event=>{live=event.detail?.view==='events'&&wanted();stopFollowing();syncLive();const panel=document.getElementById('ev-filter-panel');if(event.detail?.view!=='events'&&panel?.matches(':popover-open'))panel.hidePopover();});
 async function fetchPage({quiet=false}={}){const c=bind();if(!c||typeof api!=='function')return null;const ticket=search.request();const params=new URLSearchParams();params.set('limit',String(pageSize()));params.set('timeframe',applied.timeframe);if(applied.level)params.set('level',applied.level);if(applied.category)params.set('category',applied.category);if(ticket.query)params.set('search',ticket.query);if(cursor.snapshot!==null)params.set('snapshot',String(cursor.snapshot));if(cursor.windowStart!==null)params.set('window_start',String(cursor.windowStart));if(request.before!=null)params.set('before',String(request.before));if(request.after!=null)params.set('after',String(request.after));if(request.kind==='last')params.set('last','true');const list=document.getElementById('event-list');list?.setAttribute('aria-busy','true');setPending(c,true);
 try{const payload=await api('GET',`/events?${params.toString()}`,null,0,{signal:ticket.signal});if(!search.settle(ticket,payload?.search))return null;if(cursor.snapshot===null&&Number.isInteger(payload?.snapshot)){cursor.snapshot=payload.snapshot;cursor.windowStart=Number.isFinite(payload?.window_start)?payload.window_start:null;}const commit=()=>{accept(payload);pending=false;render(payload,c);renderPagination(payload,c);};
 // The page turn this request makes is already sliding here: its placeholder crossfades into the page, or -- not yet drawn -- the slide draws it. Every other answer is shown in place.
@@ -257,7 +257,7 @@ finally{if(search.current(ticket))list?.removeAttribute('aria-busy');}}
 function load(){restart();return fetchPage();}
 // A language change: the rows on screen are relabelled in place (an empty or failed page is said again),
 // and the controls this owner words follow (the static markup is ui-i18n.js's).
-document.addEventListener('debridpulse:locale-changed',()=>{const c=controls();if(!c||!bound)return;const list=document.getElementById('event-list');
+document.addEventListener('downloadpulse:locale-changed',()=>{const c=controls();if(!c||!bound)return;const list=document.getElementById('event-list');
 const rows=list?Array.from(list.querySelectorAll('.dp-activity-row')):[];if(rows.length)rows.forEach(relabel);
 else if(lastShown?.failure!==undefined)renderFailure(lastShown.c,lastShown.failure);else if(lastShown)render(lastShown.payload,lastShown.c);
 if(nav)renderPagination({newer_available:!c.newest.hidden},c);syncFilter(c);syncLive();fitHeader();});

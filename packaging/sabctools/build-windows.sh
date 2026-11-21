@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# sabctools for DebridPulse's one Python on Windows x64 (CPython 3.12, the
-# python.org build): the exact sdist DebridPulse's lock pins
+# sabctools for DownloadPulse's one Python on Windows x64 (CPython 3.12, the
+# python.org build): the exact sdist DownloadPulse's lock pins
 # (backend/requirements.txt), built by its own setup.py with Debian's UCRT
 # mingw-w64 toolchain (python.org CPython's C runtime) against the headers and
 # python312.dll of the python.org NuGet package, with one change:
@@ -24,7 +24,7 @@ out="$2"
 mkdir -p "$work" "$out/source"
 cd "$work"
 
-# The sdist DebridPulse's lock pins, and the python.org NuGet package.
+# The sdist DownloadPulse's lock pins, and the python.org NuGet package.
 curl -sSfL -o "sabctools-$SABCTOOLS.tar.gz" \
   "https://files.pythonhosted.org/packages/source/s/sabctools/sabctools-$SABCTOOLS.tar.gz"
 echo "$SDIST_SHA256  sabctools-$SABCTOOLS.tar.gz" | sha256sum -c --quiet

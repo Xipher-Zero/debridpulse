@@ -1,4 +1,4 @@
-"""Shared pytest bootstrap for the DebridPulse backend suite.
+"""Shared pytest bootstrap for the DownloadPulse backend suite.
 
 Some inherited unittest modules conditionally install lightweight dependency
 stubs during module import. Import the real SQLite driver first so those legacy

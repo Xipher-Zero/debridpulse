@@ -12,10 +12,10 @@ from auth.sessions import request_is_secure
 def _request(
     *,
     scheme="http",
-    host="debridpulse.local:8081",
+    host="downloadpulse.local:8081",
     origin=None,
     fetch_site="same-origin",
-    server=("debridpulse.local", 8081),
+    server=("downloadpulse.local", 8081),
     extra_headers=None,
     method="POST",
     path="/login",
@@ -94,7 +94,7 @@ async def test_hostile_dns_host_cannot_define_trusted_open_mode_authority(monkey
         host="attacker.example",
         origin="http://attacker.example",
         fetch_site="same-origin",
-        # The request reached the private DebridPulse socket; Host is not the
+        # The request reached the private DownloadPulse socket; Host is not the
         # transport-owned server authority and cannot bootstrap its own trust.
         server=("192.168.226.200", 8081),
     )
@@ -112,7 +112,7 @@ async def test_untrusted_forwarded_host_cannot_create_application_authority(monk
         host="attacker.example",
         origin="http://attacker.example",
         server=("192.168.226.200", 8081),
-        extra_headers={"X-Forwarded-Host": "debridpulse.local:8081"},
+        extra_headers={"X-Forwarded-Host": "downloadpulse.local:8081"},
     )
     assert (await enforce_general_web_security(request, _ok)).status_code == 403
 
@@ -210,16 +210,16 @@ async def test_ipv6_literal_authority_is_parsed_without_colon_ambiguity(monkeypa
 
 def test_invalid_public_base_path_is_not_trusted_for_secure_classification(monkeypatch):
     monkeypatch.setenv("PUBLIC_BASE_URL", "https://download.xipherzero.com/not-an-origin")
-    request = _request(host="debridpulse.local:8081")
+    request = _request(host="downloadpulse.local:8081")
     assert request_is_secure(request) is False
 
 
 @pytest.mark.asyncio
-async def test_auth_pages_use_reviewed_debridpulse_login_palettes(monkeypatch):
+async def test_auth_pages_use_reviewed_downloadpulse_login_palettes(monkeypatch):
     from services import account_appearance
 
     async def native():
-        return {"mode": "dark", "palette": "debridpulse-dark"}
+        return {"mode": "dark", "palette": "downloadpulse-dark"}
 
     monkeypatch.setattr(account_appearance, "login", native)
     assert "--bg:#030612" in _AUTH_PAGE_STYLE
@@ -291,14 +291,14 @@ SENTINEL = "WS2A-ARCHIVE-PW-ONE\nWS2A-ARCHIVE-PW-TWO"
 SOCKET = "http://192.168.226.200:8081"  # the transport authority: the socket's own IP, as uvicorn reports it
 LEGITIMATE_HOSTS = [
     "192.168.226.200:8081", "127.0.0.1:8081", "[::1]:8081", "[fd00::50]:8081", "localhost:8081",
-    "debridpulse.local:8081", "nas.home.arpa:8081", "dp.internal:8081", "app.localhost:8081",
+    "downloadpulse.local:8081", "nas.home.arpa:8081", "dp.internal:8081", "app.localhost:8081",
 ]
 FOREIGN_HOSTS = [
     "rebind.attacker.example:8081",   # the DNS-rebinding name
-    "debridpulse:8081",               # single-label, e.g. a Compose service name: not trusted
+    "downloadpulse:8081",               # single-label, e.g. a Compose service name: not trusted
     "dp.lan:8081", "nas.mydomain.com:8081",          # ordinary or split-DNS aliases: not trusted
-    "local:8081", "debridpulse.local.attacker.example:8081", "attacker-local:8081",
-    "bad host:8081", "debridpulse.local:notaport",   # malformed
+    "local:8081", "downloadpulse.local.attacker.example:8081", "attacker-local:8081",
+    "bad host:8081", "downloadpulse.local:notaport",   # malformed
 ]
 SENSITIVE_READS = ["/api/settings/extraction-passwords", "/api/settings", "/api/accounts", "/api/admin/backups",
                    "/api/torrents", "/api/auth/config", "/", "/app.js"]
@@ -364,8 +364,8 @@ async def test_a_rebound_or_foreign_host_reads_nothing_in_open_mode(open_mode, h
 async def test_a_forwarded_host_header_neither_grants_nor_removes_authority(open_mode):
     client, _token = open_mode
     spoofed = await client.get("/api/settings/extraction-passwords", headers={
-        "Host": "rebind.attacker.example:8081", "X-Forwarded-Host": "debridpulse.local:8081",
-        "Forwarded": "host=debridpulse.local:8081"})
+        "Host": "rebind.attacker.example:8081", "X-Forwarded-Host": "downloadpulse.local:8081",
+        "Forwarded": "host=downloadpulse.local:8081"})
     assert spoofed.status_code == 403 and b"WS2A-ARCHIVE" not in spoofed.content
     direct = await client.get("/api/settings/extraction-passwords", headers={
         "Host": "192.168.226.200:8081", "X-Forwarded-Host": "rebind.attacker.example"})
@@ -385,12 +385,12 @@ async def test_public_paths_and_integration_tokens_are_not_authority_bound(open_
         seen.append(request.state.principal)
         return Response(status_code=200)
 
-    request = _request(method="GET", path="/api/requests", host="debridpulse:8080", fetch_site=None,
+    request = _request(method="GET", path="/api/requests", host="downloadpulse:8080", fetch_site=None,
                        server=("172.18.0.4", 8080), extra_headers={"Authorization": f"Bearer {token}"})
     assert (await middleware.enforce_authentication(request, downstream)).status_code == 200
     assert [principal.role for principal in seen] == ["integration"]
     refused = await client.get("/api/settings/extraction-passwords",
-                               headers={"Host": "debridpulse:8080", "Authorization": f"Bearer {token}"})
+                               headers={"Host": "downloadpulse:8080", "Authorization": f"Bearer {token}"})
     assert refused.status_code == 403 and b"WS2A-ARCHIVE" not in refused.content  # the Integration role's own refusal
 
 
@@ -405,7 +405,7 @@ async def test_a_configured_https_public_base_url_keeps_reverse_proxy_reads(open
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("host", [None, "", "bad host", "debridpulse.local:0", "user@debridpulse.local"])
+@pytest.mark.parametrize("host", [None, "", "bad host", "downloadpulse.local:0", "user@downloadpulse.local"])
 async def test_a_missing_or_malformed_host_is_refused_before_open_mode_admission(host, monkeypatch):
     import auth.middleware as middleware
     from core.config import AppSettings
@@ -427,7 +427,7 @@ async def test_a_missing_or_malformed_host_is_refused_before_open_mode_admission
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("host", ["debridpulse.local:8081", "nas.home.arpa:8081", "dp.internal:8081",
+@pytest.mark.parametrize("host", ["downloadpulse.local:8081", "nas.home.arpa:8081", "dp.internal:8081",
                                   "app.localhost:8081"])
 async def test_a_same_origin_write_at_a_local_only_name_is_admitted(host, monkeypatch):
     """Intentional (WS2a decision A): the one authority now admits these
@@ -439,13 +439,13 @@ async def test_a_same_origin_write_at_a_local_only_name_is_admitted(host, monkey
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("host", "origin", "fetch_site", "body"), [
-    ("debridpulse:8081", "http://debridpulse:8081", "same-origin", b"Forbidden authority"),
+    ("downloadpulse:8081", "http://downloadpulse:8081", "same-origin", b"Forbidden authority"),
     ("dp.lan:8081", "http://dp.lan:8081", "same-origin", b"Forbidden authority"),
     ("rebind.attacker.example:8081", "http://rebind.attacker.example:8081", "same-origin", b"Forbidden authority"),
-    ("debridpulse.local:8081", "http://rebind.attacker.example:8081", "same-origin", b"Forbidden origin"),
-    ("debridpulse.local:8081", "https://debridpulse.local:8081", "same-origin", b"Forbidden origin"),
-    ("debridpulse.local:8081", "null", "same-origin", b"Forbidden origin"),
-    ("debridpulse.local:8081", "http://rebind.attacker.example:8081", "cross-site", b"Forbidden request context"),
+    ("downloadpulse.local:8081", "http://rebind.attacker.example:8081", "same-origin", b"Forbidden origin"),
+    ("downloadpulse.local:8081", "https://downloadpulse.local:8081", "same-origin", b"Forbidden origin"),
+    ("downloadpulse.local:8081", "null", "same-origin", b"Forbidden origin"),
+    ("downloadpulse.local:8081", "http://rebind.attacker.example:8081", "cross-site", b"Forbidden request context"),
 ])
 async def test_untrusted_or_cross_origin_writes_stay_refused(host, origin, fetch_site, body, monkeypatch):
     monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)

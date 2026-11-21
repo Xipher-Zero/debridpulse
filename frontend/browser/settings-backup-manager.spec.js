@@ -47,7 +47,7 @@ async function mockBackups(page, {addResult, restoreResult, restoreGate} = {}) {
     if (pkg && method === 'GET') {
       state.saved.push(decodeURIComponent(pkg[1]));
       return route.fulfill({status: 200, contentType: 'application/zip',
-        headers: {'content-disposition': `attachment; filename="debridpulse-backup-${pkg[1]}.zip"`},
+        headers: {'content-disposition': `attachment; filename="downloadpulse-backup-${pkg[1]}.zip"`},
         body: Buffer.from('PK-portable-backup-bytes')});
     }
     const one = path.match(/^\/api\/admin\/backups\/([^/]+)$/);
@@ -89,7 +89,7 @@ test('Backups opens the manager with restore points, never member files', async 
   await expect(rows(dialog).first().locator('.dp-backup-when')).toContainText('2026');
   await expect(rows(dialog).first().locator('.dp-backup-size')).toHaveText('18.4 MB');
   const text = await dialog.innerText();
-  for (const member of ['debridpulse.db', 'config.json', 'avatar']) expect(text).not.toContain(member);
+  for (const member of ['downloadpulse.db', 'config.json', 'avatar']) expect(text).not.toContain(member);
   // Application terminology only: nothing transport-shaped anywhere.
   for (const word of ['Upload', 'Download', 'Import', 'Export', 'Server', 'Remote']) expect(text).not.toContain(word);
   const footer = await dialog.locator('.dp-modal-footer button').allInnerTexts();
@@ -145,7 +145,7 @@ test('Add Backup admits a valid backup, refreshes, and selects it', async ({page
   const dialog = await openManager(page);
   const chooser = page.waitForEvent('filechooser');
   await action(dialog, 'add').click();
-  await (await chooser).setFiles({name: 'debridpulse-backup.zip', mimeType: 'application/zip',
+  await (await chooser).setFiles({name: 'downloadpulse-backup.zip', mimeType: 'application/zip',
     buffer: Buffer.from('PK-valid-backup')});
   await expect(rows(dialog)).toHaveCount(4);
   // The file itself is the body -- streamed, never wrapped in a form.
@@ -157,7 +157,7 @@ test('Add Backup admits a valid backup, refreshes, and selects it', async ({page
 });
 
 test('an invalid Add Backup is explained and adds no row', async ({page}) => {
-  const detail = 'Backup could not be added. The selected file is not a valid DebridPulse backup.';
+  const detail = 'Backup could not be added. The selected file is not a valid DownloadPulse backup.';
   const state = await mockBackups(page, {addResult: {status: 400, body: {detail}}});
   const dialog = await openManager(page);
   const chooser = page.waitForEvent('filechooser');
@@ -186,7 +186,7 @@ test('Save Backup writes the selected portable backup through the native save di
   await action(dialog, 'save').click();
   await expect.poll(() => page.evaluate(() => window.__dpSaved.closed)).toBe(true);
   const saved = await page.evaluate(() => window.__dpSaved);
-  expect(saved.name).toBe(`debridpulse-backup-${BACKUPS[1].id}.zip`);
+  expect(saved.name).toBe(`downloadpulse-backup-${BACKUPS[1].id}.zip`);
   expect(saved.bytes).toBe(Buffer.from('PK-portable-backup-bytes').length);
   expect(state.saved).toEqual([BACKUPS[1].id]);
   await expect(page.locator('#toasts .toast').last()).toContainText('Backup saved');
@@ -202,7 +202,7 @@ test('Save Backup falls back to the browser save flow without a native save dial
   const download = await pending;
   // The browser's own save flow fetches exactly the selected portable unit.
   expect(new URL(download.url()).pathname).toBe(`/api/admin/backups/${BACKUPS[0].id}/package`);
-  expect(download.suggestedFilename()).toBe(`debridpulse-backup-${BACKUPS[0].id}.zip`);
+  expect(download.suggestedFilename()).toBe(`downloadpulse-backup-${BACKUPS[0].id}.zip`);
 });
 
 test('Restore Backup asks for an explicit confirmation that explains the consequence', async ({page}) => {
@@ -215,7 +215,7 @@ test('Restore Backup asks for an explicit confirmation that explains the consequ
   await expect(confirm).toHaveAttribute('role', 'alertdialog');
   await expect(confirm.locator('.dp-modal-title')).toHaveText('Restore Backup?');
   const copy = await confirm.innerText();
-  expect(copy).toContain('This will replace the current DebridPulse database and configuration');
+  expect(copy).toContain('This will replace the current DownloadPulse database and configuration');
   expect(copy).toContain('Processing will be paused');
   expect(copy).toContain('A safety backup of the current state will be created automatically');
   expect(copy).toContain('The selected backup will be validated again');
@@ -240,7 +240,7 @@ test('Restore Backup asks for an explicit confirmation that explains the consequ
 
 test('a refused restore reports that the current state was left unchanged', async ({page}) => {
   const detail = 'Backup could not be restored. This backup was created by an unsupported version. '
-    + 'The current DebridPulse state was left unchanged.';
+    + 'The current DownloadPulse state was left unchanged.';
   await mockBackups(page, {restoreResult: {status: 400, body: {detail}}});
   const dialog = await openManager(page);
   await selectBox(dialog, 1).check();
@@ -258,7 +258,7 @@ test('Remove asks for a destructive confirmation and removes exactly the selecte
   await rows(dialog).nth(1).locator('[data-backup-remove]').click();
   const confirm = page.locator('.dp-modal-dialog[data-tone="danger"]');
   await expect(confirm.locator('.dp-modal-title')).toHaveText('Remove Backup?');
-  await expect(confirm.locator('.dp-modal-message')).toContainText('will be permanently removed from DebridPulse backup storage.');
+  await expect(confirm.locator('.dp-modal-message')).toContainText('will be permanently removed from DownloadPulse backup storage.');
   await expect(confirm.locator('[data-modal-accept]')).toHaveText('Remove Backup');
   await expect(confirm.locator('[data-modal-accept]')).toHaveClass(/btn-danger/);
   await confirm.locator('[data-modal-cancel]').click();
@@ -316,10 +316,10 @@ test('a confirmed restore becomes one non-dismissible, centred progress presenta
   await expect(page.locator('.dp-backup-restore-dialog')).toHaveCount(0);
   await expect(page.locator('.dp-modal-dialog')).toHaveCount(2);
   await expect(progress).toHaveAttribute('aria-busy', 'true');
-  await expect(progress.locator('.dp-modal-progress-status')).toHaveText('Restoring DebridPulse…');
+  await expect(progress.locator('.dp-modal-progress-status')).toHaveText('Restoring DownloadPulse…');
   await expect(progress.locator('.dp-modal-progress-detail p')).toHaveText([
     'Processing is paused while the selected backup is restored.',
-    'DebridPulse will restart automatically when restoration is complete.',
+    'DownloadPulse will restart automatically when restoration is complete.',
   ]);
   // Nothing to press: no X, no Cancel, no footer, no header.
   await expect(progress.locator('button, a, input')).toHaveCount(0);
@@ -385,7 +385,7 @@ test('reduced motion leaves the restoring line static', async ({page}) => {
 });
 
 test('a refused restore removes the progress and returns to the usable manager', async ({page}) => {
-  const detail = 'Backup could not be restored. The current DebridPulse state was left unchanged.';
+  const detail = 'Backup could not be restored. The current DownloadPulse state was left unchanged.';
   const hold = held();
   await mockBackups(page, {restoreGate: hold.gate, restoreResult: {status: 409, body: {detail}}});
   const dialog = await openManager(page);

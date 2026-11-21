@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "fr",
  "register": "Formal 'vous' throughout. Buttons and menu commands use the infinitive (Enregistrer, Annuler); headings and labels use nouns. Help addresses the reader as 'vous'. French typography: « … » quotes with no-break spaces, a no-break space before : ; ! ?. Standard French software terminology (Microsoft/Apple French usage); established English loan words only where French IT usage is settled (token, webhook).",
  "terms": {

@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "ar",
  "register": "Arabic (Modern Standard Arabic, pan-regional software usage). Formal register addressing the reader with the second person singular in a neutral, polite style common in Arabic software (or impersonal/passive forms); buttons and menu commands use the short verbal noun (masdar) or imperative standard in Arabic software (حفظ, إلغاء, حذف, إعادة المحاولة); headings and labels use nouns. Arabic punctuation in Arabic text (، ؛ ؟) and the full stop '.'; guillemets « » for quoted on-screen labels. Western Arabic digits 0–9. No tashkeel except where needed to disambiguate (e.g. shadda on مزوّد is optional). Latin-script technical literals (URLs, paths, commands, product names, units) stay exactly in Latin script; never transliterate them.",
  "terms": {

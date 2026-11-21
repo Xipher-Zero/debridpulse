@@ -70,7 +70,7 @@ def test_statistics_composition_is_direct_static_owner_not_runtime_convergence()
     assert "/ui-statistics.css" not in style
 
 
-def test_statistics_period_labels_use_canonical_debridpulse_copy_without_changing_values() -> None:
+def test_statistics_period_labels_use_canonical_downloadpulse_copy_without_changing_values() -> None:
     view = statistics_view()
     expected = (
         ('1h', '1Hour'),
@@ -257,7 +257,7 @@ def test_statistics_is_live_through_the_one_stream_with_bounded_reads_and_no_tog
     for forwarded in ("'stats_changed'", "'statistics_changed'", "'ping'"):
         listener = app[app.index(forwarded):]
         listener = listener[:listener.index("\n        );")]
-        assert "debridpulse:statistics-invalidated" in listener or "debridpulse:pulse-heartbeat" in listener, forwarded
+        assert "downloadpulse:statistics-invalidated" in listener or "downloadpulse:pulse-heartbeat" in listener, forwarded
         assert "loadDetailedStats" not in listener and "/stats/detail" not in listener, forwarded
     # The heartbeat also ages the Overall & Rolling row, through its own owner, only while shown.
     ping = app[app.index("'ping'"):]
@@ -266,8 +266,8 @@ def test_statistics_is_live_through_the_one_stream_with_bounded_reads_and_no_tog
     # The Statistics owner opens no stream, runs no timer loop, stores nothing.
     for absent in ("EventSource", "setInterval", "localStorage", "sessionStorage"):
         assert absent not in stats, absent
-    for listened in ("debridpulse:statistics-invalidated", "debridpulse:pulse-connected",
-                     "debridpulse:pulse-heartbeat", "debridpulse:navigation"):
+    for listened in ("downloadpulse:statistics-invalidated", "downloadpulse:pulse-connected",
+                     "downloadpulse:pulse-heartbeat", "downloadpulse:navigation"):
         assert f"document.addEventListener('{listened}'" in stats, listened
     # Admission: one request in flight, measured spacing, a queued re-read never lost.
     assert "REFRESH_SPACING_MS = 2000, REFRESH_SPACING_MAX_MS = 10000, LATENCY_SPACING_FACTOR = 5" in stats

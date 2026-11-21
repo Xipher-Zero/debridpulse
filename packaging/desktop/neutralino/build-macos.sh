@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # The macOS native shell: Neutralino 6.10.0 built from its pinned source (the
-# tag's commit, verified) with DebridPulse's macOS patch (its digest checked),
+# tag's commit, verified) with DownloadPulse's macOS patch (its digest checked),
 # for this Mac's architecture, with Apple's clang and CMake.
 #   build-macos.sh <out-dir>
-# Writes <out-dir>/debridpulse-shell and <out-dir>/PROVENANCE.json (source
+# Writes <out-dir>/downloadpulse-shell and <out-dir>/PROVENANCE.json (source
 # commit, patch digest, toolchain, binary SHA-256), which
 # packaging/desktop/assemble.py --shell installs and records. Linux builds the
 # same source with its own patch in the Flatpak recipe; Windows keeps the
@@ -27,7 +27,7 @@ COMMIT=4361b63eb1157fc7dedb29b92815a08ec0002767
 PATCH=macos-main-thread-shutdown.patch
 PATCH_SHA256=1a7ccc59b73a080c5f288fd5995071adeec5888318a57af21a5638d3af7c9896
 FRAME_PATCH=macos-frame-theme.patch
-FRAME_PATCH_SHA256=34ba3e349c775926434298efee03256c222f3f0576eb0b02b3f93e6aab977338
+FRAME_PATCH_SHA256=209ba63df784de9344708e4755d3b689ae177a1b1b095222bdf0f588c114430f
 work="$(mktemp -d)"; trap 'rm -rf "$work"' EXIT
 git clone -q --depth 1 --branch "$TAG" https://github.com/neutralinojs/neutralinojs.git "$work/src"
 [ "$(git -C "$work/src" rev-parse HEAD)" = "$COMMIT" ] || { echo "$TAG is not $COMMIT"; exit 1; }
@@ -38,8 +38,8 @@ git -C "$work/src" apply "$here/$FRAME_PATCH"
 arch="$(uname -m)"; name="neutralino-mac_$([ "$arch" = arm64 ] && echo arm64 || echo x64)"
 cmake -S "$work/src" -B "$work/build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$arch" >/dev/null
 cmake --build "$work/build" -j "$(sysctl -n hw.ncpu)" >/dev/null
-install -m 755 "$work/src/bin/$name" "$out/debridpulse-shell"
-digest="$(shasum -a 256 "$out/debridpulse-shell" | cut -d' ' -f1)"
+install -m 755 "$work/src/bin/$name" "$out/downloadpulse-shell"
+digest="$(shasum -a 256 "$out/downloadpulse-shell" | cut -d' ' -f1)"
 cat > "$out/PROVENANCE.json" <<JSON
 {"neutralino": "$TAG", "commit": "$COMMIT", "patches": {"$PATCH": "$PATCH_SHA256", "$FRAME_PATCH": "$FRAME_PATCH_SHA256"},
  "architecture": "$arch", "cmake": "$(cmake --version | head -1)", "compiler": "$(clang --version | head -1)",

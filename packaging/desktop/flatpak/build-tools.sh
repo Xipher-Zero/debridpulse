@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# DebridPulse's native helper tools for the Linux Flatpak (x86_64), built by
+# DownloadPulse's native helper tools for the Linux Flatpak (x86_64), built by
 # flatpak-builder inside the GNOME SDK against the runtime the application
 # runs on, from the same inputs as the macOS recipes:
-#   aria2 -- Debian's aria2 source with Debian's patches and DebridPulse's
+#   aria2 -- Debian's aria2 source with Debian's patches and DownloadPulse's
 #     connect-tunnel-exact-read.patch (prepared, autoreconf'd, by
 #     packaging/macos-tools/prepare-sources.sh), configured without BitTorrent
 #     and, as Debian's own build (packaging/aria2), with GnuTLS and the

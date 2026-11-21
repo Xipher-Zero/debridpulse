@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DebridPulse's FFmpeg for Windows x64 (docs/SUPPLY_CHAIN_POLICY.md section 4b):
+# DownloadPulse's FFmpeg for Windows x64 (docs/SUPPLY_CHAIN_POLICY.md section 4b):
 # the same Debian source package and the same capability set (build-package.sh's
 # configure options) as the Linux package, cross-compiled with Debian's
 # mingw-w64 toolchain (win32 threads, everything static), so the two

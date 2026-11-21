@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<!-- Hardened-runtime exceptions DebridPulse's bundled code needs, nothing more:
+<!-- Hardened-runtime exceptions DownloadPulse's bundled code needs, nothing more:
      deno's V8 generates code (JIT); the bundled Python loads the locked wheels'
      extension modules, signed by this identity but built by others. Not the App
      Sandbox: Media Downloads helpers are confined by their own Seatbelt profile. -->

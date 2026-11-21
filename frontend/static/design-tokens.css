@@ -1,8 +1,8 @@
-/* DebridPulse v1.0.11 design tokens.
+/* DownloadPulse v1.0.11 design tokens.
    Visual target: approved dark/light mockups. These are semantic tokens, not page-local colors. */
 
 /* [data-theme="dark"] mirrors the light block's [data-theme="light"]: an
-   element (the theme picker's DebridPulse swatch) can show the native dark
+   element (the theme picker's DownloadPulse swatch) can show the native dark
    palette whatever palette the page around it uses. */
 :root,
 [data-theme="dark"] {
@@ -263,7 +263,7 @@ body.light,
   --shadow-soft: 0 8px 24px rgba(28, 44, 70, .08);
 }
 
-/* Light operational material (every light theme, native DebridPulse Light
+/* Light operational material (every light theme, native DownloadPulse Light
    included). The backed operational components -- status badges, provider
    chips, Provider Status dots, the topbar Pause / Resume controls and the row
    and bulk Pause, Resume and Retry actions -- draw state with DP Dark's own

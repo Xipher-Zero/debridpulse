@@ -246,7 +246,7 @@ const rdAccount = () => ({id: 'realdebrid', name: 'Real-Debrid', state: 'healthy
   status: {account: premium('Premium', 90)}});
 
 const compose = (page, entries) => page.evaluate(next => {
-  document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: next}}));
+  document.dispatchEvent(new CustomEvent('downloadpulse:provider-status', {detail: {entries: next}}));
   const row = document.getElementById('premium-row');
   const blocks = [...document.querySelectorAll('#lbl-premium .dp-provider-premium-account')];
   return {visible: !!row && row.getClientRects().length > 0,

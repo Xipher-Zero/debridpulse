@@ -1,5 +1,5 @@
 """
-REST API routes for DebridPulse.
+REST API routes for DownloadPulse.
 
 Conventions:
 - All DB access uses get_db() against the authoritative SQLite store.
@@ -181,7 +181,7 @@ from api.serializers import (
 from executors.aria2.presentation import public_aria2_download
 from core.localization import CodedValueError, DisplayError, code_of, disclosed, refusal, fact
 
-logger = logging.getLogger("debridpulse.routes")
+logger = logging.getLogger("downloadpulse.routes")
 router = APIRouter()
 # A stored transfer priority is a signed 32-bit value: never an overflow.
 _PRIORITY_MIN, _PRIORITY_MAX = -(2 ** 31), 2 ** 31 - 1
@@ -376,7 +376,7 @@ async def _error_reason(repository, transfer_id: int, transfer, displayed, wake_
     .error_reasons``) for the failure Details shows, or ``None``.
 
     That failure is the transfer's displayed error when it has one (bound
-    exactly as ``_error_disclosure`` binds it); otherwise the failure DebridPulse
+    exactly as ``_error_disclosure`` binds it); otherwise the failure DownloadPulse
     is still recovering from: a source whose resolution retry is scheduled,
     else a held file whose acquisition failed. ``scheduled_retry_at`` is only
     ever a real schedule -- that source's own retry time, or the recovery
@@ -1069,7 +1069,7 @@ async def add_usenet_file(
     file: UploadFile = File(...),
     application: ApplicationService = Depends(get_application),
 ):
-    """Upload an .nzb posting for DebridPulse to acquire.
+    """Upload an .nzb posting for DownloadPulse to acquire.
 
     The route does nothing but hand the upload to the canonical submission
     seam: the Usenet provider validates and normalizes it and universal core
@@ -1936,7 +1936,7 @@ async def _completion_buckets(db, bucket_sql: str, since_sql: str, definitions) 
 
 
 async def _transfer_methods(db, where_sql: str, definitions) -> list[dict]:
-    """Statistics -> Transfer Methods: how DebridPulse actually acquired the
+    """Statistics -> Transfer Methods: how DownloadPulse actually acquired the
     transfers added in the period, ranked, at most ten rows.
 
     A transfer counts ONCE under each acquisition method that delivered any of
@@ -2146,7 +2146,7 @@ async def trigger_backup():
         raise refusal(500, exc.message, exc) from None
 
 
-# ── Backups: one restore point per DebridPulse backup ──────────────────────────
+# ── Backups: one restore point per DownloadPulse backup ──────────────────────────
 # Every operation below is owned by services.backup; a restore is the
 # application lifetime owner's whole-state replacement.
 
@@ -2414,7 +2414,7 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
     applies or persists either value; this route holds no independent
     native-apply or persistence logic for them (Gate 9 revision-4 rejection
     finding 5: two implementations were previously able to change the same
-    underlying state). There is no ``max_upload_speed``: DebridPulse's aria2
+    underlying state). There is no ``max_upload_speed``: DownloadPulse's aria2
     is compiled without BitTorrent and never uploads.
 
     Accepts: max_download_speed (bytes/s, 0=unlimited) and
@@ -2491,7 +2491,7 @@ async def get_execution_runtime_status(application: ApplicationService = Depends
 
     The ONE fact source for the topbar indicator and the browser-tab title:
     current aggregate download throughput across every acquiring executor,
-    DebridPulse's own execution-admission occupancy, and the configured global
+    DownloadPulse's own execution-admission occupancy, and the configured global
     download cap. Executor-specific routes remain available as diagnostics;
     they no longer own generic presentation truth, so a future executor joins
     by implementing the neutral contracts rather than by adding a branch here.
@@ -3117,11 +3117,11 @@ async def disk_guard_status( application: ApplicationService = Depends(get_appli
 async def prometheus_metrics():
     """Prometheus-compatible metrics endpoint.
 
-    Scrape with: `- job_name: debridpulse  static_configs: [{targets: [host:8095]}]`
+    Scrape with: `- job_name: downloadpulse  static_configs: [{targets: [host:8095]}]`
     and set `metrics_path: /api/metrics`.
 
     Every metric describes universal transfer/scheduler state under the
-    ``debridpulse_`` namespace; none is named for a provider or an executor.
+    ``downloadpulse_`` namespace; none is named for a provider or an executor.
     """
     try:
         from prometheus_client import (
@@ -3161,34 +3161,34 @@ async def prometheus_metrics():
         lines.append(f"# TYPE {name} gauge")
         lines.append(f"{name}{lstr} {value}")
 
-    _gauge("debridpulse_transfers_total",
+    _gauge("downloadpulse_transfers_total",
            "Number of transfers across all statuses",
            sum(by_status.values()))
 
     for status, count in by_status.items():
-        lines.append(f'debridpulse_transfers_by_status{{status="{status}"}} {count}')
+        lines.append(f'downloadpulse_transfers_by_status{{status="{status}"}} {count}')
 
-    _gauge("debridpulse_active_downloads",
+    _gauge("downloadpulse_active_downloads",
            "Transfers currently in queued or downloading state",
            by_status.get("queued", 0) + by_status.get("downloading", 0))
 
-    _gauge("debridpulse_completed_downloads",
+    _gauge("downloadpulse_completed_downloads",
            "Total transfers completed",
            by_status.get("completed", 0))
 
-    _gauge("debridpulse_error_transfers",
+    _gauge("downloadpulse_error_transfers",
            "Transfers in error state",
            by_status.get("error", 0))
 
-    _gauge("debridpulse_pending_files",
+    _gauge("downloadpulse_pending_files",
            "Download files in pending state (waiting for an available execution slot)",
            by_file_status.get("pending", 0))
 
-    _gauge("debridpulse_sse_subscribers",
+    _gauge("downloadpulse_sse_subscribers",
            "Number of SSE connections",
            len(_sse_subscribers))
 
-    _gauge("debridpulse_downloaded_bytes_total",
+    _gauge("downloadpulse_downloaded_bytes_total",
            "Total bytes downloaded (completed transfers)",
            total_bytes)
 
@@ -3311,7 +3311,7 @@ async def cleanup_alldebrid_orphans_endpoint( application: ApplicationService = 
 USENET_NAMESPACE = "usenet"
 
 
-# DebridPulse's own connection bounds; the floor is 1, not SAB's 0 (see
+# DownloadPulse's own connection bounds; the floor is 1, not SAB's 0 (see
 # integrations/usenet/definition.py).
 from integrations.usenet.definition import (
     MAX_ARTICLES_PER_REQUEST, MAX_CONNECTIONS, MAX_SERVER_TIMEOUT_SECONDS,

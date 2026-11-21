@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-Name=DebridPulse
+Name=DownloadPulse
 Comment=Self-hosted download and transfer manager
-Exec=debridpulse
-Icon=org.debridpulse.desktop
+Exec=downloadpulse
+Icon=net.downloadpulse.desktop
 Terminal=false
 Categories=Network;FileTransfer;
-StartupWMClass=debridpulse-shell
+StartupWMClass=downloadpulse-shell

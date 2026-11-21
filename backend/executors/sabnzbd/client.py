@@ -22,7 +22,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 import aiohttp
 
 # SAB post-processing selector. 1 = repair (PAR2 verify/repair) with NO unpack
-# and NO delete -- exactly the DebridPulse ownership boundary. DebridPulse owns
+# and NO delete -- exactly the DownloadPulse ownership boundary. DownloadPulse owns
 # archive extraction; SAB must never unpack.
 PP_REPAIR_ONLY = 1
 
@@ -31,7 +31,7 @@ NATIVE_PRIORITY_PAUSED = -2
 NATIVE_PRIORITY_DEFAULT = -100
 
 
-# SAB pages queue/history; this is the page size DebridPulse asks for. A page
+# SAB pages queue/history; this is the page size DownloadPulse asks for. A page
 # that does not cover everything SAB reports is explicitly not authoritative.
 SNAPSHOT_LIMIT = 500
 

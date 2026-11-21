@@ -1,8 +1,8 @@
-# DebridPulse's aria2 package image (docs/SUPPLY_CHAIN_POLICY.md section 4a).
+# DownloadPulse's aria2 package image (docs/SUPPLY_CHAIN_POLICY.md section 4a).
 #
 # A package CARRIER, not an aria2 runtime: built once per architecture by the
 # aria2 Package workflow and published write-once to
-# ghcr.io/xipher-zero/debridpulse-aria2, whose multi-arch manifest DIGEST the
+# ghcr.io/xipher-zero/downloadpulse-aria2, whose multi-arch manifest DIGEST the
 # application Dockerfile consumes. It is rebuilt only when this directory
 # changes (aria2 version, patch set, build configuration or base/toolchain),
 # never by an application build.
@@ -30,9 +30,9 @@ RUN set -eux; \
 
 FROM scratch
 ARG ARIA2_PACKAGE_VERSION=1.37.0+debian-3+dp2
-LABEL org.opencontainers.image.title="DebridPulse aria2 packages"
-LABEL org.opencontainers.image.description="Debian aria2 rebuilt for DebridPulse: CONNECT exact-read patch, BitTorrent compiled out"
+LABEL org.opencontainers.image.title="DownloadPulse aria2 packages"
+LABEL org.opencontainers.image.description="Debian aria2 rebuilt for DownloadPulse: CONNECT exact-read patch, BitTorrent compiled out"
 LABEL org.opencontainers.image.version="${ARIA2_PACKAGE_VERSION}"
-LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/debridpulse"
+LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/downloadpulse"
 LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 COPY --from=build /out/ /

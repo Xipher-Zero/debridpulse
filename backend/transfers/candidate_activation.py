@@ -245,7 +245,7 @@ async def retire_writer(engine, artifact, old_candidate, replacement_artifact, r
         if not relocated and (old_work.materialization.kind == MaterializationKind.FILE
                               or (state is not None and state.members)):
             # The payload stays for the next writer's continuation plan (a
-            # collection too, once DebridPulse holds member material for it).
+            # collection too, once DownloadPulse holds member material for it).
             partial_decision = "reused"
         elif relocated or new_executor is None or old_executor.descriptor.id != new_executor.descriptor.id \
                 or old_footprint != engine._footprint(new_executor, new_work):

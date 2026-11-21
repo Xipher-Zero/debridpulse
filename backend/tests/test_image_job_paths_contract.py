@@ -1,4 +1,4 @@
-"""Fork Image's two event-exclusive job paths (``.github/workflows/fork-image.yml``).
+"""Image's two event-exclusive job paths (``.github/workflows/image.yml``).
 
 A push (or an authorized publishing dispatch) runs ONE job, ``publish``: the
 build and smoke qualification of ``build-and-smoke-test`` -- the same steps, as
@@ -19,7 +19,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "fork-image.yml"
+WORKFLOW = Path(__file__).resolve().parents[2] / ".github" / "workflows" / "image.yml"
 SMOKE = ["Checkout", "Read application version", "Log in to Docker Hub", "Set up Docker Buildx",
          "Generate test image metadata", "Build test image", "Smoke test image"]
 PUBLICATION = ["Log in to GHCR", "Generate immutable SHA tag", "Verify generated image metadata and immutable tag policy",
@@ -58,7 +58,7 @@ def _evaluate(expression: str, *, event: str, ref: str, publish_sha: bool) -> bo
 
 # (event, ref, publish_sha) -> the one job that runs
 CASES = [
-    ("push", "refs/heads/1.0.14", False, "publish"),
+    ("push", "refs/heads/1.0.0", False, "publish"),
     ("push", "refs/heads/main", False, "publish"),
     ("push", "refs/heads/staging/x", False, "publish"),
     ("push", "refs/tags/v1.0.14", False, "publish"),
@@ -70,7 +70,7 @@ CASES = [
     ("workflow_dispatch", "refs/heads/fix/x", True, "publish"),
     ("workflow_dispatch", "refs/heads/chore/x", True, "publish"),
     ("workflow_dispatch", "refs/heads/main", False, "build-and-smoke-test"),
-    ("workflow_dispatch", "refs/heads/1.0.14", True, "build-and-smoke-test"),
+    ("workflow_dispatch", "refs/heads/1.0.0", True, "build-and-smoke-test"),
     ("workflow_dispatch", "refs/heads/staging/x", True, "build-and-smoke-test"),
 ]
 
@@ -134,4 +134,4 @@ def test_the_smoke_steps_exist_once_as_text_and_are_reused_by_alias():
 def test_the_testing_alias_follows_the_one_publishing_job():
     alias = _jobs()["testing-alias"]
     assert alias["needs"] == "publish"
-    assert alias["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/1.0.14'"
+    assert alias["if"] == "github.event_name == 'push' && github.ref == 'refs/heads/1.0.0'"

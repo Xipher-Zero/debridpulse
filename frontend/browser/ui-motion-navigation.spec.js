@@ -266,7 +266,7 @@ test('Activity Log: a page turn slides the list across; Refresh and live updates
   await page.evaluate(() => document.documentElement.dataset.dpPulse = 'connected');
   await page.locator('.dp-activity-live').click();
   await expect.poll(() => requests.length).toBe(before + 2);
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed', {detail: {latest: 999}})));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:activity-journal-changed', {detail: {latest: 999}})));
   await expect.poll(() => requests.length).toBe(before + 3);
   await expect(current).toHaveText('1');
   await noSlide(page);
@@ -493,17 +493,17 @@ test('Statistics: the chart takes its settled size on arrival, and a live re-rea
     await clear(page);
     await page.evaluate(() => {
       window.__chart = null;
-      document.addEventListener('debridpulse:statistics-rendered', function entered(event) {
+      document.addEventListener('downloadpulse:statistics-rendered', function entered(event) {
         if (event.detail?.live) return;
         window.__chart = document.getElementById('daily-chart')._ci;    // the chart this entry drew
-        document.removeEventListener('debridpulse:statistics-rendered', entered);
+        document.removeEventListener('downloadpulse:statistics-rendered', entered);
       });
     });
     await entry(page, 'stats').click();
     await page.waitForFunction(() => window.__chart);
     version++;
     // A live change arrives while the view is still sliding in.
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:statistics-invalidated')));
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:statistics-invalidated')));
     expectSlide(await lastSlide(page), {scope: 'main', axis: 'y', direction: 'forward', step});
     await page.waitForFunction(() => !Chart.animator.running(document.getElementById('daily-chart')._ci));
     await expect.poll(() => page.evaluate(() => document.getElementById('daily-chart')._ci.data.datasets[0].data[0])).toBe(version);
@@ -718,7 +718,7 @@ test('Reduced motion: every navigation and disclosure lands at once, correctly',
 test('Narrow and light: a slide stays inside its surface; nothing overflows the page', async ({page}) => {
   await boot(page, {width: 390, height: 844});
   await page.goto('/');
-  await page.evaluate(() => { document.body.classList.add('light'); document.dispatchEvent(new CustomEvent('debridpulse:theme-changed')); });
+  await page.evaluate(() => { document.body.classList.add('light'); document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed')); });
   await page.evaluate(() => nav(document.querySelector('[data-view="settings"]')));
   await expect(settingsTab(page, 'sources')).toHaveAttribute('aria-selected', 'true');
   await clear(page);
@@ -774,7 +774,7 @@ test('Distance: the next tab, two or three, and four or more travel longer and f
  * The transfer-policy write is answered by the page with the policy the
  * server would accept, so the shared backend's network policy never changes. */
 async function openAdvanced(page) {
-  const policy = await page.evaluate(async () => (await window.debridPulseAuth.fetch('/api/transfer-policy')).json());
+  const policy = await page.evaluate(async () => (await window.downloadPulseAuth.fetch('/api/transfer-policy')).json());
   const writes = [];
   await page.route(url => url.pathname === '/api/transfer-policy', async route => {
     if (route.request().method() !== 'PATCH') return route.fallback();
@@ -1245,7 +1245,7 @@ test('Activity Log: a refused Last and a failed turn come back coherently; Auto 
   const asked = requests.length;
   const hinted = await turn(page, 'activity', async () => {
     await pager.locator('[aria-label="Next page"]').click();
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed', {detail: {latest: 999}})));
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:activity-journal-changed', {detail: {latest: 999}})));
   }, () => expect(current).toHaveText('2'));
   expect(summary(hinted).slides).toBe(1);
   expect(requests.slice(asked).filter(q => q.limit !== '1').map(q => q.before ?? null)).toEqual(['408']);   // only the turn's page

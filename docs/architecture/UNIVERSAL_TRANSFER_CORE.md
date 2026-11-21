@@ -1,6 +1,6 @@
 # Universal transfer architecture
 
-DebridPulse admits a durable transfer before contacting an integration. Providers
+DownloadPulse admits a durable transfer before contacting an integration. Providers
 resolve requests into resources, manifests and transfer candidates. Executors
 move candidate bytes to core-assigned paths. The transfer core owns lifecycle,
 identity, scheduling, retry, reconciliation, local possession and cleanup policy.
@@ -54,7 +54,7 @@ exercise the actual engine, SQLite repository, scheduler calls and HTTP commands
 ## Identity and persistence
 
 A `TransferRequest` describes an input kind, opaque payload, optional name,
-fingerprint and preferred provider. The stable `Transfer` ID belongs to DebridPulse.
+fingerprint and preferred provider. The stable `Transfer` ID belongs to DownloadPulse.
 It exists before resolution, survives retries, and is independent of remote IDs.
 Manifests produce child request identities from their parent and relative path;
 resolved children retain their artifact IDs and allocated paths across refresh.
@@ -71,12 +71,12 @@ transfer (new transfer ID, root request, provider-resource generation, resolutio
 attempts, and file-selection generation), never a `retry(..., reacquire=True)` of
 the deleted row. The historical row, its provider/resource/execution provenance,
 outstanding cleanup responsibility, and its file-selection generations all stay
-scoped to that historical transfer. An existing 1.0.12 database is brought to
+scoped to that historical transfer. An existing database is brought to
 this model by idempotent additive backfills in `db/database.py`
 (`_retire_and_backfill_source_fingerprints`, `_backfill_provider_resource_bindings`);
 `db/migrations/v112.py` is untouched.
 
-**Historical completion is not the identity of a later submission** (DP 1.0.13).
+**Historical completion is not the identity of a later submission.**
 Live work -- any non-terminal lifecycle, a failed one included (operator Retry
 owns it) -- still dedupes onto the existing transfer. An INDEPENDENT submission
 (`submit(..., independent=True)`, every user/API submission) that finds a
@@ -236,9 +236,9 @@ provider for the current challenge. The registry validates advertised protocol
 implementations at registration.
 Provider selection first filters by enabled state, registered health, supported request kind, and capability. URL-shaped requests then pass through the provider-neutral applicability classifier. The currently implemented initial rule is `SPECIALIZED > GENERIC`: when one or more specialized claims match, generic handlers are suppressed; when no specialized match survives, matching generic handlers remain eligible. Magnet/torrent request-type routes remain static. Only the surviving same-class provider set reaches the neutral optional preference, priority, then stable-ID ordering. Health affects routing when observations are registered with `mark_health`; selection itself does not make an implicit network call or refresh provider state.
 
-In the current tree, each premium debrid provider (AllDebrid, Debrid-Link, Premiumize, Real-Debrid and TorBox) translates its own validated runtime host facts into request-aware `SPECIALIZED` HTTP(S) claims, Media Downloads claims `SPECIALIZED` only the addresses an installed yt-dlp extractor recognizes, and General HTTP & HTTPS contributes `GENERIC` `http`/`https` applicability; the other direct-source providers (FTP & SFTP, SCP, rsync, WebDAV, Multimeta) declare applicability for their own schemes and descriptors. These are integration facts, not concrete provider-name branches in the classifier or core. This rule is the implemented initial routing policy for the current architecture; it does not pre-decide every later failover/selection policy for deferred providers.
+In the current tree, each premium debrid provider (AllDebrid, Debrid-Link, Premiumize, Real-Debrid and TorBox) translates its own validated runtime host facts into request-aware `SPECIALIZED` HTTP(S) claims, Media Downloads claims `SPECIALIZED` only the addresses an installed yt-dlp extractor recognizes, and General HTTP & HTTPS contributes `GENERIC` `http`/`https` applicability; the other direct-source providers (FTP & SFTP, SCP, rsync, WebDAV, Multimeta) declare applicability for their own schemes and descriptors. These are integration facts, not concrete provider-name branches in the classifier or core. This rule is the initial routing policy; failover after a provider is exhausted is a separate policy (`docs/ROUTE_PROVIDER_PROVENANCE.md`).
 
-**Submission-wide specialized authority, and its one exception.** A specialized claim on any root of a multi-root submission normally speaks for the whole submission: generic fallback closes for every root in it, including roots no specialized claimant named (`IntegrationRegistry.collection_route_authority`, counting only specialized matches whose `ProviderApplicability.collection_authority` is true -- the default for every claimant that does not say otherwise). A claimant may declare `collection_authority=False`: its claim still takes the root it names through the ordinary specialized competition, but says nothing about the independent roots submitted beside it, which keep their own claimants. Media Downloads is the one provider that does so (`providers/media/provider.py`, since `af50afbe`): a media page pasted beside ordinary links routes only itself, and the links keep their own claimants (`test_v113_media_downloads.py::test_a_mixed_paste_routes_each_root_through_its_own_claimant`). Every other specialized claimant keeps submission-wide authority.
+**Submission-wide specialized authority, and its one exception.** A specialized claim on any root of a multi-root submission normally speaks for the whole submission: generic fallback closes for every root in it, including roots no specialized claimant named (`IntegrationRegistry.collection_route_authority`, counting only specialized matches whose `ProviderApplicability.collection_authority` is true -- the default for every claimant that does not say otherwise). A claimant may declare `collection_authority=False`: its claim still takes the root it names through the ordinary specialized competition, but says nothing about the independent roots submitted beside it, which keep their own claimants. Media Downloads is the one provider that does so (`providers/media/provider.py`): a media page pasted beside ordinary links routes only itself, and the links keep their own claimants (`test_v113_media_downloads.py::test_a_mixed_paste_routes_each_root_through_its_own_claimant`). Every other specialized claimant keeps submission-wide authority.
 
 Executors implement one generalized contract (`transfers.contracts.Executor`):
 `claim(ExecutionSubject)`, `footprint(ExecutionWork)`, `prepare`, `start`,
@@ -312,7 +312,7 @@ Failover retires the old execution and its partial state before another source
 can write the same target. Local, security and unknown failures do not justify
 cycling through alternate sources.
 
-## Universal evidence acquisition (v1.0.13)
+## Universal evidence acquisition
 
 The invariant is: **provider facts → access establishment → neutral evidence →
 equivalence → writer admission.** Access establishment happens before evidence
@@ -531,18 +531,15 @@ Tests must cover ambiguous acknowledgements, ownership, cancellation and securit
 
 Neither addition requires new provider-name branches in the lifecycle, scheduler,
 retry/recovery policy, persistence read model or browser failure classifier. The
-parcel and memory implementations provide small executable examples. Real-Debrid,
-Premiumize, TorBox and other transports remain future integrations, not placeholder
-implementations in the core.
+parcel and memory implementations provide small executable examples. Every
+provider and transport is a registered integration, not a placeholder
+implementation in the core.
 
-The behavioral replacement census and qualification procedure are documented in
-[REGRESSION_MAP_V112.md](REGRESSION_MAP_V112.md).
+## Durable route/provider provenance
 
-## Roadmap Item 9: durable route/provider provenance
+Provider/resolution attempts and executor attempts have durable provider-neutral provenance links. Historical provider identity is captured at route time, candidate identity is recorded without endpoint secrets, verified artifact delivery identifies the actual delivering execution/provider, and current routing/applicability state is never used to rewrite history. See `ROUTE_PROVIDER_PROVENANCE.md`.
 
-Provider/resolution attempts and executor attempts now have durable provider-neutral provenance links. Historical provider identity is captured at route time, candidate identity is recorded without endpoint secrets, verified artifact delivery identifies the actual delivering execution/provider, and current routing/applicability state is never used to rewrite history. See `ROUTE_PROVIDER_PROVENANCE.md`.
-
-## Post-audit ownership invariants (v1.0.12)
+## Ownership invariants
 
 ### Provider selection and retry
 
@@ -554,15 +551,15 @@ Logical cancellation authority is committed on the parent transfer before remote
 
 ### Database startup and migration
 
-Current-schema startup and historical migration are distinct owners. Normal repository initialization ensures the current schema required by runtime code; it does not reconstruct historical migration state. Supported predecessor upgrades are prepared and applied by the explicit v1.0.12 migration owner, including historical provenance backfill, with backup-before-current-mutation semantics. Migration helpers may live beside runtime repositories, but production migration invocation remains in `db/migrations/v112.py`.
+Current-schema startup and historical migration are distinct owners. Normal repository initialization ensures the current schema required by runtime code; it does not reconstruct historical migration state. Supported predecessor upgrades are prepared and applied by the explicit migration owner, including historical provenance backfill, with backup-before-current-mutation semantics. Migration helpers may live beside runtime repositories, but production migration invocation remains in `db/migrations/v112.py`.
 
-Additive current-schema evolution — new columns and idempotent backfills for behavior that must work against an already-running 1.0.12 database — is owned by `db/database.py`, not `v112.py`. The deleted-transfer generation correction adds `torrents.source_fingerprint`, `provider_resources.resource_key`, and `provider_resources.cleanup_abandoned`. `_retire_and_backfill_source_fingerprints`: non-deleted rows gain `source_fingerprint = hash`, already-deleted legacy rows preserve the original fingerprint and have their `hash` retired to the tombstone form. `_backfill_provider_resource_bindings`: `resource_key = id` for existing rows (historical primary key untouched), plus the `UNIQUE(transfer_id, resource_key)` index. Repeated initialization is a no-op. Restoring an untouched pre-migration copy returns fully to the pre-migration state; the live production backup owned by `services/db_maintenance.py` is a separate mandatory deployment prerequisite taken immediately before the corrected image first starts against the real database.
+Additive current-schema evolution — new columns and idempotent backfills for behavior that must work against an already-running database — is owned by `db/database.py`, not `v112.py`. Deleted-transfer generations add `torrents.source_fingerprint`, `provider_resources.resource_key`, and `provider_resources.cleanup_abandoned`. `_retire_and_backfill_source_fingerprints`: non-deleted rows gain `source_fingerprint = hash`, already-deleted legacy rows preserve the original fingerprint and have their `hash` retired to the tombstone form. `_backfill_provider_resource_bindings`: `resource_key = id` for existing rows (historical primary key untouched), plus the `UNIQUE(transfer_id, resource_key)` index. Repeated initialization is a no-op. Restoring an untouched pre-migration copy returns fully to the pre-migration state; the live production backup owned by `services/db_maintenance.py` is a separate mandatory deployment prerequisite taken immediately before an upgraded image first starts against the real database.
 
-## Canonical equivalence / lifecycle correction (v1.0.12)
+## Canonical equivalence and parent lifecycle
 
-Production transfer `263` (five equivalent Ubuntu ISO mirrors, two of which
-transiently could not prove identity) exposed two coupled defects, corrected
-together so a future protocol/provider cannot reintroduce either half alone.
+Two coupled rules keep equivalent mirrors whose identity is transiently unprovable
+truthful; they hold together so no protocol/provider can reintroduce either half
+alone.
 
 **Proof-attempt budget is not identity truth.** `transfers/mirrors.py`
 classifies equivalence-proof outcomes into `EvidenceKind` (a proof-strength
@@ -609,7 +606,8 @@ independent/contradictory sibling does that.
 **Same-transfer canonical membership is durable through candidate binding/
 origin provenance, not `artifact_consolidations`.** Same-transfer
 convergence intentionally never writes an `artifact_consolidations` row
-(that table is cross-transfer provenance only — see Roadmap Item 9 above).
+(that table is cross-transfer provenance only — see durable route/provider
+provenance above).
 `transfers/canonical.py`'s `CanonicalOwnership.durable_owner_for_request()`
 is the one owner of "what canonical artifact, if any, does this request's
 own candidate provenance durably attach to" — it derives the answer from
@@ -622,8 +620,8 @@ voting (below) both call this one helper rather than duplicating the SQL.
 
 **Parent lifecycle reflects logical delivery obligations, not raw historical
 row count.** `transfers/_repository_base.py`'s `canonical_artifact_membership_
-sql()` predicate (Section 7's existing membership definition — blocked/
-standby/non-request-bound rows never vote) is joined by a second, narrower
+sql()` predicate (the membership definition — blocked/standby/
+non-request-bound rows never vote) is joined by a second, narrower
 exclusion scoped to `aggregate_lifecycle()`'s FAILED/completion decision
 only: a canonical-membership artifact in `error` state whose own request is
 durably mapped (via the helper above) to a *different*, already-`completed`
@@ -631,63 +629,52 @@ canonical artifact does not cast a FAILED vote, and does not block the
 parent from reaching `COMPLETED`. It remains fully visible in `presentation()`
 for provenance and history — nothing is deleted or hidden — and a
 genuinely independent failed artifact (no durable mapping to anything) still
-votes exactly as before. This is why a superseded/historical equivalent
-child can no longer poison a parent whose logical payload already delivered
-through its canonical sibling — the exact production-`263` symptom
-(`progress=100%, status=error` after the real canonical artifact had already
+votes normally. A superseded/historical equivalent child therefore cannot
+poison a parent whose logical payload already delivered through its canonical
+sibling (no `progress=100%, status=error` after the real canonical artifact
 completed).
 
 Regression coverage: `backend/tests/test_equivalence_retry_remediation.py`,
 `test_multi_mirror_general_http_convergence.py` (`test_five_mirror_
-production_263_regression` is the direct five-mirror analogue of transfer
-`263`), `test_workspace4_cohort_exit_gate.py`, and
+production_263_regression` is the five-mirror reproduction), `test_workspace4_cohort_exit_gate.py`, and
 `test_operational_artifact_membership.py`.
 
-## Canonical lifecycle / recovery / completion rework (v1.0.12, transfer 265)
+## Canonical lifecycle, recovery and completion owners
 
-Production transfer `265` proved three coupled defects, corrected together.
-While one real artifact was actively transferring, its parent durably
-alternated `downloading -> queued -> downloading -> queued`; a bad HTTP
-mirror was persisted `completed, size_bytes=0, delivered=1`; and a durably
-unresolved (proof-exhausted) sibling request left the parent stuck showing
-`processing` after the real payload had already delivered.
+Three invariants keep the parent truthful: while one real artifact is actively
+transferring, its parent never alternates `downloading -> queued`; a bad HTTP
+mirror is never persisted `completed, size_bytes=0, delivered=1`; and a durably
+unresolved (proof-exhausted) sibling request neither leaves the parent stuck
+showing `processing` after the real payload delivered nor lets it complete.
 
 **One parent-lifecycle semantic owner.** `transfers._repository_base
 .TransferRepository.aggregate_lifecycle` is the sole owner of the durable
-`torrents.status` decision. Two post-aggregate overrides used to run after
-it committed, each independently free to overwrite that same column moments
-later — both are now deleted, and their underlying facts folded into
-`aggregate_lifecycle`'s own atomic read-decide-write instead:
+`torrents.status` decision. No post-aggregate override writes that column;
+these facts are decided inside `aggregate_lifecycle`'s own atomic
+read-decide-write:
 
-- an artifact autonomously waiting on recovery (`recovery_wait`) is now one
+- an artifact autonomously waiting on recovery (`recovery_wait`) is one
   more state at the same precedence tier as `queued`/`paused`/
   `refresh_pending` — checked *after* the `downloading`/`verifying` branch,
-  so a genuinely active sibling always still wins. This replaces the deleted
-  `TransferRepository.force_queued_for_autonomous_wait()`, previously called
-  unconditionally from `transfers._engine_recovery.TransferEngine._aggregate`
-  regardless of what the base decision had just computed — the direct cause
-  of the `downloading <-> queued` churn.
-- durable paused truth (previously a separate crash/restart repair in
-  `transfers.engine.TransferEngine._aggregate`, itself a second read-decide-
-  write over the same column) is now decided inside the same transaction,
-  from execution-attempt rows already read for the ordinary decision.
+  so a genuinely active sibling always still wins.
+- durable paused truth is decided inside the same transaction, from
+  execution-attempt rows already read for the ordinary decision.
 
 Neither `transfers._engine_recovery.TransferEngine` nor `transfers.engine
-.TransferEngine` define an `_aggregate` override any longer; there is
+.TransferEngine` defines an `_aggregate` override; there is
 exactly one `_aggregate` in the production MRO
 (`transfers._engine_base.TransferEngine`), and it does nothing but call
 `aggregate_lifecycle` and run the completion sequence when it says to.
 
 **Quiescent equivalence hold is orthogonal to autonomous work, not a
 special case of `materializing`.** `aggregate_lifecycle`'s "is there genuine
-autonomous work pending" fact now excludes a `materializing` request whose
+autonomous work pending" fact excludes a `materializing` request whose
 `equivalence_disposition` is durably held (`transfers.cohorts
 ._HELD_DISPOSITIONS`, i.e. `exhausted`) — imported by object identity, not
 redefined, so the two call sites cannot silently drift into different
-disposition sets. This is not a special case invented for this rework: it is
-the SAME contract `transfers.cohorts.coordinate_collection` already
-established and documents as the sole durable state that stops autonomous
-materialization for a held request. That existing contract is provably
+disposition sets. It is the SAME contract `transfers.cohorts
+.coordinate_collection` documents as the sole durable state that stops
+autonomous materialization for a held request. That contract is provably
 consistent everywhere a held request is touched:
 - `_process_request` (`transfers._engine_base.TransferEngine`) routes every
   `materializing` row through `_materialize` -> `coordinate_collection` on
@@ -712,41 +699,37 @@ Excluding it from "pending" stops it from falsely sticking the parent
 `RESOLVING` ("processing") while genuinely no autonomous work is scheduled.
 It must NOT, however, be treated as license to complete: a durably held
 request means identity remains UNRESOLVED, not proven equivalent, and
-Section 6.4 requires completion only once every logical delivery obligation
-is satisfied. A held request has no artifact and so can never appear in
-`voting_artifacts`, which meant an earlier revision's completion check —
-`artifacts and not pending and all(... for item in voting_artifacts)` — could
-be satisfied purely by the artifacts that exist, silently completing the
-parent around an unresolved identity claim exactly as if it had been proven
-non-equivalent. `aggregate_lifecycle`'s completion condition now also
+completion requires every logical delivery obligation to be satisfied. A held
+request has no artifact and so can never appear in `voting_artifacts`; a
+completion check over the existing artifacts alone (`artifacts and not pending
+and all(... for item in voting_artifacts)`) would silently complete the parent
+around an unresolved identity claim exactly as if it had been proven
+non-equivalent. `aggregate_lifecycle`'s completion condition therefore also
 requires `not quiescent_hold`, so a real artifact finishing while a sibling
 sits held settles the parent to the quiescent, nonterminal `QUEUED` wait
-(Section 6.4's "quiescent unresolved hold") instead — truthful, not stuck
+(the "quiescent unresolved hold") instead — truthful, not stuck
 `RESOLVING` and not falsely `COMPLETED` — until the hold is later resolved
 (new proof evidence) or released (e.g. an explicit operator action retiring
 the ambiguous claim), at which point the ordinary completion check runs
-again and can now succeed. The request's own `state` never changes; the
+again and can succeed. The request's own `state` never changes; the
 disposition column remains the sole durable "is this hold real" fact, read
 directly by `aggregate_lifecycle` in the same transaction as everything
 else.
 
 The hold must equally never launder a genuine, INDEPENDENT terminal failure
-belonging to a different voting artifact. A prior revision placed
-`elif quiescent_hold: QUEUED` before the genuine-failure check in the
-decision chain, so a real artifact's terminal `ERROR` sat masked forever
-behind an unrelated sibling's unresolved hold, reporting truthless perpetual
-`QUEUED` instead of `FAILED`. The failure/cancellation checks (`any(item
+belonging to a different voting artifact: a real artifact's terminal `ERROR`
+must never sit masked behind an unrelated sibling's unresolved hold as
+perpetual `QUEUED`. The failure/cancellation checks (`any(item
 .state == "error" for item in voting_artifacts) or any(item.state ==
-"failed" for item in requests)`, and the all-`cancelled` check) now run
+"failed" for item in requests)`, and the all-`cancelled` check) run
 BEFORE `elif quiescent_hold`, so a genuine failure or cancellation always
 wins; the hold is the LOWEST-precedence fallback, applying only once every
 other real fact (active, queued-ish, pending, failed, cancelled) has already
 been ruled out.
 `test_quiescent_hold_does_not_mask_an_independent_terminal_failure` proves
-the FAILED outcome for that topology; the existing completed-artifact-plus-
-hold test proves the QUEUED-not-COMPLETED outcome remains correct for its
-own topology, confirming the fix distinguishes the two cases rather than
-collapsing to one answer.
+the FAILED outcome for that topology; the completed-artifact-plus-hold test
+proves the QUEUED-not-COMPLETED outcome for its own topology, so the two
+cases stay distinct.
 
 **Unknown size is distinct from known-zero — a real three-state model, not
 a boolean.** `transfers.models.SizeKnowledge` (`UNKNOWN` / `KNOWN_ZERO` /
@@ -776,35 +759,24 @@ consume `size_knowledge`; when it resolves `UNKNOWN` the observation is
 routed through the same verification-failure/recovery path an ordinary
 payload mismatch already uses — never silently marked `completed`.
 `known_positive_size` (the narrower known-positive-or-`None` resolver
-`size_knowledge` is built on) remains available and unchanged.
+`size_knowledge` is built on) remains available.
 `transfers.repository.TransferRepository.refine_execution_total` (a durable
 size-truth sink) rejects a non-positive total for the same reason, matching
-the pre-existing `accept_execution_total`'s stricter guard.
+`accept_execution_total`'s guard.
 
 **One recovery/control-decision semantic owner — no alternate implementation,
 refusal stub, or alias below the canonical owner, of ANY responsibility,
-capable of mutating execution/recovery lifecycle.** The pre-Phase-3
-`transfers.engine.TransferEngine` + `transfers.repository.TransferRepository`
-composition (test-only; production via `application.composition.compose()`
-always builds `convergence_engine.TransferEngine` + `recovery_repository
-.TransferRepository`) previously retained its own full policy-driven
-recovery-decision chain in `transfers._engine_recovery.py`, then its own
-complete `_dispatch` readiness gating, `_wake_quiescent_recoveries`, and bulk
-`pause_all`/`resume_all` — all deleted in earlier passes. A further Gate 9
-revision found that a still-later pass had converted the remaining
-duplicates (`pause`, `resume`, `pause_all`, `resume_all`, `retry`'s operator
-path, `_refresh`, `_schedule_refresh`, `_recover_artifact` on
-`_engine_base.TransferEngine`) into `raise NotImplementedError` stubs instead
-of deleting them, and classified that as sufficient. It was rejected: "a dead
-historical method is still architectural residue. It can be accidentally
-filled back in, delegated to, or revived by a future refactor." The actual
-requirement ("lower layers may contain neutral primitives only") is
-satisfied only by absence, never by a stub, an alias, or a "safe because
-shadowed" argument.
+capable of mutating execution/recovery lifecycle.** Production
+(`application.composition.compose()`) always builds `convergence_engine
+.TransferEngine` + `recovery_repository.TransferRepository`. Lower layers may
+contain neutral primitives only, and that requirement is satisfied only by
+absence, never by a stub, an alias, or a "safe because shadowed" argument: a
+dead method is still architectural residue that can be accidentally filled back
+in, delegated to, or revived by a later refactor.
 
 Every one of `pause`, `resume`, `pause_all`, `resume_all`, `retry`,
 `_reacquire_transfer`, `_renew_source_parent`, `_refresh`,
-`_schedule_refresh`, and `_recover_artifact` is now DELETED entirely from
+`_schedule_refresh`, and `_recover_artifact` is absent from
 `_engine_base.TransferEngine`, `_engine_recovery.TransferEngine`, and
 `engine.TransferEngine` — none of the three defines any of these names —
 and each exists exactly once, on `convergence_engine.TransferEngine`, the
@@ -815,24 +787,18 @@ behind another lower class's clean state) by
 `test_canonical_parent_lifecycle.py
 ::test_no_alternate_recovery_decision_implementation_below_canonical_owner`,
 which also confirms `convergence_engine.TransferEngine` implements every one
-of them. This removed the previously-load-bearing base implementation for
-`engine.TransferEngine`-only tests (~23 tests across 9 files); each was
-migrated to build the real production stack instead, via `canonical_core`/
-`canonical_pair`/`canonical_p2`/`canonical_runtime`/`build_canonical_engine`-
-style fixtures scoped to just those tests, or (for `test_universal_parity.py
-::test_expired_resource_re_resolution_preserves_completed_sibling_and_paths`)
-rewritten once migration exposed that its scenario depended on a
-parent-resource-renewal mechanism that turns out to have NEVER been
-reachable in production at all — see below.
+of them. Tests that exercise these behaviors build the real production stack
+via `canonical_core`/`canonical_pair`/`canonical_p2`/`canonical_runtime`/
+`build_canonical_engine`-style fixtures.
 
-`retry` now owns BOTH operator-initiated retry and terminal-transfer
+`retry` owns BOTH operator-initiated retry and terminal-transfer
 reacquisition as two internal branches of the one canonical owner:
 `reacquire=True` (the operator's Retry of a transfer already durably
-COMPLETED/DELETED — since DP 1.0.13 `submit()` never reaches it: a later
+COMPLETED/DELETED — `submit()` never reaches it: a later
 submission of the same object is a new lineage) dispatches to `_reacquire_transfer`, defined on
 `convergence_engine.TransferEngine` itself, not inherited from below. Its
 own helper, `_renew_source_parent` (manifest-member parent re-observation on
-`RESOURCE_EXPIRED`), moved with it for the same reason: it mutates durable
+`RESOURCE_EXPIRED`), lives with it for the same reason: it mutates durable
 transfer/artifact/execution state and is therefore semantic lifecycle
 machinery, not a neutral primitive a lower class may own.
 
@@ -848,59 +814,29 @@ test audits the WHOLE MRO below the canonical owner (`_engine_recovery
 .TransferEngine`, `engine.TransferEngine`, AND `_engine_base.TransferEngine`
 itself) and fails on any shadowed name landing in neither the delegates set
 nor the proven-absent semantic-name set — there is no third, silently-omitted
-category, and there is no longer a concept of "verified pure refusal": there
-is nothing left below the canonical owner to refuse.
+category, and no "verified pure refusal" category: nothing below the
+canonical owner refuses.
 
-Two real bugs surfaced by this closure, fixed rather than left as residual
-risk once the (masking) base fallback was removed:
-- **A genuine `pause_all`/`resume_all` concurrency race, found and fixed
-  before the method was ultimately deleted.** While the base implementation
-  still existed (an intermediate revision of this rework), replacing its
-  prior `asyncio.gather`-based concurrency with a serial loop (never
-  exercised by production, which always ran `convergence_engine
-  .TransferEngine`'s own serial version instead) surfaced that concurrent
-  per-transfer `_control` calls could claim the same `max_active_executions`
-  slot count inconsistently (`test_resume_all_obeys_capacity_and_releases_
-  parked_successors`, flaky ~35% of runs once exercised). The base method no
-  longer exists at all — see above — but the underlying capacity-slot race
-  this discovered is recorded here as history; the canonical owner's own
-  `pause_all`/`resume_all` were already serial and are unaffected.
-- **`convergence_engine.TransferEngine._refresh_claimed`'s hard-failure
-  branches never triggered re-resolution**, leaving an artifact stuck in
-  `refresh_pending` forever with no further progress or wake mechanism once
-  the resource genuinely could not be refreshed. This was a pre-existing gap
-  in the canonical owner itself — never reachable through the deleted base
-  fallback either, since `convergence_engine.TransferEngine._refresh` has
-  always fully replaced (never delegated to) the base implementation, so it
-  predates this whole rework and was simply never exercised by any test
-  built on the canonical stack. Fixed narrowly: `_refresh_claimed` now
-  returns the real `NormalizedError` for its `refresh_failed` reason, and
-  `_plan_after_reconcile` routes that error through the ordinary
-  `_decision_step`/`policy.recover` cycle instead of leaving the artifact
-  inert — letting it retry, switch candidates, or (once exhausted) fail
-  cleanly, exactly like any other execution failure. This does NOT restore
-  the old base-only mechanism's specific "silently re-observe the parent
-  resource for fresh per-member candidates" behavior (manifest-member
-  parent-renewal-on-refresh-failure was, on inspection, never reachable in
-  production either — the retired test now documents this and asserts the
-  real, current, honest outcome instead: a genuinely expired resource with
-  no alternate candidate fails the artifact cleanly without corrupting an
-  already-completed sibling).
+**A refresh that genuinely fails re-enters ordinary recovery.**
+`convergence_engine.TransferEngine._refresh_claimed` returns the real
+`NormalizedError` for its `refresh_failed` reason, and `_plan_after_reconcile`
+routes that error through the ordinary `_decision_step`/`policy.recover`
+cycle, so an artifact whose resource cannot be refreshed retries, switches
+candidates, or (once exhausted) fails cleanly, exactly like any other
+execution failure, instead of sitting in `refresh_pending` with no further
+wake. A refresh failure does not silently re-observe the parent resource for
+fresh per-member candidates: a genuinely expired resource with no alternate
+candidate fails the artifact cleanly without corrupting an already-completed
+sibling.
 
-Roughly four dozen test files that build the pre-Phase-3 composition for
-unrelated concerns (file selection, applicability, provider routing,
-HTTP-stage coverage) needed no change at all, since none of them exercise
-recovery-decision, dispatch-readiness, or bulk pause/resume/retry/refresh
-logic.
-
-Final owner map for this rework:
+Owner map:
 
 | Responsibility | Owner |
 | --- | --- |
 | Parent lifecycle decision (sole) | `_repository_base.TransferRepository.aggregate_lifecycle` |
 | Recovery decision/application (executor-affecting, sole) | `convergence_engine.TransferEngine` (claim-fenced); no lower class retains an alternate implementation |
 | Size-knowledge resolution | `transfers.filesystem.size_knowledge` (`transfers.models.SizeKnowledge`) |
-| Equivalence-hold production | `transfers.cohorts` (`_HELD_DISPOSITIONS`, unchanged) |
+| Equivalence-hold production | `transfers.cohorts` (`_HELD_DISPOSITIONS`) |
 | Equivalence-hold consumption (parent truth) | `_repository_base.TransferRepository.aggregate_lifecycle` (same `_HELD_DISPOSITIONS` object) |
 
 Regression coverage: `backend/tests/test_canonical_parent_lifecycle.py`
@@ -908,8 +844,7 @@ Regression coverage: `backend/tests/test_canonical_parent_lifecycle.py`
 `test_canonical_completion_truth.py`,
 `test_equivalence_retry_remediation.py`
 (`test_quiescent_equivalence_hold_blocks_completion_until_resolved_or_
-released` — inverted from an earlier revision that wrongly asserted
-completion won regardless of the hold — `test_quiescent_hold_does_not_mask_
+released`, `test_quiescent_hold_does_not_mask_
 an_independent_terminal_failure`, `test_quiescent_equivalence_hold_
 with_no_artifacts_is_queued_not_perpetually_resolving`,
 `test_restart_after_exhaustion_stays_quiescent_and_can_still_recover`),
@@ -917,7 +852,7 @@ with_no_artifacts_is_queued_not_perpetually_resolving`,
 (`test_unknown_size_zero_byte_success_never_completes`),
 `test_multi_mirror_general_http_convergence.py`
 (`test_real_aria2_zero_byte_success_never_completes_or_delivers`, a real
-GeneralHttpProvider + real Aria2Executor reproduction), and the migrated
+GeneralHttpProvider + real Aria2Executor reproduction), and the
 canonical-stack tests in `test_universal_lifecycle.py`,
 `test_universal_parity.py`, `test_universal_hardening.py`,
 `test_pause_resume_recovery.py`, `test_ws2p1_failover_depth.py`,
@@ -925,13 +860,12 @@ canonical-stack tests in `test_universal_lifecycle.py`,
 `test_cross_transfer_equivalence.py`, `test_candidate_provenance_
 consolidation.py`, `test_details_candidate_presentation.py`,
 `test_transfer_recovery_phase2.py` (dispatch-readiness/quiescent-wake
-coverage migrated to a `canonical_runtime` fixture), `test_application_
+coverage on a `canonical_runtime` fixture), `test_application_
 runtime.py`, `test_input_required_lifecycle.py`, `test_pause_lifecycle_
 convergence.py`, and `test_transfer_preparing_presentation.py` (bulk pause/
-resume/retry/refresh coverage migrated to the canonical stack once
-`_engine_base.TransferEngine` stopped providing a working alternative).
+resume/retry/refresh coverage on the canonical stack).
 
-## Universal file-selection / manifest overlay (v1.0.12)
+## Universal file-selection / manifest overlay
 
 A capable provider may declare `Capability.FILE_MANIFEST` and report a neutral
 `FileManifest` on `ProviderObservation` before the core commits that resource's

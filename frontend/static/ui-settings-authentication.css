@@ -1,4 +1,4 @@
-/* DebridPulse Authentication and Users & Access cards.
+/* DownloadPulse Authentication and Users & Access cards.
 
    Every governing card here takes the hinted Settings card header
    (ui-settings-page.css, fitHeaderHints): identity, the purpose hint on the
@@ -474,7 +474,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 /* Canonical Authentication continuation: OIDC presentation belongs to Authentication. */
 
 /* Consolidated from ui-settings-authentication-oidc.css. */
-/* DebridPulse OpenID Connect Settings component. */
+/* DownloadPulse OpenID Connect Settings component. */
 
 /* Header follows the same Title / centered flavor / Enable pattern as the
    other Settings cards with a master control. */

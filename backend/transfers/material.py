@@ -1,7 +1,7 @@
-"""DebridPulse-owned artifact material truth (pure model, no I/O).
+"""DownloadPulse-owned artifact material truth (pure model, no I/O).
 
 One logical artifact owns one material state: the byte ranges of its final
-file DebridPulse is willing to reuse, whatever source, transport or executor
+file DownloadPulse is willing to reuse, whatever source, transport or executor
 wrote them. The canonical contract is half-open byte ranges ``[start, end)``;
 the durable owner is ``artifact_material_state`` (written only by the
 transfer repository), never an executor control file and never file length.
@@ -12,7 +12,7 @@ Semantics, all expressed over one normalized range set:
 * ``IN_FLIGHT``-- a current writer's authorized ranges minus VALID. Derived,
                   never stored, so an unclean stop leaves nothing to trust.
 * ``UNKNOWN``  -- everything else. Physical bytes may exist there; they carry
-                  no DebridPulse meaning until a checkpoint commits them.
+                  no DownloadPulse meaning until a checkpoint commits them.
 
 Geometry v1 is an internal persistence/planning grain (1 MiB): committed
 material is aligned inward to it, except that a range may end exactly at the

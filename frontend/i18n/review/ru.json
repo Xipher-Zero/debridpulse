@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-review/1",
+ "schema": "downloadpulse-review/1",
  "locale": "ru",
  "about": "AI-generated Russian (WS5-B1), independently AI-reviewed per chunk; critical keys back-translated by a separate context without the English and compared with the English by another. No human or native review.",
  "entries": {
@@ -348,8 +348,8 @@
    ]
   },
   "session.log_out.label": {
-   "source": "04b8937cf15d7dae",
-   "translation": "0ea4ebb0b1e31660",
+   "source": "a0862677b1da6258",
+   "translation": "1019ad37dc7fdffe",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -472,8 +472,8 @@
    ]
   },
   "account.field.username.note": {
-   "source": "cb573723ba68af76",
-   "translation": "3a95205b1fb68970",
+   "source": "e38cee7ed9746291",
+   "translation": "ae2db085f0608acb",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -640,14 +640,14 @@
    ]
   },
   "account.first_password.note.standalone": {
-   "source": "8e656506bdf197fe",
-   "translation": "02c2a5d09f86293b",
+   "source": "1fee24bc01e7c6f1",
+   "translation": "abeccae0fd947e02",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "After saving, password sign-in will be enabled: DebridPulse will ask for this password."
+   "backTranslation": "After saving, password sign-in will be enabled: DownloadPulse will ask for this password."
   },
   "account.first_password.note.server": {
    "source": "301bcba00a5989a4",
@@ -658,14 +658,14 @@
    ]
   },
   "account.clear.consequence": {
-   "source": "513bc637204cc653",
-   "translation": "19bbaa2e69257d54",
+   "source": "3e04392db552ed90",
+   "translation": "8afbfd43812027a3",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Clearing the password disables password sign-in. Anyone who has access to DebridPulse will be able to use this installation without a password until you set a new password in the \"My Account\" window."
+   "backTranslation": "Clearing the password disables password sign-in. Anyone who has access to DownloadPulse will be able to use this installation without a password until you set a new password in the \"My Account\" window."
   },
   "account.clear.confirm_title": {
    "source": "d961bf4656779373",
@@ -1026,8 +1026,8 @@
    ]
   },
   "help.my_account.intro.open": {
-   "source": "4051795d0890bcd1",
-   "translation": "bb5caa42574cf2d4",
+   "source": "9156641ff30e2e55",
+   "translation": "2285f555f93627ed",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -1050,8 +1050,8 @@
    ]
   },
   "help.my_account.profile.display_name": {
-   "source": "43aa4973d35b865b",
-   "translation": "7e928046161a4656",
+   "source": "487176c19f8c7de1",
+   "translation": "d680f1a8248aa5db",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -1146,18 +1146,18 @@
    ]
   },
   "help.my_account.password.standalone_first.signin": {
-   "source": "9b32b2de3c020fe9",
-   "translation": "cc593ada7c3d0d4d",
+   "source": "6b04d1b7a2ab4d27",
+   "translation": "6b8e172065e1bdd2",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Saving the password also turns on password sign-in: from this moment DebridPulse asks for this password, and only it, before anyone can use DebridPulse.",
+   "backTranslation": "Saving the password also turns on password sign-in: from this moment DownloadPulse asks for this password, and only it, before anyone can use DownloadPulse.",
    "findings": [
     {
      "kind": "critical",
-     "note": "Back-translation comparison: Scope is ambiguous: \"прежде чем кто-либо сможет им пользоваться\" follows \"этот пароль, и только его\", so \"им\" reads most naturally as the password rather than DebridPulse; the English says the password is required before anyone can use DebridPulse.",
+     "note": "Back-translation comparison: Scope is ambiguous: \"прежде чем кто-либо сможет им пользоваться\" follows \"этот пароль, и только его\", so \"им\" reads most naturally as the password rather than DownloadPulse; the English says the password is required before anyone can use DownloadPulse.",
      "status": "resolved",
      "resolution": "Corrected German from the comparison; back-translated again."
     }
@@ -1172,22 +1172,22 @@
    ]
   },
   "help.my_account.signin.required": {
-   "source": "cc4201ad4e58af72",
-   "translation": "21cb3669d5e05737",
+   "source": "6fca74558be73b1c",
+   "translation": "3c33413af61a53ec",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.my_account.signin.not_required": {
-   "source": "144fcade593eded3",
-   "translation": "6601437127160cef",
+   "source": "b05016a3da271d03",
+   "translation": "87aafca78310b51b",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "\"Sign-in password not required\": sign-in is currently disabled, so anyone who can reach DebridPulse can use it as the built-in administrator."
+   "backTranslation": "\"Sign-in password not required\": sign-in is currently disabled, so anyone who can reach DownloadPulse can use it as the built-in administrator."
   },
   "help.my_account.signin.reading": {
    "source": "d1cce9106ceb7826",
@@ -1272,8 +1272,8 @@
    ]
   },
   "help.my_account.presentation.unchanged": {
-   "source": "7f7e69df4a5ac762",
-   "translation": "372853f11cab5ab1",
+   "source": "08ec39b08e3fcf61",
+   "translation": "bc3b038601845c9e",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -1360,16 +1360,16 @@
    ]
   },
   "login.title": {
-   "source": "b64df570746f2ce9",
-   "translation": "9c52e3c99357f818",
+   "source": "f08d400163473858",
+   "translation": "031bf48a76757a55",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "login.unavailable.title": {
-   "source": "8fdae7b49e609b6e",
-   "translation": "0a8089a277eabb44",
+   "source": "9df6e72d97d435bb",
+   "translation": "a25798326eac7ec8",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -1616,8 +1616,8 @@
    ]
   },
   "login.error.not_operational": {
-   "source": "4e8c5d43345831aa",
-   "translation": "790637dac780364d",
+   "source": "ee33d443787f50e4",
+   "translation": "9e7d347bdaffc047",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -1648,16 +1648,16 @@
    ]
   },
   "desktop.tray.open": {
-   "source": "f485c9200ef63833",
-   "translation": "9f670281b2327d48",
+   "source": "183d1f93d1de838d",
+   "translation": "9a10d93a555afe99",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "desktop.tray.quit": {
-   "source": "0cfd2ce09076812d",
-   "translation": "0ea4ebb0b1e31660",
+   "source": "5e6f4c325acbc16f",
+   "translation": "1019ad37dc7fdffe",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -1704,8 +1704,8 @@
    ]
   },
   "desktop.starting": {
-   "source": "65e1e5a40d31b2cf",
-   "translation": "9634b4b63a4500fe",
+   "source": "49c73fbf64c7ba73",
+   "translation": "f6307ceb3a0754d5",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -2140,8 +2140,8 @@
    ]
   },
   "transfer.progress.unverified_title": {
-   "source": "342c1e095224b967",
-   "translation": "32de21e30495d705",
+   "source": "2f1d6f664f2291fb",
+   "translation": "f998ad28c40f034f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -4119,8 +4119,8 @@
    ]
   },
   "activity.subtitle": {
-   "source": "105c5ed4cb516070",
-   "translation": "80f469e561d38b89",
+   "source": "0e1d2dc4e65505cd",
+   "translation": "03ff7178a3b064fc",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -5417,14 +5417,14 @@
    ]
   },
   "storage.explanation.application.low_space": {
-   "source": "b12887ac063705e1",
-   "translation": "8403e3aa7b32fafb",
+   "source": "4d3a5ed4160c05a3",
+   "translation": "02e3e9c272bf1e33",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The application storage is running out of space. DebridPulse may not be able to save its state safely."
+   "backTranslation": "The application storage is running out of space. DownloadPulse may not be able to save its state safely."
   },
   "storage.explanation.download.low_space": {
    "source": "cb9db8b68f059526",
@@ -5437,14 +5437,14 @@
    "backTranslation": "The download storage is running out of space. New operations that take up space in storage are paused until the recovery threshold is reached."
   },
   "storage.explanation.application.full": {
-   "source": "3452dae041b61be9",
-   "translation": "be21f929d42fd4e2",
+   "source": "1e992e0de258a83c",
+   "translation": "248fbcc76b6e04b5",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The application storage is full. DebridPulse cannot save its state safely."
+   "backTranslation": "The application storage is full. DownloadPulse cannot save its state safely."
   },
   "storage.explanation.download.full": {
    "source": "141e5abd6b924189",
@@ -5457,14 +5457,14 @@
    "backTranslation": "The download storage is full. New downloads are paused until space is freed."
   },
   "storage.explanation.application.read_only": {
-   "source": "ea1cb44486072729",
-   "translation": "d58c498e6fb877fd",
+   "source": "518bd0598aa7a41f",
+   "translation": "de81c7a0d5c01c48",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The application storage is read-only. DebridPulse cannot save its state safely."
+   "backTranslation": "The application storage is read-only. DownloadPulse cannot save its state safely."
   },
   "storage.explanation.download.read_only": {
    "source": "ac62a10d03226a8a",
@@ -5477,14 +5477,14 @@
    "backTranslation": "The download storage is read-only. New downloads are paused until write access is restored."
   },
   "storage.explanation.application.unavailable": {
-   "source": "b290806e05706bb0",
-   "translation": "9f44dffbfbe499a0",
+   "source": "8397703beafabbff",
+   "translation": "18e91326e2d3bdcd",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The application storage is unavailable. DebridPulse cannot save its state safely."
+   "backTranslation": "The application storage is unavailable. DownloadPulse cannot save its state safely."
   },
   "storage.explanation.download.unavailable": {
    "source": "65cdda753482aec3",
@@ -5947,8 +5947,8 @@
    ]
   },
   "theme.palette.native": {
-   "source": "70c1bf5e956583c7",
-   "translation": "1ce4dab80081cacc",
+   "source": "c1b5ad7234dd4ede",
+   "translation": "c64ba12eaf81f28c",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -6067,8 +6067,8 @@
    ]
   },
   "quick_add.not_a_link": {
-   "source": "843f866230871f6a",
-   "translation": "4b17c5baa80b358c",
+   "source": "756028c3e839269d",
+   "translation": "ef98a1106a653b41",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -6083,16 +6083,16 @@
    ]
   },
   "shell.version_label": {
-   "source": "5a1c9e75f3d6b1f6",
-   "translation": "43735d0bcce98a35",
+   "source": "92b2fa7de8a6bd06",
+   "translation": "8814f4b08ddb314f",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "shell.logo_label": {
-   "source": "82eef2dbfa23d5cc",
-   "translation": "e79a86e3b75b9127",
+   "source": "7149badbc7a19ff9",
+   "translation": "e9277d1fc3578818",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -9200,8 +9200,8 @@
    ]
   },
   "file_selection.pending_message": {
-   "source": "9b77b0082d855662",
-   "translation": "4e30aab41a530e68",
+   "source": "6c5d3835b89b5dfc",
+   "translation": "b949d2a4b78c1c07",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -10691,8 +10691,8 @@
    ]
   },
   "settings.account.authorize": {
-   "source": "e2d1997b63640f3b",
-   "translation": "3aa0740a764e0b50",
+   "source": "2491d79cf2f10f6d",
+   "translation": "c5eef66d9a281a32",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -10827,14 +10827,14 @@
    ]
   },
   "settings.account.disconnect_message": {
-   "source": "bd5f79c20135ab13",
-   "translation": "4fe25d4762642618",
+   "source": "42ae05c355fc9750",
+   "translation": "b33c1318d135d0ce",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "DebridPulse will delete the saved {provider} authorization. It will not be possible to use {provider} again until you reconnect it."
+   "backTranslation": "DownloadPulse will delete the saved {provider} authorization. It will not be possible to use {provider} again until you reconnect it."
   },
   "settings.account.disconnect_title": {
    "source": "dde7d73c86003d99",
@@ -11168,8 +11168,8 @@
    ]
   },
   "settings.downloads.behavior_copy": {
-   "source": "016c7146e44c51be",
-   "translation": "094bcd99986dc161",
+   "source": "b4624ed2ce95aa5a",
+   "translation": "96038d44d479a14c",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11184,8 +11184,8 @@
    ]
   },
   "settings.downloads.checkpoint_hint": {
-   "source": "e3e3a873f029080f",
-   "translation": "fae9fe93f960dff1",
+   "source": "89fb2fe1fed11ca9",
+   "translation": "c9657e4db4eafce8",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11200,8 +11200,8 @@
    ]
   },
   "settings.downloads.error_retries_hint": {
-   "source": "e318ec9a8b890106",
-   "translation": "56e8f135ade42121",
+   "source": "357b854563d58a7b",
+   "translation": "180721c30db940ec",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11224,8 +11224,8 @@
    ]
   },
   "settings.downloads.folder_hint": {
-   "source": "f4eeeb466854baa3",
-   "translation": "3389bce0fea9af71",
+   "source": "0c1225cc6c21e352",
+   "translation": "e70b62e5be76af97",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11240,8 +11240,8 @@
    ]
   },
   "settings.downloads.full_sync_hint": {
-   "source": "449d0ed268c7203e",
-   "translation": "a3427b6d2461d6f8",
+   "source": "ece0e170febe71a1",
+   "translation": "b76283bf2c7cfc85",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11256,8 +11256,8 @@
    ]
   },
   "settings.downloads.graceful_stop_hint": {
-   "source": "e000b95e9da3985d",
-   "translation": "5912229827b9e40e",
+   "source": "ee25232185dca346",
+   "translation": "c20519d9870ebc48",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11312,8 +11312,8 @@
    ]
   },
   "settings.downloads.max_concurrent_hint": {
-   "source": "ec08723ac1e0cd11",
-   "translation": "6fbd17b59cb4a424",
+   "source": "1006998a44d6ff6c",
+   "translation": "55e0742a1c7cf84a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11368,8 +11368,8 @@
    ]
   },
   "settings.downloads.poll_hint": {
-   "source": "614f0102452d2cee",
-   "translation": "a6325ae75c33c837",
+   "source": "fc84c5105ebf1f86",
+   "translation": "74ef0519b4693d2a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11424,8 +11424,8 @@
    ]
   },
   "settings.downloads.resolution_retries_hint": {
-   "source": "c8d06c631b928e26",
-   "translation": "37c5e7fe94bd37b2",
+   "source": "e2788c6fd86a1bf9",
+   "translation": "a16a7fdbdaf8429d",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11456,8 +11456,8 @@
    ]
   },
   "settings.downloads.resume_buffer_hint": {
-   "source": "0f22f02441cedace",
-   "translation": "4b77211b0769ad43",
+   "source": "a4a4bb514dbdcaa1",
+   "translation": "5ce914701b5d5a38",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11472,8 +11472,8 @@
    ]
   },
   "settings.downloads.retry_delay_minutes_hint": {
-   "source": "66801efc0b70212d",
-   "translation": "9c239804b0fe7748",
+   "source": "404412fb02cbb149",
+   "translation": "2a0b3260ac84723b",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11520,8 +11520,8 @@
    ]
   },
   "settings.downloads.stalled_hint": {
-   "source": "7f35f1716cdf1495",
-   "translation": "54d8bcec2d1729f1",
+   "source": "a0884e5db83a0ca8",
+   "translation": "ccdf012d6dbf37ff",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -11896,14 +11896,14 @@
    ]
   },
   "settings.engine_activity.terminate_message": {
-   "source": "1b3c78a94a8717a2",
-   "translation": "797e7b301600be81",
+   "source": "8695a77b3074942c",
+   "translation": "b0084fa94310371d",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "This job will be stopped and its execution released. DebridPulse will keep the transfer and may start it again according to the normal recovery rules.",
+   "backTranslation": "This job will be stopped and its execution released. DownloadPulse will keep the transfer and may start it again according to the normal recovery rules.",
    "findings": [
     {
      "kind": "ambiguity",
@@ -11920,14 +11920,14 @@
    ]
   },
   "settings.engine_activity.terminate_message_named": {
-   "source": "bfb5f751c2432a99",
-   "translation": "885c8b5ea109e333",
+   "source": "059ff02ccddd4b33",
+   "translation": "eacb2a3b66842be8",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The job \"{subject}\" will be stopped and its execution released. DebridPulse will keep the transfer and may start it again according to the normal recovery rules."
+   "backTranslation": "The job \"{subject}\" will be stopped and its execution released. DownloadPulse will keep the transfer and may start it again according to the normal recovery rules."
   },
   "settings.engine_activity.terminate_title": {
    "source": "55f8e31724081138",
@@ -12048,8 +12048,8 @@
    ]
   },
   "settings.extraction.concurrent_hint": {
-   "source": "d257dab18a406ce5",
-   "translation": "b6a439173b3d8380",
+   "source": "fcc2a42ecac094d6",
+   "translation": "46b69ca40c5c25c9",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -12450,8 +12450,8 @@
    ]
   },
   "settings.live_tuning.interrupted": {
-   "source": "c4da060bb5378c03",
-   "translation": "0d602e13578bad95",
+   "source": "0c203c8fdbec7b32",
+   "translation": "f165d533c8837635",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -12554,8 +12554,8 @@
    ]
   },
   "settings.media.codec_hint": {
-   "source": "6cd424213818ba17",
-   "translation": "894983b6f45c9b9f",
+   "source": "22e78ad870c7fe1c",
+   "translation": "8305e414d78691a2",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -12690,8 +12690,8 @@
    ]
   },
   "settings.media.resolution_hint": {
-   "source": "e02d9c2a376e3009",
-   "translation": "1912b0673d70f61d",
+   "source": "f1b31698767a2d19",
+   "translation": "eec5de066b08a4be",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -12810,8 +12810,8 @@
    ]
   },
   "settings.provider.alldebrid.rate_limit_hint": {
-   "source": "16eab253ac039b42",
-   "translation": "53e71cfa23d86a62",
+   "source": "7664516dde6d5b7f",
+   "translation": "48993b36b35b34fa",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -12890,8 +12890,8 @@
    ]
   },
   "settings.provider.host_refresh_hint": {
-   "source": "6a1f2421061c3513",
-   "translation": "b82bdbf02d734dcf",
+   "source": "c769ae10eff1c838",
+   "translation": "de27aa8d063a711c",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -12938,8 +12938,8 @@
    ]
   },
   "settings.provider.rate_limit_hint_capped": {
-   "source": "16bf5a3cbb0c8a32",
-   "translation": "834a1613c9558760",
+   "source": "6ad63a36310bea2e",
+   "translation": "fe4ca7d238ccc3a6",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -13026,8 +13026,8 @@
    ]
   },
   "settings.provider.torrent_upload_timeout_hint": {
-   "source": "8eb2cc880a563630",
-   "translation": "a6cbe09200b70641",
+   "source": "d259b1a2a983ac46",
+   "translation": "b2f8091c672c368f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -13050,8 +13050,8 @@
    ]
   },
   "settings.provider.upload_timeout_hint": {
-   "source": "48f750bf739485dc",
-   "translation": "e54fb8b2e50abb67",
+   "source": "5f9b578d85f5cd05",
+   "translation": "5a5b64e0987c04bd",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -13123,8 +13123,8 @@
    ]
   },
   "settings.rsync.depth_hint": {
-   "source": "4353b3d48f65410e",
-   "translation": "a4b590c8034638ef",
+   "source": "382d1e4a160bdee2",
+   "translation": "b67401297e8452e4",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -13435,8 +13435,8 @@
    ]
   },
   "settings.tuning.direct_copy": {
-   "source": "c1ba723921a1a0c6",
-   "translation": "176c10d1efabb906",
+   "source": "cfdc66b694cbda4a",
+   "translation": "1dbc525d070806a0",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -13467,8 +13467,8 @@
    ]
   },
   "settings.tuning.rsync_copy": {
-   "source": "69cf745273b55e62",
-   "translation": "2bb8745efb04f988",
+   "source": "7dd8f4b16e00ad9e",
+   "translation": "dfe7dde8fd476ea1",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -13499,8 +13499,8 @@
    ]
   },
   "settings.tuning.webdav_copy": {
-   "source": "1334006756b4920b",
-   "translation": "32c51fe50ad1ddf3",
+   "source": "acfc060c7b25d18a",
+   "translation": "0ae22c67e9af9397",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -13741,7 +13741,7 @@
    "findings": [
     {
      "kind": "ambiguity",
-     "note": "Translator: Removes the server configuration from DebridPulse; \"Удалить\" is the natural, non-softened Russian.",
+     "note": "Translator: Removes the server configuration from DownloadPulse; \"Удалить\" is the natural, non-softened Russian.",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
     }
@@ -13764,14 +13764,14 @@
    ]
   },
   "settings.usenet.remove_message": {
-   "source": "ebb58fbacd7756be",
-   "translation": "c542c4e213d38131",
+   "source": "ddfe67b8ae8ce2e0",
+   "translation": "d8aa003b603d0eb1",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The {name} configuration will be removed from DebridPulse."
+   "backTranslation": "The {name} configuration will be removed from DownloadPulse."
   },
   "settings.usenet.remove_title": {
    "source": "01c1f0250884f593",
@@ -14003,8 +14003,8 @@
    ]
   },
   "settings.usenet_tuning.cache_hint": {
-   "source": "cfb0194c97176472",
-   "translation": "62605ebc615dfc15",
+   "source": "c595c6b720ffa558",
+   "translation": "8a90fd5033ef08ee",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -14043,24 +14043,24 @@
    ]
   },
   "settings.usenet_tuning.retries_hint": {
-   "source": "16a6b700f18a111a",
-   "translation": "fae0a90e66732a9b",
+   "source": "52bf4d17f31baf98",
+   "translation": "4ce19531b9f73c32",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "settings.usenet_tuning.timeout_hint": {
-   "source": "c9db82675d8e5a2b",
-   "translation": "1ee308406da66b3f",
+   "source": "30bfce50626c6b34",
+   "translation": "43117b039a23d788",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "settings.webdav.depth_hint": {
-   "source": "6bc3fc5aeed2e668",
-   "translation": "5e225f46438bb975",
+   "source": "ad9c38e991d6b3fc",
+   "translation": "966234d5c99f023b",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -14083,8 +14083,8 @@
    ]
   },
   "settings.webdav.max_files_hint": {
-   "source": "34f35ad20fe3b087",
-   "translation": "172560e43cf13810",
+   "source": "b7b2dd9a76d7e8fd",
+   "translation": "ed921f40bdba8034",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -14211,8 +14211,8 @@
    ]
   },
   "backups.package_type": {
-   "source": "1b0a344d1285265b",
-   "translation": "efdb32e1b6845266",
+   "source": "de91e3b2a9a9da45",
+   "translation": "f11775db20ebc820",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -14253,14 +14253,14 @@
    ]
   },
   "backups.remove_message": {
-   "source": "e6d253992d182e63",
-   "translation": "3e32a699f7044168",
+   "source": "810251fed86c04f4",
+   "translation": "e2adf2972dda53ab",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The backup from {when} will be permanently deleted from the DebridPulse backup storage.",
+   "backTranslation": "The backup from {when} will be permanently deleted from the DownloadPulse backup storage.",
    "findings": [
     {
      "kind": "ambiguity",
@@ -14307,14 +14307,14 @@
    "backTranslation": "Before the restore begins:"
   },
   "backups.restore_failed": {
-   "source": "346296826e6a1554",
-   "translation": "9630928f160c1784",
+   "source": "8df4e7676950178d",
+   "translation": "f6a7bca1b0760f5a",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Could not restore from the backup. The current state of DebridPulse has not been changed."
+   "backTranslation": "Could not restore from the backup. The current state of DownloadPulse has not been changed."
   },
   "backups.restore_label": {
    "source": "88ea63bc329d9938",
@@ -14327,14 +14327,14 @@
    "backTranslation": "Restore:"
   },
   "backups.restore_replaces": {
-   "source": "85f863df82c9923d",
-   "translation": "5be26767866b3f53",
+   "source": "3e59da3d02d06819",
+   "translation": "a546535e68d41847",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The current DebridPulse database and configuration will be replaced with the selected backup."
+   "backTranslation": "The current DownloadPulse database and configuration will be replaced with the selected backup."
   },
   "backups.restore_step_1": {
    "source": "3f74077c5791a75d",
@@ -14395,8 +14395,8 @@
    ]
   },
   "backups.restoring": {
-   "source": "a0e763a4d3aa6317",
-   "translation": "aa7484f090cb3fed",
+   "source": "16ce89933b4a0ba1",
+   "translation": "ef22a328693f418a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -14411,8 +14411,8 @@
    ]
   },
   "backups.restoring_restart": {
-   "source": "17a36b66f1fdf8ab",
-   "translation": "bb73dcaf04b794dd",
+   "source": "6e99b70c8dc384a8",
+   "translation": "574114679c7a417d",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -14741,14 +14741,14 @@
    "backTranslation": "The saved local password will be deleted, and username and password authentication will be disabled."
   },
   "settings.auth.clear_password_open": {
-   "source": "f6011d2eb3177d77",
-   "translation": "933da2f6bc025a9c",
+   "source": "6cb71232f687d276",
+   "translation": "f186cfcfc6dde2f2",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The saved local password will be deleted, and username and password authentication will be disabled. Because OpenID Connect is also disabled, DebridPulse will switch to open mode."
+   "backTranslation": "The saved local password will be deleted, and username and password authentication will be disabled. Because OpenID Connect is also disabled, DownloadPulse will switch to open mode."
   },
   "settings.auth.clear_password_title": {
    "source": "2a0923ed7fa8a01d",
@@ -15014,14 +15014,14 @@
    "backTranslation": "Switch to open mode"
   },
   "settings.auth.open_mode_message": {
-   "source": "5e6ed4ded8912533",
-   "translation": "250315a6a6f208b0",
+   "source": "77864858b4ffdd13",
+   "translation": "4b909cac2fb319c3",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Both username and password sign-in and OpenID Connect will be disabled. DebridPulse and its API will become intentionally open."
+   "backTranslation": "Both username and password sign-in and OpenID Connect will be disabled. DownloadPulse and its API will become intentionally open."
   },
   "settings.auth.open_mode_title": {
    "source": "f519b5c27a641bc1",
@@ -15336,8 +15336,8 @@
    ]
   },
   "settings.backups.folder_hint": {
-   "source": "c5eee88df03bf8b8",
-   "translation": "05decaef120623fb",
+   "source": "b22f6cf66019472c",
+   "translation": "c387c796e9acaa48",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -15440,8 +15440,8 @@
    ]
   },
   "settings.backups.snapshot_interval_hint": {
-   "source": "2d7881772ed718b1",
-   "translation": "df0c98da6948c0fb",
+   "source": "ebd887fbbfe3184a",
+   "translation": "b32ade54d2089aee",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -15456,8 +15456,8 @@
    ]
   },
   "settings.backups.snapshot_keep_days_hint": {
-   "source": "0857cfbfa4844fe7",
-   "translation": "8b1ce7e4a5592465",
+   "source": "33398ebc44e607a0",
+   "translation": "b83b5cfbf1607860",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -15614,14 +15614,14 @@
    "backTranslation": "Switch to “Standalone”"
   },
   "settings.deployment.standalone_confirm_message": {
-   "source": "b3d89a25d15190f1",
-   "translation": "a9806df4a5f7520a",
+   "source": "9908aa2c7e5b8919",
+   "translation": "05a8cd4a66d62202",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Only the built-in administrator will be able to use DebridPulse as a person. Other user accounts and their settings will be kept, but signing in with them will be impossible while standalone mode is selected. Password and OIDC sign-in will be disabled, and the current administrator password will be cleared. Current browser sessions will be ended. Until you set a password in \"My Account\", the installation will be available without a password to anyone who can connect to it. Integration accounts and their API tokens will remain available. Continue?"
+   "backTranslation": "Only the built-in administrator will be able to use DownloadPulse as a person. Other user accounts and their settings will be kept, but signing in with them will be impossible while standalone mode is selected. Password and OIDC sign-in will be disabled, and the current administrator password will be cleared. Current browser sessions will be ended. Until you set a password in \"My Account\", the installation will be available without a password to anyone who can connect to it. Integration accounts and their API tokens will remain available. Continue?"
   },
   "settings.deployment.standalone_confirm_title": {
    "source": "ec5218b164cf18e2",
@@ -15634,8 +15634,8 @@
    "backTranslation": "Switch to “Standalone”?"
   },
   "settings.deployment.standalone_hint": {
-   "source": "3971b94c5a5b2310",
-   "translation": "e8cd29f99d395832",
+   "source": "0d2f4288654fc752",
+   "translation": "698e560ce5ae35d1",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -15643,9 +15643,9 @@
    "findings": [
     {
      "kind": "style",
-     "note": "Reviewer: Inverted word order «DebridPulse как человек пользуется только…» reads unnaturally.",
+     "note": "Reviewer: Inverted word order «DownloadPulse как человек пользуется только…» reads unnaturally.",
      "status": "resolved",
-     "resolution": "Subject-first order: «Только встроенный администратор пользуется DebridPulse как человек.»"
+     "resolution": "Subject-first order: «Только встроенный администратор пользуется DownloadPulse как человек.»"
     }
    ]
   },
@@ -16324,8 +16324,8 @@
    ]
   },
   "settings.notifications.event_update_hint": {
-   "source": "5757df38f2759b0a",
-   "translation": "46aec21eaeef814c",
+   "source": "98c9fae7eb3e1056",
+   "translation": "7f9f26bdaa11bded",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -16396,8 +16396,8 @@
    ]
   },
   "settings.notifications.update_interval_hint": {
-   "source": "b510dfa82f115c63",
-   "translation": "3793a5c2cdef0104",
+   "source": "aa3cd405f6b18f0f",
+   "translation": "704d2c6eacd38484",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -16444,8 +16444,8 @@
    ]
   },
   "settings.oidc.access_copy": {
-   "source": "55695205f22b6b38",
-   "translation": "5147f1d4c732405b",
+   "source": "3366482f8cf53800",
+   "translation": "33aafcbbf49a6183",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -16508,8 +16508,8 @@
    ]
   },
   "settings.oidc.callback_placeholder": {
-   "source": "85daf17db36a4b05",
-   "translation": "cbf2bbb7323cee2a",
+   "source": "457e30763582f743",
+   "translation": "a2114593e6cae3e9",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -16517,7 +16517,7 @@
    "findings": [
     {
      "kind": "style",
-     "note": "Reviewer: English names the field «Public DebridPulse Base URL»; the field name was run into the sentence uncased/unquoted.",
+     "note": "Reviewer: English names the field «Public DownloadPulse Base URL»; the field name was run into the sentence uncased/unquoted.",
      "status": "resolved",
      "resolution": "Quoted the field's exact Russian label (settings.oidc.public_base) per RULES (build sentences around verbatim labels)."
     }
@@ -16626,8 +16626,8 @@
    ]
   },
   "settings.oidc.complete_title": {
-   "source": "1e7d9dea4e6742e8",
-   "translation": "e48ecb0084df1598",
+   "source": "f7766ddc8086dce3",
+   "translation": "dc4c071bc53d8486",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -16802,8 +16802,8 @@
    ]
   },
   "settings.oidc.public_base": {
-   "source": "8767a6a00972e35c",
-   "translation": "5e6fc46889c60032",
+   "source": "a694b44de6201184",
+   "translation": "f0c147543249e73c",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -16834,8 +16834,8 @@
    ]
   },
   "settings.oidc.scopes_hint": {
-   "source": "b6de22b7d36ae378",
-   "translation": "af2a91774c445418",
+   "source": "fe057132d162bfc9",
+   "translation": "17aff04e37bef648",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -16932,8 +16932,8 @@
    ]
   },
   "settings.oidc.waiting_title": {
-   "source": "1478471be3ce2266",
-   "translation": "e48ecb0084df1598",
+   "source": "0903b6d23856fed3",
+   "translation": "dc4c071bc53d8486",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -17226,8 +17226,8 @@
    ]
   },
   "settings.profiles.empty": {
-   "source": "0cb6d8c011b7d82d",
-   "translation": "7d5e05dba91bd528",
+   "source": "3ed196a38c681693",
+   "translation": "ebeb64bdf4870b37",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -17450,8 +17450,8 @@
    ]
   },
   "settings.profiles.local_root_hint": {
-   "source": "0b25720cba43b487",
-   "translation": "de33ed44eb84192e",
+   "source": "1773ad1bccce23b8",
+   "translation": "4a3e60ac4e36c4b3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -17780,8 +17780,8 @@
    ]
   },
   "settings.reports.interval_hint": {
-   "source": "e4dac9eca932f28c",
-   "translation": "cd6f955e2004a0de",
+   "source": "baa1fcce14895106",
+   "translation": "fb973e2740a409cf",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -17930,14 +17930,14 @@
    "backTranslation": "Erase database"
   },
   "settings.reset.confirm_message": {
-   "source": "fe4ce175e8da43a9",
-   "translation": "a380cce1586a9dba",
+   "source": "f94a646e53f09a63",
+   "translation": "cfeacef89fd59346",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "All database rows will be permanently deleted. DebridPulse pauses processing during the wipe, then returns it to its previous state, and creates a safety backup beforehand; if the backup fails, nothing is wiped."
+   "backTranslation": "All database rows will be permanently deleted. DownloadPulse pauses processing during the wipe, then returns it to its previous state, and creates a safety backup beforehand; if the backup fails, nothing is wiped."
   },
   "settings.reset.confirm_title": {
    "source": "4da79f3925ea2fa8",
@@ -18006,8 +18006,8 @@
    ]
   },
   "settings.role.admin_description": {
-   "source": "d314626611402df8",
-   "translation": "8104347d5a027fbc",
+   "source": "b0e12707d8380fb7",
+   "translation": "d7976e690889041d",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -18126,8 +18126,8 @@
    ]
   },
   "settings.tokens.copy_now": {
-   "source": "2a4e34cd24a60042",
-   "translation": "d8bf7e496f83bec3",
+   "source": "6de460a748507370",
+   "translation": "4c5efd14cbe32e1f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -18386,8 +18386,8 @@
    ]
   },
   "settings.users.copy": {
-   "source": "55eb32f003bf4834",
-   "translation": "9b9b96a7ef15b0c8",
+   "source": "b92b42fade1e4c06",
+   "translation": "e02de22c2feef5fd",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -18648,16 +18648,16 @@
    ]
   },
   "settings.users.edit.username_note": {
-   "source": "54a57e9b2eabbb39",
-   "translation": "cd59637d10d7ce11",
+   "source": "3f6bd92f33bf2706",
+   "translation": "694ccb9a32ab6630",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "settings.users.edit.username_note_password": {
-   "source": "1c9dac1d9de0f58b",
-   "translation": "13b684c60fbf2b9a",
+   "source": "eae98ed174687f77",
+   "translation": "62ef3c3a3730cba2",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -20021,8 +20021,8 @@
    ]
   },
   "error.backup.detail.invalid": {
-   "source": "3adde62b73a327d4",
-   "translation": "5ab3a121f77eeb9c",
+   "source": "c1e280fad0bfbefd",
+   "translation": "0f0dffd17da5537f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -20032,13 +20032,13 @@
      "kind": "style",
      "note": "Reviewer: «Это не действительная резервная копия» reads awkwardly (separate \"не\" + adjective) and drops the subject \"The backup\".",
      "status": "resolved",
-     "resolution": "Rephrased as «Эта резервная копия не является действительной резервной копией DebridPulse.», parallel to error.backup.detail.invalid_file."
+     "resolution": "Rephrased as «Эта резервная копия не является действительной резервной копией DownloadPulse.», parallel to error.backup.detail.invalid_file."
     }
    ]
   },
   "error.backup.detail.invalid_file": {
-   "source": "0767c1e6738792b0",
-   "translation": "2fe8b675b01f24f2",
+   "source": "0d821221ba88b4e0",
+   "translation": "560d497cd077e8be",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -20053,8 +20053,8 @@
    ]
   },
   "error.backup.detail.no_usable_admin": {
-   "source": "ca930fcd7186d30f",
-   "translation": "a57f203ff172004a",
+   "source": "8e06c512cba59ca8",
+   "translation": "1bd8cb9969919109",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -20069,8 +20069,8 @@
    ]
   },
   "error.backup.detail.unresolved": {
-   "source": "d8e673cb1cef8f86",
-   "translation": "acbdc9cb00f9061d",
+   "source": "dd665676ba5a27ea",
+   "translation": "499c6ebf83ba4120",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -20181,8 +20181,8 @@
    ]
   },
   "error.deployment.unchanged": {
-   "source": "b29c0609cec481aa",
-   "translation": "144f0572b9bff235",
+   "source": "2ffb8b244ba4c094",
+   "translation": "fd0a6f3597301478",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -20843,8 +20843,8 @@
    ]
   },
   "error.oidc.standalone": {
-   "source": "1db45f58782bc0eb",
-   "translation": "c578332312e1179f",
+   "source": "34de2cea6750fe90",
+   "translation": "8d6afecd495ac12f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -21315,24 +21315,24 @@
    ]
   },
   "error.restore.failed": {
-   "source": "346296826e6a1554",
-   "translation": "f3c9b0bdb06e5038",
+   "source": "8df4e7676950178d",
+   "translation": "ac2ea1fb5f674a04",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Could not restore data from the backup. The current state of DebridPulse remained unchanged."
+   "backTranslation": "Could not restore data from the backup. The current state of DownloadPulse remained unchanged."
   },
   "error.restore.failed_reason": {
-   "source": "0b820850d57e4820",
-   "translation": "54c8b6600cef510c",
+   "source": "0c7bbcafdecec072",
+   "translation": "abfa4c290b80af36",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Could not restore data from the backup. {reason} The current state of DebridPulse remained unchanged."
+   "backTranslation": "Could not restore data from the backup. {reason} The current state of DownloadPulse remained unchanged."
   },
   "error.restore.reason.in_progress": {
    "source": "a92a63a35d16c680",
@@ -21355,14 +21355,14 @@
    "backTranslation": "Could not safely stop active transfers."
   },
   "error.restore.unresolved": {
-   "source": "59116f7c75ac0b45",
-   "translation": "0d353a7284198588",
+   "source": "1b00424bbe4f161c",
+   "translation": "ba3ecdec3b93857e",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Could not restore data from the backup, and the previous state could not be returned yet. DebridPulse has stopped using the saved state; restart DebridPulse to return the previous state."
+   "backTranslation": "Could not restore data from the backup, and the previous state could not be returned yet. DownloadPulse has stopped using the saved state; restart DownloadPulse to return the previous state."
   },
   "error.search.control_characters": {
    "source": "de52832118ec42bf",
@@ -23045,8 +23045,8 @@
    ]
   },
   "help.quickstart.title": {
-   "source": "645c22acae0ed980",
-   "translation": "23bdc876f7c074f1",
+   "source": "7cb2a7b41ce25850",
+   "translation": "c518a1f6b56e62de",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23060,9 +23060,9 @@
     "ai-review"
    ]
   },
-  "help.quickstart.lead.debridpulse_application_use_submit": {
-   "source": "4580911f4e86fb67",
-   "translation": "92e915740b3d27fc",
+  "help.quickstart.lead.downloadpulse_application_use_submit": {
+   "source": "d930a1ca171c178c",
+   "translation": "315f7dc68a9f5adc",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23077,16 +23077,16 @@
    ]
   },
   "help.quickstart.before_begin.storage": {
-   "source": "b5f54f5ccf74c6c2",
-   "translation": "2b785edf8a9c94b7",
+   "source": "ff3171fc87f5b482",
+   "translation": "9aea953bae35895f",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.quickstart.before_begin.login_protection.standalone": {
-   "source": "530cdfa99ddc4cf9",
-   "translation": "0f606bc88de4b1b6",
+   "source": "636acfe65c27727d",
+   "translation": "87c32d0382012c60",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23111,16 +23111,16 @@
    "backTranslation": "<b>Who can do what:</b> only the built-in <b>administrator</b> can sign in to a standalone installation, and they manage the settings. Other people's accounts left over from the time when this installation was a server are not deleted or converted: their data is kept, but they cannot sign in while the installation runs as standalone. Other applications connect through accounts with the <b>Integration</b> role in <b>Settings → Access and integrations</b>."
   },
   "help.quickstart.before_begin.login_protection.username_password_shown": {
-   "source": "42d48d569eb0978c",
-   "translation": "b024352ad92afd4c",
+   "source": "783e7228cda5d006",
+   "translation": "3bdd8dc0c69c94f3",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.quickstart.before_begin.login_protection.username_password_hidden": {
-   "source": "be5f6baece2ce2b0",
-   "translation": "ce54eec8069990f5",
+   "source": "b26f57dfe30a4a85",
+   "translation": "4645c6bab5b1de4f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23150,9 +23150,9 @@
     "ai-review"
    ]
   },
-  "help.quickstart.check_where_downloads.if_debridpulse_runs": {
-   "source": "e3e037d084541a56",
-   "translation": "d7e10c44d982726f",
+  "help.quickstart.check_where_downloads.if_downloadpulse_runs": {
+   "source": "67d5998ac8720713",
+   "translation": "ce8f4bfe73c48e22",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23175,8 +23175,8 @@
    ]
   },
   "help.quickstart.choose_services_want.alldebrid_debrid_link_premiumize": {
-   "source": "4333d2c4146d6e7c",
-   "translation": "0d3d73bb6efb1cb3",
+   "source": "4ba0b5cabb6ad5d5",
+   "translation": "546e5eb45acee018",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23223,8 +23223,8 @@
    ]
   },
   "help.quickstart.add_first_download.if_download_contains": {
-   "source": "a47e59a7e707ff0a",
-   "translation": "24ce8f53e1167b09",
+   "source": "f7f188de86a500ec",
+   "translation": "1ea0c0e31cc0bf62",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23321,8 +23321,8 @@
    ]
   },
   "help.using.title": {
-   "source": "738ca855e90e560c",
-   "translation": "05ca55c77b98c49e",
+   "source": "30885437faa74e95",
+   "translation": "872481957c96557f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23527,8 +23527,8 @@
    ]
   },
   "help.using.header_controls.pause_all": {
-   "source": "ee10f83c94abad47",
-   "translation": "b3a92faa3a02275f",
+   "source": "30c797aaaff3021e",
+   "translation": "ecef7a6f0b5262df",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23647,8 +23647,8 @@
    ]
   },
   "help.using.provider_status_sidebar.network_sources_share": {
-   "source": "2fc7a68dee5dad37",
-   "translation": "b09048393a424fb2",
+   "source": "2faa3e2a6650f06b",
+   "translation": "1487152b82acfe30",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23695,16 +23695,16 @@
    ]
   },
   "help.using.dashboard_quick_add.alternate_sources": {
-   "source": "7e4b9f12adec12bd",
-   "translation": "a07feda1d9549d46",
+   "source": "1acc1289c94207d8",
+   "translation": "781b460c742eea86",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.using.dashboard_quick_add.press_add_ctrl": {
-   "source": "49d267584bfbafcd",
-   "translation": "a9cd77e766f1e5d2",
+   "source": "5fdad4a5640f0d28",
+   "translation": "e5fa567036b483bc",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23751,8 +23751,8 @@
    ]
   },
   "help.using.dashboard_quick_add.recover_all": {
-   "source": "7be9cf0fd446f708",
-   "translation": "af88473dcd1d140d",
+   "source": "d4f0be0b949b7340",
+   "translation": "396b20fa2a7407a2",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23782,7 +23782,7 @@
     "ai-review"
    ]
   },
-  "help.using.questions_debridpulse_may.connect_local_network_address": {
+  "help.using.questions_downloadpulse_may.connect_local_network_address": {
    "source": "e7c0a4624a2cf3a6",
    "translation": "5fe8896931877411",
    "provenance": [
@@ -23792,7 +23792,7 @@
    ],
    "backTranslation": "The <b>Connect to an address on the local network?</b> window appears when a link points to a device on your private network and the <b>Local network connections</b> setting is on (unless the <b>Do not ask for confirmation of local connections</b> setting is also on). The <b>Allow</b> button applies only to this download. When the \"Local network connections\" setting is off, such links are rejected."
   },
-  "help.using.questions_debridpulse_may.download_item_collection": {
+  "help.using.questions_downloadpulse_may.download_item_collection": {
    "source": "6153b191e80fa3cf",
    "translation": "91aeeeaf7bfe6333",
    "provenance": [
@@ -23800,7 +23800,7 @@
     "ai-review"
    ]
   },
-  "help.using.questions_debridpulse_may.authentication_required": {
+  "help.using.questions_downloadpulse_may.authentication_required": {
    "source": "7596e72c986eaa4d",
    "translation": "22476daa41917bdb",
    "provenance": [
@@ -23808,15 +23808,15 @@
     "ai-review"
    ]
   },
-  "help.using.questions_debridpulse_may.verify_server_identity": {
-   "source": "d4a54726c6fd2557",
-   "translation": "f96bc83bf7c780d0",
+  "help.using.questions_downloadpulse_may.verify_server_identity": {
+   "source": "ad3934640770825c",
+   "translation": "fe37a9708fcbaa47",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
-  "help.using.questions_debridpulse_may.these_dialogs_do": {
+  "help.using.questions_downloadpulse_may.these_dialogs_do": {
    "source": "fa2e3f0b26738788",
    "translation": "84c9b1501e2cd04c",
    "provenance": [
@@ -23933,8 +23933,8 @@
    ]
   },
   "help.using.downloads_page.queue_order": {
-   "source": "0d54d1c9a30a33fb",
-   "translation": "c251eea18e8fa6ac",
+   "source": "15519c104b1de348",
+   "translation": "8fb5a8750d33b49b",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23981,8 +23981,8 @@
    ]
   },
   "help.using.download_details.provider": {
-   "source": "b1dd61ae0eee38d3",
-   "translation": "a27a9ce94cf9de19",
+   "source": "d016bbbffe79874e",
+   "translation": "7ae9c6009fcddfc3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -23997,8 +23997,8 @@
    ]
   },
   "help.using.download_details.route_history": {
-   "source": "8529f19f47daf16f",
-   "translation": "3e085017e456d388",
+   "source": "ac2af8b3d2182a5f",
+   "translation": "2fe1ec6aa3e936b9",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24013,14 +24013,14 @@
    ]
   },
   "help.using.download_details.files.operate": {
-   "source": "959d0f75ec063ae3",
-   "translation": "3f83ffa41b86dc39",
+   "source": "a4df7961f79a7af5",
+   "translation": "a3f5f6cf8b249f74",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Files</b> — a list of all files with their size and status. Depending on the download, the header of this section lets you change the service (<b>Provider</b>), switch the remaining files to another shared source, or change the file selection. The <b>Candidates</b> list on each file shows other sources known for it. If switching would lose progress, DebridPulse first asks: <b>Discard downloaded data?</b>"
+   "backTranslation": "<b>Files</b> — a list of all files with their size and status. Depending on the download, the header of this section lets you change the service (<b>Provider</b>), switch the remaining files to another shared source, or change the file selection. The <b>Candidates</b> list on each file shows other sources known for it. If switching would lose progress, DownloadPulse first asks: <b>Discard downloaded data?</b>"
   },
   "help.using.download_details.files.viewer": {
    "source": "23fe550d05021dc8",
@@ -24031,14 +24031,14 @@
    ]
   },
   "help.using.download_details.events.admin": {
-   "source": "60a8d59688075a9b",
-   "translation": "b545098190938640",
+   "source": "11ceeb92235ea444",
+   "translation": "76222b116df94ae7",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Events</b> is this download's own history. The <b>Transfer trace log</b> (administrator only) keeps a detailed record you can attach to a bug report; DebridPulse removes passwords and confidential parts of links from it, but read it before handing it to anyone."
+   "backTranslation": "<b>Events</b> is this download's own history. The <b>Transfer trace log</b> (administrator only) keeps a detailed record you can attach to a bug report; DownloadPulse removes passwords and confidential parts of links from it, but read it before handing it to anyone."
   },
   "help.using.download_details.events.member": {
    "source": "5b4e0b8c616e6986",
@@ -24049,16 +24049,16 @@
    ]
   },
   "help.using.download_details.progress_marked_not": {
-   "source": "225da0f267accd7d",
-   "translation": "8febcd63002f077f",
+   "source": "830dd8d5e1bc0b30",
+   "translation": "c7fa0bed43cff364",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.using.activity_log_admin.activity_log_full": {
-   "source": "4c6ea2c32ca87a65",
-   "translation": "5b40fc4267bfecc8",
+   "source": "20d30362982e3d75",
+   "translation": "1478ee0b048bb6b3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24129,16 +24129,16 @@
    ]
   },
   "help.howitworks.summary": {
-   "source": "4e2666a572340a3f",
-   "translation": "78c201dffef4aacf",
+   "source": "ca4b889cccecb75f",
+   "translation": "70568bbf61ae187b",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.howitworks.lead.each_thing_add": {
-   "source": "a8c3990bed38378d",
-   "translation": "64453bf57518a751",
+   "source": "968d03c348783242",
+   "translation": "aa819f4b1fced609",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24177,8 +24177,8 @@
    ]
   },
   "help.howitworks.how_service_chosen.waits_rather_than_guesses": {
-   "source": "5d7a29fb5272fbcd",
-   "translation": "54424ff58813c7e5",
+   "source": "1aa1a8523840b993",
+   "translation": "ed9fdfb285cef3c3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24217,8 +24217,8 @@
    ]
   },
   "help.howitworks.what_status_words.pending_resolving_processing": {
-   "source": "33001b9adb083cd7",
-   "translation": "eb1237f53a2bbcb0",
+   "source": "c3d84b87f8bb5157",
+   "translation": "99f2f1b63b376486",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24249,16 +24249,16 @@
    ]
   },
   "help.howitworks.what_status_words.input_required": {
-   "source": "e3bcd19fc1ed3685",
-   "translation": "950b741bb5580a53",
+   "source": "d5d2baaf3d904f70",
+   "translation": "22bf5b96ed6a1d09",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.howitworks.what_status_words.awaiting_confirmation": {
-   "source": "e99a648760c1f75c",
-   "translation": "5b17788b0f0efe41",
+   "source": "e60514c1ff5b6fd1",
+   "translation": "a11c97378fa549fd",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24289,8 +24289,8 @@
    ]
   },
   "help.howitworks.what_status_words.done": {
-   "source": "43f214bf0f97a67c",
-   "translation": "b6f0b5d556623d34",
+   "source": "a88050cc5069210b",
+   "translation": "f849b80c14fb0d26",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24304,9 +24304,9 @@
     "ai-review"
    ]
   },
-  "help.howitworks.when_something_fails.debridpulse_sorts_failures": {
-   "source": "3489d01821696ef8",
-   "translation": "49cd909b8441b2e8",
+  "help.howitworks.when_something_fails.downloadpulse_sorts_failures": {
+   "source": "6d39836db0602b41",
+   "translation": "fd71f4c71678cbce",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24345,8 +24345,8 @@
    ]
   },
   "help.howitworks.when_something_fails.problem_one_service": {
-   "source": "f749b8faf3c789a5",
-   "translation": "a18732bfef8f559b",
+   "source": "c532bd588551eb81",
+   "translation": "afe6d869c538fff1",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24361,8 +24361,8 @@
    ]
   },
   "help.howitworks.when_something_fails.other_sources_file": {
-   "source": "7535f2cc979bdaf1",
-   "translation": "50c5b36b868f2e58",
+   "source": "f1c8570e3816b425",
+   "translation": "b1486f9749b0cc23",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24393,8 +24393,8 @@
    ]
   },
   "help.howitworks.switching_service_source.download_stays_same": {
-   "source": "d29c6f55f258fb36",
-   "translation": "1eda80873c62e891",
+   "source": "4547e75161c05bc5",
+   "translation": "be317a454d988843",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24417,8 +24417,8 @@
    ]
   },
   "help.howitworks.switching_service_source.what_service_switch_does": {
-   "source": "29ac9826e643d616",
-   "translation": "23de6c8f8bb01ed8",
+   "source": "5f805cfb63fb8d73",
+   "translation": "b7a98b8b8c04440e",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24455,8 +24455,8 @@
    ]
   },
   "help.howitworks.switching_service_source.not_every_choice_accepted": {
-   "source": "82538a86c012ef4e",
-   "translation": "390ad6d59946278b",
+   "source": "27c0c1a198675cc0",
+   "translation": "69d85b3a8da0ebea",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24473,14 +24473,14 @@
    "backTranslation": "<b>Why the choices change:</b> a source that has failed permanently, a service that is disabled, unavailable, has exhausted its quota or is not included in your plan, and a completed download disappear from the lists or are shown as unavailable. Switching back and forth by itself does not remove a choice."
   },
   "help.howitworks.switching_service_source.progress": {
-   "source": "85b9c710228d630e",
-   "translation": "50a8ebf1840a208a",
+   "source": "e92360c14bb4a953",
+   "translation": "51dd81725baa8b02",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Progress:</b> if choosing a source would lose progress already made, DebridPulse first asks <b>Discard downloaded data?</b> A service switch that would lose progress is instead rejected with the reason <b>downloaded data would be discarded; to confirm, switch this link's source</b>.",
+   "backTranslation": "<b>Progress:</b> if choosing a source would lose progress already made, DownloadPulse first asks <b>Discard downloaded data?</b> A service switch that would lose progress is instead rejected with the reason <b>downloaded data would be discarded; to confirm, switch this link's source</b>.",
    "labels": {
     "2": "follows the reviewed UI fix"
    },
@@ -24612,14 +24612,14 @@
    ]
   },
   "help.howitworks.pause_resume_retry.remove": {
-   "source": "f4749df9df8b8e13",
-   "translation": "cb7e6eec70d21698",
+   "source": "be0b8e1389c5aa73",
+   "translation": "8a4901b10f7040e4",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The <b>Remove</b> button removes the download from the list. DebridPulse also deletes the copy it created at the service and any unfinished partial files it was writing. <b>Files whose download finished remain in your folder.</b>"
+   "backTranslation": "The <b>Remove</b> button removes the download from the list. DownloadPulse also deletes the copy it created at the service and any unfinished partial files it was writing. <b>Files whose download finished remain in your folder.</b>"
   },
   "help.howitworks.pause_resume_retry.admin_can_remove": {
    "source": "1cef8b557e9292cf",
@@ -24640,18 +24640,18 @@
    ]
   },
   "help.howitworks.adding_same_thing.if_add_magnet": {
-   "source": "cb5ff66668b997b5",
-   "translation": "f09196c084864dc7",
+   "source": "c2cc39613845ca08",
+   "translation": "2a2481b47d8d1e71",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "If you add a magnet link, a <code>{file_type}</code> file, an NZB or a Metalink that DebridPulse is already working on (including one that ended in an error and has not yet been removed), <b>Already in queue</b> is shown, and the existing download is kept instead of starting a second one. Web links are always added as a new download. After a download is finished, cancelled or removed, adding the same source again starts a new download. If it turns out that two downloads are receiving the same content, DebridPulse may merge them; the merged download is marked <b>Merged</b>. If DebridPulse cannot prove that they match, the merged download is instead marked <b>Merged · Not verified</b>. Merging does not change who requested it: each account's request remains its own."
+   "backTranslation": "If you add a magnet link, a <code>{file_type}</code> file, an NZB or a Metalink that DownloadPulse is already working on (including one that ended in an error and has not yet been removed), <b>Already in queue</b> is shown, and the existing download is kept instead of starting a second one. Web links are always added as a new download. After a download is finished, cancelled or removed, adding the same source again starts a new download. If it turns out that two downloads are receiving the same content, DownloadPulse may merge them; the merged download is marked <b>Merged</b>. If DownloadPulse cannot prove that they match, the merged download is instead marked <b>Merged · Not verified</b>. Merging does not change who requested it: each account's request remains its own."
   },
   "help.howitworks.what_survives_restart.downloads_their_history": {
-   "source": "56d48bc4ca27d1d3",
-   "translation": "9a5311c24c09d506",
+   "source": "039106b0eee76814",
+   "translation": "1e95e79a69af5bde",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24672,18 +24672,18 @@
    ]
   },
   "help.howitworks.passwords_private_links.username_password_written": {
-   "source": "3367221332f862a4",
-   "translation": "e5f87a5debedf065",
+   "source": "2e5b4e15b9c46a7f",
+   "translation": "1671f27c3423ffb7",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "A username and password written in the link (<code>{link}</code>) are used for this download instead of a prompt, including for every file in a folder, and are removed from the link before it is saved. They are kept only in memory for this download and are forgotten when it completes, is cancelled or is removed, no later than after 24 hours, or when DebridPulse restarts."
+   "backTranslation": "A username and password written in the link (<code>{link}</code>) are used for this download instead of a prompt, including for every file in a folder, and are removed from the link before it is saved. They are kept only in memory for this download and are forgotten when it completes, is cancelled or is removed, no later than after 24 hours, or when DownloadPulse restarts."
   },
   "help.howitworks.passwords_private_links.sftp_scp_ssh": {
-   "source": "e19a57a4da13fcfa",
-   "translation": "1aa2287207160f77",
+   "source": "cfea39e3ff310d17",
+   "translation": "cd0ac01aa9a09c05",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24714,8 +24714,8 @@
    ]
   },
   "help.services.summary.member": {
-   "source": "5843c8fe725d6e78",
-   "translation": "6a7b1d0f66d4fee9",
+   "source": "0f83816a1405c26b",
+   "translation": "edc866b5d9322b48",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24786,14 +24786,14 @@
    ]
   },
   "help.services.how_service_card.while_service_still": {
-   "source": "f9357bc82750654f",
-   "translation": "a31362961c224bce",
+   "source": "16dcb5ba466ee468",
+   "translation": "3b91db1787b576b1",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "While a service has unfinished downloads, DebridPulse will not let you change its account (and for Usenet, its news servers); first finish or remove those downloads."
+   "backTranslation": "While a service has unfinished downloads, DownloadPulse will not let you change its account (and for Usenet, its news servers); first finish or remove those downloads."
   },
   "help.services.how_service_card.help_button_card": {
    "source": "66e1b3b5526c0515",
@@ -24844,8 +24844,8 @@
    ]
   },
   "help.services.alldebrid.what_happens": {
-   "source": "306c039e4bfbac74",
-   "translation": "d052e995b3116c2e",
+   "source": "c2ea93dda9259e41",
+   "translation": "20fd1d6ec9dbffd8",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24902,24 +24902,24 @@
    ]
   },
   "help.services.debrid_link.what_happens": {
-   "source": "38771d841d0954d2",
-   "translation": "38506c2310cc33d5",
+   "source": "42e9aed253ac4e1a",
+   "translation": "9a70c6b89f45f3aa",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.services.debrid_link.good_know.provider_additional_settings_shown": {
-   "source": "2aed0a7a155ea3f8",
-   "translation": "8987983f803ba614",
+   "source": "a7a09cb2cb667fb8",
+   "translation": "a864b1263aa97851",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.services.debrid_link.good_know.provider_additional_settings_hidden": {
-   "source": "e9e199e9d2e550e0",
-   "translation": "ae7566f9c1efb543",
+   "source": "37a358f96d2675eb",
+   "translation": "37aa140118330008",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24958,8 +24958,8 @@
    ]
   },
   "help.services.premiumize.what_happens": {
-   "source": "67960bf55911a9d5",
-   "translation": "1c16f2e483a59336",
+   "source": "4d8a951c493bdffb",
+   "translation": "9964b1ab8c53459b",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -24990,8 +24990,8 @@
    ]
   },
   "help.services.premiumize.if_fails": {
-   "source": "efe14e87c03c5bea",
-   "translation": "dc92358fd6b70ffe",
+   "source": "dbf7bc7a8543d746",
+   "translation": "c4ffae77ab12124e",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25014,8 +25014,8 @@
    ]
   },
   "help.services.real_debrid.need": {
-   "source": "d9e0d84b9ec6aa1e",
-   "translation": "faf955b0b825827d",
+   "source": "d303cb0ece43a751",
+   "translation": "29f35bc4534491a1",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25030,16 +25030,16 @@
    ]
   },
   "help.services.real_debrid.what_happens": {
-   "source": "94b86bf1fa3f1693",
-   "translation": "6227317c2969a479",
+   "source": "443610e19c3d68f7",
+   "translation": "3174d3cb18ac2d1a",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.services.real_debrid.good_know.provider_additional_settings_shown": {
-   "source": "3ccdf11be93f7606",
-   "translation": "4d04dae436b73d2f",
+   "source": "1770c6444714c3bf",
+   "translation": "f9ea76ed23c4aa49",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25060,8 +25060,8 @@
    ]
   },
   "help.services.real_debrid.good_know.provider_additional_settings_hidden": {
-   "source": "db345de7a82cc6a2",
-   "translation": "88026074e92b0d74",
+   "source": "9570de112c7e0e82",
+   "translation": "45f6928a756365b4",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25116,16 +25116,16 @@
    ]
   },
   "help.services.torbox.what_happens": {
-   "source": "8228600eae26a611",
-   "translation": "671328db103c5701",
+   "source": "42789ab5d088c792",
+   "translation": "0b826d1461190001",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.services.torbox.plan_matters.provider_additional_settings_shown": {
-   "source": "d8baa56c58b11e47",
-   "translation": "12d870a0ef167f04",
+   "source": "d4dce7d1da559e0e",
+   "translation": "3e04972574d021af",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25146,22 +25146,22 @@
    ]
   },
   "help.services.torbox.plan_matters.provider_additional_settings_hidden": {
-   "source": "48e0b2ab6cdd4b78",
-   "translation": "772c4d5fe8e05c02",
+   "source": "14e05d9f318aa79b",
+   "translation": "12f40e75a5132c05",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.services.torbox.good_know": {
-   "source": "1e23678e7a54ebe7",
-   "translation": "4db10f6b862088b9",
+   "source": "46a5fc370d0f1748",
+   "translation": "b55e74ce61c11c55",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Good to know:</b> the <b>Disconnect</b> button only makes DebridPulse forget the token. TorBox does not allow revoking it remotely, so if you want the token to be revoked on the TorBox side as well, reset it on the TorBox website."
+   "backTranslation": "<b>Good to know:</b> the <b>Disconnect</b> button only makes DownloadPulse forget the token. TorBox does not allow revoking it remotely, so if you want the token to be revoked on the TorBox side as well, reset it on the TorBox website."
   },
   "help.services.usenet.for": {
    "source": "4f525d42ec901315",
@@ -25200,8 +25200,8 @@
    ]
   },
   "help.services.usenet.what_happens": {
-   "source": "16024f05b9a56704",
-   "translation": "65a687ae68a14880",
+   "source": "d71b9f6ba61fe47b",
+   "translation": "ee1517ea5a9067ea",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25209,7 +25209,7 @@
    "findings": [
     {
      "kind": "meaning",
-     "note": "Reviewer: \"закрытый\" (private) reads as \"proprietary/closed\"; the point is a private instance run by DebridPulse",
+     "note": "Reviewer: \"закрытый\" (private) reads as \"proprietary/closed\"; the point is a private instance run by DownloadPulse",
      "status": "resolved",
      "resolution": "\"внутренний\""
     }
@@ -25324,8 +25324,8 @@
    ]
   },
   "help.services.rsync.rsync_host_path": {
-   "source": "8b6132aa47acc153",
-   "translation": "94bbbd576c081fa3",
+   "source": "6c99e11e49ee2dd5",
+   "translation": "ce79c2ab876fc67f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25350,16 +25350,16 @@
    ]
   },
   "help.services.rsync.over_ssh_server.transfer_method_settings_shown": {
-   "source": "c0ed3c3b945b8e01",
-   "translation": "fc252d45bc9cf5db",
+   "source": "96eaba5929c95425",
+   "translation": "99a50344c9877654",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.services.rsync.over_ssh_server.transfer_method_settings_hidden": {
-   "source": "56df847205e44950",
-   "translation": "d02b608ad56dfa66",
+   "source": "bed014055f1f3452",
+   "translation": "9302bbacdea78608",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25438,16 +25438,16 @@
    ]
   },
   "help.services.media_downloads.choices.transfer_method_settings_shown": {
-   "source": "6353cf96c33e3b6e",
-   "translation": "5a0957560a1ce2bd",
+   "source": "d45a72997f5e4cfc",
+   "translation": "60d17f6b8c13994c",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.services.media_downloads.choices.transfer_method_settings_hidden": {
-   "source": "ac2b04d9dd4ed639",
-   "translation": "1caa57b7557075af",
+   "source": "5dc3fdf4e91c5c00",
+   "translation": "dcdfb804a6beee0b",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25502,24 +25502,24 @@
    ]
   },
   "help.engines.summary": {
-   "source": "289a4bae24a86480",
-   "translation": "936535c11419c9e7",
+   "source": "cfcd6ca6c00e8880",
+   "translation": "f136e28a66a612ff",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.engines.lead.service_decides_where": {
-   "source": "eb3803d9da85ca91",
-   "translation": "455e622b07263d9a",
+   "source": "f5d5f83c910acf14",
+   "translation": "38031ad61fd3cb60",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.engines.aria2.downloads_web_http": {
-   "source": "31de3a28252ad3f8",
-   "translation": "633bad5df6c9f481",
+   "source": "b3910b5a80ff29bc",
+   "translation": "89ea5e7296f5c326",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25550,8 +25550,8 @@
    ]
   },
   "help.engines.usenet_sabnzbd.private_copy_sabnzbd": {
-   "source": "88ac4901ea0a7292",
-   "translation": "514c15815281cd68",
+   "source": "0f95bf14e0ae23c2",
+   "translation": "247b81ab4d93d821",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25692,8 +25692,8 @@
    ]
   },
   "help.engines.tuning_rsync_usenet.usenet": {
-   "source": "555beb816f2901c0",
-   "translation": "c19f772d5b85b9ed",
+   "source": "ed1716881ecc85f9",
+   "translation": "f907fbf8acdccfe3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25716,14 +25716,14 @@
    ]
   },
   "help.engines.download_engine_activity.settings_downloads_download_engine": {
-   "source": "0b70ad9ba66c885b",
-   "translation": "fbab25500a6b6ae5",
+   "source": "98ebb7983881c6ed",
+   "translation": "3d7e26ae95a6a8a5",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Settings → Downloads → Download engine activity</b> shows engine jobs (with \"Active\", \"Waiting\", \"Paused\" and \"Stopped\" filters) and <b>Pause</b>, <b>Resume</b> or <b>Abort</b> buttons, if the relevant engine supports it. Confirmation is requested before aborting. This is a recovery tool for a job that is truly stuck. For normal work use the \"Downloads\" page: it keeps DebridPulse's own records in a consistent state."
+   "backTranslation": "<b>Settings → Downloads → Download engine activity</b> shows engine jobs (with \"Active\", \"Waiting\", \"Paused\" and \"Stopped\" filters) and <b>Pause</b>, <b>Resume</b> or <b>Abort</b> buttons, if the relevant engine supports it. Confirmation is requested before aborting. This is a recovery tool for a job that is truly stuck. For normal work use the \"Downloads\" page: it keeps DownloadPulse's own records in a consistent state."
   },
   "help.settings.title": {
    "source": "526d0b41605bb179",
@@ -25808,14 +25808,14 @@
    ]
   },
   "help.settings.downloads.download_behavior_limits.download_behavior_advanced_shown": {
-   "source": "b5a36ef024c75ec1",
-   "translation": "a4658f83a5164295",
+   "source": "5f8d14c921bc11e8",
+   "translation": "511aafb2e4893506",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Download behavior and limits:</b> <b>Download folder</b> (with a <b>Browse</b> button) and <b>Maximum simultaneous downloads</b>. Under <b>Advanced settings</b>: <b>Data checkpoint interval</b> and <b>Graceful stop timeout</b> (better left unchanged), <b>Local network connections</b> (off by default) to allow downloads from devices on your private network, and <b>Do not ask for confirmation of local connections</b> so as not to be asked every time. Even when this is allowed, DebridPulse never connects to the computer it runs on or to other local addresses that do not belong to a private network. Also there: <b>Provider polling interval</b> (how often a service is polled about the progress of work it is preparing), <b>Full sync interval</b> (how often downloads are reconciled with all enabled premium service accounts that provide a list of their transfers; 0 disables syncing), and <b>Retries on file detection failure</b> and <b>Retry delay (minutes)</b> (how many times and after how long a failed file detection is retried — for any service, including network sources)."
+   "backTranslation": "<b>Download behavior and limits:</b> <b>Download folder</b> (with a <b>Browse</b> button) and <b>Maximum simultaneous downloads</b>. Under <b>Advanced settings</b>: <b>Data checkpoint interval</b> and <b>Graceful stop timeout</b> (better left unchanged), <b>Local network connections</b> (off by default) to allow downloads from devices on your private network, and <b>Do not ask for confirmation of local connections</b> so as not to be asked every time. Even when this is allowed, DownloadPulse never connects to the computer it runs on or to other local addresses that do not belong to a private network. Also there: <b>Provider polling interval</b> (how often a service is polled about the progress of work it is preparing), <b>Full sync interval</b> (how often downloads are reconciled with all enabled premium service accounts that provide a list of their transfers; 0 disables syncing), and <b>Retries on file detection failure</b> and <b>Retry delay (minutes)</b> (how many times and after how long a failed file detection is retried — for any service, including network sources)."
   },
   "help.settings.downloads.transfer_method_settings": {
    "source": "02ccfa0c645f2e93",
@@ -25892,14 +25892,14 @@
    "backTranslation": "<b>Delete archives after extraction</b> (on by default): an archive is deleted only after it has been successfully extracted."
   },
   "help.settings.extraction.archive_passwords": {
-   "source": "3dabdd7584aac51a",
-   "translation": "5f1e64236e631356",
+   "source": "f9a10cb9365b544d",
+   "translation": "233910bede32f650",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Archive passwords:</b> for a 7z or RAR archive DebridPulse first tries without a password and then tries each saved password in order. A ZIP archive is extracted only without a password: these passwords do not apply to ZIP. Each row holds one password; it is saved when you leave the row. <b>Show all</b> shows the passwords; <b>Clear passwords</b> erases the whole list."
+   "backTranslation": "<b>Archive passwords:</b> for a 7z or RAR archive DownloadPulse first tries without a password and then tries each saved password in order. A ZIP archive is extracted only without a password: these passwords do not apply to ZIP. Each row holds one password; it is saved when you leave the row. <b>Show all</b> shows the passwords; <b>Clear passwords</b> erases the whole list."
   },
   "help.settings.extraction.supported_formats_include": {
    "source": "109f5900d80a581b",
@@ -25910,14 +25910,14 @@
    ]
   },
   "help.settings.signing.standalone_installation_has": {
-   "source": "d197bc4c0e6f3865",
-   "translation": "7da320bbba9fdf76",
+   "source": "5314d4355bd79790",
+   "translation": "ad3c9bcc1a813b12",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "A “Standalone” type installation has no “Authentication” tab. Its built-in administrator — the only one who can sign in — signs in only with a password, which is set, changed or cleared in <b>My account</b>: if a password is set, the sign-in page asks for it without a username; if not, no sign-in is required, and anyone who can reach DebridPulse uses it as the administrator. OpenID Connect is not available."
+   "backTranslation": "A “Standalone” type installation has no “Authentication” tab. Its built-in administrator — the only one who can sign in — signs in only with a password, which is set, changed or cleared in <b>My account</b>: if a password is set, the sign-in page asks for it without a username; if not, no sign-in is required, and anyone who can reach DownloadPulse uses it as the administrator. OpenID Connect is not available."
   },
   "help.settings.signing.when_sign_prometheus": {
    "source": "b91c950e525dcfa9",
@@ -25960,8 +25960,8 @@
    ]
   },
   "help.settings.authentication.openid_connect": {
-   "source": "1273875d2f8c69ab",
-   "translation": "2a2bed275db3beb9",
+   "source": "2ea25a8a66909429",
+   "translation": "2658f82e742a5885",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -25976,14 +25976,14 @@
    ]
   },
   "help.settings.authentication.turning_off_last": {
-   "source": "16a8ad7ee81a157e",
-   "translation": "dc9907c583ffd027",
+   "source": "d8e42b77db920664",
+   "translation": "da4b73df275685c4",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Turning off the last sign-in method requires confirmation, because after that DebridPulse becomes open to anyone who can reach it. Failed sign-in attempts are slowed down rather than causing a lockout."
+   "backTranslation": "Turning off the last sign-in method requires confirmation, because after that DownloadPulse becomes open to anyone who can reach it. Failed sign-in attempts are slowed down rather than causing a lockout."
   },
   "help.settings.authentication.when_sign_prometheus.server_advanced": {
    "source": "2645706ffd3deb70",
@@ -26030,14 +26030,14 @@
    "backTranslation": "<b>Integration accounts</b> are intended for automation and cannot sign in to these pages. <b>Issue token</b> shows a new token only once, so copy it right away; tools pass it as <code>{literal}</code>. Each token sees only the jobs submitted with it. <b>Revoke</b> immediately ends the token's validity without affecting anything already submitted with it."
   },
   "help.settings.access_integrations.integration_delivery_profiles": {
-   "source": "a51944208bbffb4f",
-   "translation": "9aa636d70c2cb16b",
+   "source": "88b2b90775ee7001",
+   "translation": "c39e6ee2a8a4e8aa",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Delivery profiles for integrations</b> tell an external application, for example Sonarr or Radarr, which <b>categories</b> it may send jobs to, which source types it may send (<b>Source types</b>), which of its tokens may use the profile (<b>Allowed API tokens</b>) and where it will find the finished files (<b>DP download path</b> in the DebridPulse downloads folder and <b>External import path</b> — the same folder as the application sees it). Files are shared where they lie: nothing is copied, moved or deleted for the application. The download client interfaces stay unavailable until the profile has a category, a source type and an allowed API token that is active."
+   "backTranslation": "<b>Delivery profiles for integrations</b> tell an external application, for example Sonarr or Radarr, which <b>categories</b> it may send jobs to, which source types it may send (<b>Source types</b>), which of its tokens may use the profile (<b>Allowed API tokens</b>) and where it will find the finished files (<b>DP download path</b> in the DownloadPulse downloads folder and <b>External import path</b> — the same folder as the application sees it). Files are shared where they lie: nothing is copied, moved or deleted for the application. The download client interfaces stay unavailable until the profile has a category, a source type and an allowed API token that is active."
   },
   "help.settings.access_integrations.administrator_changes_display": {
    "source": "ac11eead01b19f54",
@@ -26100,14 +26100,14 @@
    ]
   },
   "help.settings.users_access.user_accounts": {
-   "source": "d93e976b21f07cee",
-   "translation": "3eb8fe99f8c5658f",
+   "source": "7008a78e71d19c01",
+   "translation": "f6c017a4ae227243",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>User accounts</b> is a list of all people showing role, sign-in method and whether the account is enabled. <b>Add local account</b> creates an account with a username and password. A role changed in the <b>Edit user</b> window applies immediately: that person's open pages reload with the new role, without signing out. Each person has a DebridPulse username separate from the display name: an OIDC account receives it on first sign-in, and it is the one used for local password sign-in; the pencil icon next to it in the <b>Edit user</b> window header changes it without affecting the saved password. Click an account's name to open its details and activity; there you can revoke any outstanding request individually. <b>Disable</b> and <b>Remove</b> first show how many outstanding download requests the account has; those requests are revoked, a transfer that someone else also requested continues, and completed downloads are never affected. Disabling also ends the account's sign-in sessions and stops its tokens; if an account is removed, its history is kept and its own notification settings are deleted. If an OIDC identity whose account was removed signs in again, a new account is created for it, which stays disabled until you enable it. <b>Merge</b> joins two or more accounts into one, which you choose to keep; two accounts sharing a verified email address are flagged, but only \"Merge\" joins them. DebridPulse always keeps at least one active administrator, and you cannot change your own role or disable your own account.",
+   "backTranslation": "<b>User accounts</b> is a list of all people showing role, sign-in method and whether the account is enabled. <b>Add local account</b> creates an account with a username and password. A role changed in the <b>Edit user</b> window applies immediately: that person's open pages reload with the new role, without signing out. Each person has a DownloadPulse username separate from the display name: an OIDC account receives it on first sign-in, and it is the one used for local password sign-in; the pencil icon next to it in the <b>Edit user</b> window header changes it without affecting the saved password. Click an account's name to open its details and activity; there you can revoke any outstanding request individually. <b>Disable</b> and <b>Remove</b> first show how many outstanding download requests the account has; those requests are revoked, a transfer that someone else also requested continues, and completed downloads are never affected. Disabling also ends the account's sign-in sessions and stops its tokens; if an account is removed, its history is kept and its own notification settings are deleted. If an OIDC identity whose account was removed signs in again, a new account is created for it, which stays disabled until you enable it. <b>Merge</b> joins two or more accounts into one, which you choose to keep; two accounts sharing a verified email address are flagged, but only \"Merge\" joins them. DownloadPulse always keeps at least one active administrator, and you cannot change your own role or disable your own account.",
    "findings": [
     {
      "kind": "ambiguity",
@@ -26172,16 +26172,16 @@
    ]
   },
   "help.settings.notifications.statistics_reporting.statistics_reporting_shown": {
-   "source": "cd75ebd9761edbec",
-   "translation": "3a6c9477956041af",
+   "source": "50ec65c712efede5",
+   "translation": "006fcb3ee69d6e69",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.settings.notifications.statistics_reporting.statistics_reporting_hidden": {
-   "source": "7e65ba4544b5dfa7",
-   "translation": "4ce3d79ebc7c2473",
+   "source": "9bc14e650543a88c",
+   "translation": "63fea853c54a35b6",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26196,18 +26196,18 @@
    ]
   },
   "help.settings.notifications.uploaded_avatar_served": {
-   "source": "6e8d6d5f8acf5fc4",
-   "translation": "32df56a70662f213",
+   "source": "39d262c6b3bd528f",
+   "translation": "952d985e4a6fde55",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "An avatar uploaded from a file is served by DebridPulse itself, so Discord must be able to reach it over the internet. If DebridPulse is reachable only on your private network, give a link to an avatar hosted elsewhere.",
+   "backTranslation": "An avatar uploaded from a file is served by DownloadPulse itself, so Discord must be able to reach it over the internet. If DownloadPulse is reachable only on your private network, give a link to an avatar hosted elsewhere.",
    "findings": [
     {
      "kind": "ambiguity",
-     "note": "Translator: 'uploaded' = «загруженный из файла» (avatar file sent to DebridPulse), distinct from downloads.",
+     "note": "Translator: 'uploaded' = «загруженный из файла» (avatar file sent to DownloadPulse), distinct from downloads.",
      "status": "resolved",
      "resolution": "The translator chose the wording recorded in the note."
     }
@@ -26222,14 +26222,14 @@
    ]
   },
   "help.settings.data_maintenance.backups": {
-   "source": "14e979843694d3b0",
-   "translation": "ea68804067310a54",
+   "source": "820c557cc7d91100",
+   "translation": "69737e986f0baa29",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The <b>Backups</b> button opens the list of backups. Select one backup and press <b>Save backup</b> (download a copy of it), <b>Restore from backup</b> or <b>Delete</b>; the <b>Add backup</b> button uploads a previously saved copy and adds it after verification. When restoring, DebridPulse pauses processing, creates a safety backup of the current state, verifies the selected copy once more, replaces the current database and settings, and restarts its services. If verification fails, nothing changes, and every pause set by you or by an *arr client returns to its previous state."
+   "backTranslation": "The <b>Backups</b> button opens the list of backups. Select one backup and press <b>Save backup</b> (download a copy of it), <b>Restore from backup</b> or <b>Delete</b>; the <b>Add backup</b> button uploads a previously saved copy and adds it after verification. When restoring, DownloadPulse pauses processing, creates a safety backup of the current state, verifies the selected copy once more, replaces the current database and settings, and restarts its services. If verification fails, nothing changes, and every pause set by you or by an *arr client returns to its previous state."
   },
   "help.settings.data_maintenance.events_keep_being": {
    "source": "ed63fa81d1c27f82",
@@ -26248,24 +26248,24 @@
    ]
   },
   "help.settings.data_maintenance.backups_retention.advanced": {
-   "source": "60934ba493e073f8",
-   "translation": "53b80757412912ab",
+   "source": "66e94a71449b67e3",
+   "translation": "74fe44783f979bcc",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Backups and retention:</b> scheduled backup (on by default) to the folder from the <b>Backup folder</b> setting; the <b>Backup interval</b>, <b>Backup retention period</b> and <b>Maximum backups kept</b> settings are in the <b>Additional backup and retention settings</b> section. A backup is deleted as soon as it becomes too old or is no longer among the newest kept copies. The same section sets how often <b>statistics snapshots</b> are created and how long they are kept: this is a record of activity over the previous 24 hours, saved in the DebridPulse database. Snapshots are not reports: they are not sent anywhere and currently cannot be viewed in the interface. The <b>Create backup</b> button creates a copy immediately (only while backup is enabled)."
+   "backTranslation": "<b>Backups and retention:</b> scheduled backup (on by default) to the folder from the <b>Backup folder</b> setting; the <b>Backup interval</b>, <b>Backup retention period</b> and <b>Maximum backups kept</b> settings are in the <b>Additional backup and retention settings</b> section. A backup is deleted as soon as it becomes too old or is no longer among the newest kept copies. The same section sets how often <b>statistics snapshots</b> are created and how long they are kept: this is a record of activity over the previous 24 hours, saved in the DownloadPulse database. Snapshots are not reports: they are not sent anywhere and currently cannot be viewed in the interface. The <b>Create backup</b> button creates a copy immediately (only while backup is enabled)."
   },
   "help.settings.data_maintenance.database_reset_controls": {
-   "source": "bde7f02750c70d97",
-   "translation": "04fa5cc93b577f26",
+   "source": "4740d4f9255b9634",
+   "translation": "bc2292f0281fe5ee",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Database reset controls:</b> turn on <b>Allow database reset</b>, press <b>Reset database</b>, type <code>{literal}</code> and press <b>Erase database</b>. This erases all downloads, their requests and history, events and statistics snapshots. Accounts, passwords, OIDC links, API tokens, personal notification settings and all settings are kept. DebridPulse always creates a safety backup first and cancels the reset if it could not be created. During the reset it stops running downloads and pauses processing, and after the reset it restores the previous pause state. Files already finished in your download folder are not deleted.",
+   "backTranslation": "<b>Database reset controls:</b> turn on <b>Allow database reset</b>, press <b>Reset database</b>, type <code>{literal}</code> and press <b>Erase database</b>. This erases all downloads, their requests and history, events and statistics snapshots. Accounts, passwords, OIDC links, API tokens, personal notification settings and all settings are kept. DownloadPulse always creates a safety backup first and cancels the reset if it could not be created. During the reset it stops running downloads and pauses processing, and after the reset it restores the previous pause state. Files already finished in your download folder are not deleted.",
    "findings": [
     {
      "kind": "meaning",
@@ -26308,24 +26308,24 @@
    ]
   },
   "help.trouble.before_changing_anything.avoid_removing_download.admin": {
-   "source": "effa9a8e79bf4c00",
-   "translation": "72933e42ab03eed0",
+   "source": "dea06aba4b9abe94",
+   "translation": "ad88da7b5d97556c",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Do not remove a download just to get rid of an error: DebridPulse keeps its source and history in order to retry or recover it. If you need help, the <b>Transfer trace log</b> button in the details (administrator only) saves a record without passwords and private link details. Read this record before sharing it, and never share API keys, tokens or links containing passwords."
+   "backTranslation": "Do not remove a download just to get rid of an error: DownloadPulse keeps its source and history in order to retry or recover it. If you need help, the <b>Transfer trace log</b> button in the details (administrator only) saves a record without passwords and private link details. Read this record before sharing it, and never share API keys, tokens or links containing passwords."
   },
   "help.trouble.before_changing_anything.avoid_removing_download.operate": {
-   "source": "d1fc4dc7b5e50f4e",
-   "translation": "1dfa0cc5a43c7884",
+   "source": "e80cd8b242992895",
+   "translation": "ef6f5c99a99584b8",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Do not remove a download just to get rid of an error: DebridPulse keeps its source and history in order to retry or recover it. If the problem needs investigating, an administrator can save that download's <b>Transfer trace log</b> for a bug report."
+   "backTranslation": "Do not remove a download just to get rid of an error: DownloadPulse keeps its source and history in order to retry or recover it. If the problem needs investigating, an administrator can save that download's <b>Transfer trace log</b> for a bug report."
   },
   "help.trouble.before_changing_anything.if_problem_needs": {
    "source": "0db5aff46789e801",
@@ -26394,16 +26394,16 @@
    ]
   },
   "help.trouble.i_added_something.input_required.submit": {
-   "source": "fb305eaed2c7dbf4",
-   "translation": "b48f99d00b1fe4bb",
+   "source": "c67a6dd870bd508a",
+   "translation": "6fc133fd6b0b63f6",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.trouble.i_added_something.input_required.viewer": {
-   "source": "ea7750dc341cee4e",
-   "translation": "c19bc6e994732353",
+   "source": "bcd1d775578c3859",
+   "translation": "21a0e9a6cb9ca6d4",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26558,8 +26558,8 @@
    ]
   },
   "help.trouble.download_stays_processing.torrent_may_take.operate": {
-   "source": "ff80687f5ca4ce06",
-   "translation": "5fc93cdae7ee5367",
+   "source": "0d57cb9bf8eaed80",
+   "translation": "0f4727be96a23b6b",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26574,8 +26574,8 @@
    ]
   },
   "help.trouble.download_stays_processing.torrent_may_take.viewer": {
-   "source": "c2470651accbec00",
-   "translation": "90c6e338cc3fbdf8",
+   "source": "5767c0f0c48b2b37",
+   "translation": "78de3382d182975a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26590,8 +26590,8 @@
    ]
   },
   "help.trouble.download_stays_processing.timing_lives_under": {
-   "source": "d5d935d74e464fbc",
-   "translation": "488634801ce3e753",
+   "source": "3e7f1319826dc240",
+   "translation": "8808e1963b3aac8c",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26632,8 +26632,8 @@
    ]
   },
   "help.trouble.download_slow_stalls.if_sidebar_shows": {
-   "source": "5a85405e844f6e97",
-   "translation": "7c094c2d3000bba1",
+   "source": "12ff1be3c41d8847",
+   "translation": "e8a52b01fb29cce6",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26690,16 +26690,16 @@
    ]
   },
   "help.trouble.files_not_where.check_download_folder": {
-   "source": "ac60eea9dab81a0d",
-   "translation": "7d7cac3038dfaa80",
+   "source": "117b793aa3557700",
+   "translation": "1be41db708ba8e65",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
-  "help.trouble.files_not_where.debridpulse_must_allowed": {
-   "source": "b8402dcfff09601f",
-   "translation": "24d23f7dda33b7de",
+  "help.trouble.files_not_where.downloadpulse_must_allowed": {
+   "source": "51f00c95ade54884",
+   "translation": "1467df1a855440d7",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26753,9 +26753,9 @@
     "ai-review"
    ]
   },
-  "help.trouble.page_stops_updating.debridpulse_sends_live": {
-   "source": "4c7389528c961287",
-   "translation": "6170243ec3d2c247",
+  "help.trouble.page_stops_updating.downloadpulse_sends_live": {
+   "source": "85d1027fc4fe2faa",
+   "translation": "6ed5b48fda90db56",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26770,16 +26770,16 @@
    ]
   },
   "help.trouble.i_cannot_sign.if_password_lost": {
-   "source": "dad4f02420adb687",
-   "translation": "86de452caecbc6d8",
+   "source": "d572ba97ee1fc2e2",
+   "translation": "57b2361aa4333a4a",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.trouble.i_cannot_sign.if_another_sign": {
-   "source": "5948818cce34be75",
-   "translation": "5ef5948107bdb8b1",
+   "source": "143cce90bf851f93",
+   "translation": "8546bbd8c652f1bd",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26802,14 +26802,14 @@
    ]
   },
   "help.trouble.i_cannot_sign.last_resort_if_no": {
-   "source": "53296de14acc536b",
-   "translation": "74feb4bdbb7d9e65",
+   "source": "82e388af2eb8db1b",
+   "translation": "d7adc0edbb182529",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "<b>Last resort if no sign-in method works:</b> this requires access to the computer DebridPulse runs on, and it temporarily removes all protection, so do this only on a trusted network. Stop DebridPulse and make a backup copy of its configuration file (usually <code>{path}</code> inside the container). In this file set <code>{literal_1}</code> and <code>{literal_2}</code> to <code>{literal_3}</code>, keeping the JSON format valid: with a corrupted configuration file DebridPulse will not start. Start DebridPulse: it is now open to anyone who can connect to it, including its API. The stored password and OIDC settings are not deleted, so immediately fix them in “Settings → Authentication” and turn protection back on."
+   "backTranslation": "<b>Last resort if no sign-in method works:</b> this requires access to the computer DownloadPulse runs on, and it temporarily removes all protection, so do this only on a trusted network. Stop DownloadPulse and make a backup copy of its configuration file (usually <code>{path}</code> inside the container). In this file set <code>{literal_1}</code> and <code>{literal_2}</code> to <code>{literal_3}</code>, keeping the JSON format valid: with a corrupted configuration file DownloadPulse will not start. Start DownloadPulse: it is now open to anyone who can connect to it, including its API. The stored password and OIDC settings are not deleted, so immediately fix them in “Settings → Authentication” and turn protection back on."
   },
   "help.trouble.i_cannot_sign.sign_methods_accounts": {
    "source": "05f5cab03b5a7a44",
@@ -26846,14 +26846,14 @@
    "backTranslation": "If the safety backup could not be created, the reset or restore stops. Fix the <b>Backup folder</b> setting (location, permissions, free space); the safety backup cannot be skipped."
   },
   "help.trouble.backup_restore_reset.if_restore_could": {
-   "source": "621cbf99d60e3346",
-   "translation": "bc390d0391776b79",
+   "source": "1f7437194692512a",
+   "translation": "1cac3fad67f231d0",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "If a restore could neither complete nor be cancelled (for example, the disk stopped accepting changes halfway through), DebridPulse stops using its stored data: every page and every request answers that a restart is required, and the health check reports an unhealthy state. Your previous database and settings are kept. When the disk becomes writable again, restart the DebridPulse container yourself; on startup the previous state will be restored. Docker does not restart the container by itself because of a failed health check."
+   "backTranslation": "If a restore could neither complete nor be cancelled (for example, the disk stopped accepting changes halfway through), DownloadPulse stops using its stored data: every page and every request answers that a restart is required, and the health check reports an unhealthy state. Your previous database and settings are kept. When the disk becomes writable again, restart the DownloadPulse container yourself; on startup the previous state will be restored. Docker does not restart the container by itself because of a failed health check."
   },
   "help.license.title": {
    "source": "9fd0293653185d11",
@@ -26864,24 +26864,24 @@
    ]
   },
   "help.license.summary": {
-   "source": "cdde43f0e564ca7f",
-   "translation": "ae7559c94b37ee61",
+   "source": "b627bff18f20804b",
+   "translation": "74d74f507927b797",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.license.lead.gpl_permits_use": {
-   "source": "b156767731ad33e9",
-   "translation": "ce7ee041e0673eba",
+   "source": "d5c2352bf3426289",
+   "translation": "525b11e53eb81d09",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
-  "help.license.lead.debridpulse_provided_without_warranty": {
-   "source": "78fbfd3d5cf89568",
-   "translation": "97c2b1d2317b0440",
+  "help.license.lead.downloadpulse_provided_without_warranty": {
+   "source": "2b50b4077cef3185",
+   "translation": "b13d996cfce9583e",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26896,16 +26896,16 @@
    ]
   },
   "help.license.documents_can_open.gpl_2_0_later": {
-   "source": "3738a635bd2fcb3d",
-   "translation": "225a58654d34f69c",
+   "source": "c41eb04e8e24a65e",
+   "translation": "da5f1fce8a30935d",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.license.documents_can_open.source_offer": {
-   "source": "1569994899700e34",
-   "translation": "46cb6104e2b926fd",
+   "source": "1ec862949dad490f",
+   "translation": "d3199d866794affe",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26944,16 +26944,16 @@
    ]
   },
   "help.license.documents.those_buttons_open": {
-   "source": "aebe4292b0df3f0f",
-   "translation": "af87d298b0eefc9a",
+   "source": "893fd36f42832603",
+   "translation": "74e1962d8f542ab4",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.license.documents.complete_license_notices": {
-   "source": "9eb3b426e121bff8",
-   "translation": "c52569810ce56fe9",
+   "source": "7a668090b4c58026",
+   "translation": "875260cd253f6c84",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -26975,17 +26975,17 @@
     "ai-review"
    ]
   },
-  "help.quickstart.lead.debridpulse_application_submits_routes.submit": {
-   "source": "f0bab785d50940cf",
-   "translation": "8889950be98df076",
+  "help.quickstart.lead.downloadpulse_application_submits_routes.submit": {
+   "source": "b78cdf4623a37e6f",
+   "translation": "efa6b8b6ce7f1726",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
-  "help.quickstart.lead.debridpulse_application_submits_routes.viewer": {
-   "source": "2188347b01d17fef",
-   "translation": "d35e0d88c59ad013",
+  "help.quickstart.lead.downloadpulse_application_submits_routes.viewer": {
+   "source": "3541eaff9d0d89d1",
+   "translation": "3211ded829d61ab9",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27291,9 +27291,9 @@
     "ai-review"
    ]
   },
-  "help.using.questions_debridpulse_may.title": {
-   "source": "a3303413317e8118",
-   "translation": "64d1d99b44b8e8e4",
+  "help.using.questions_downloadpulse_may.title": {
+   "source": "84099fb51da1f5d5",
+   "translation": "be2215b8911536d9",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27966,8 +27966,8 @@
    ]
   },
   "help.howitworks.pipeline.add.copy": {
-   "source": "b232178bf609df64",
-   "translation": "d4799e9b093ba2d6",
+   "source": "b11a98abeb106379",
+   "translation": "2a648ce818ba3d5e",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -27983,7 +27983,7 @@
   },
   "help.howitworks.pipeline.choose_service.copy": {
    "source": "ca9d9a04d0d5cfb0",
-   "translation": "77ec0f707d2fa14a",
+   "translation": "da2b481b3bc5ec98",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28030,8 +28030,8 @@
    ]
   },
   "help.howitworks.pipeline.check_finish.copy": {
-   "source": "5e3b39b7c3e6ca56",
-   "translation": "f10e0a485fbcad92",
+   "source": "1f76a2a01e8094c8",
+   "translation": "4540e4fc118a75bd",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28054,8 +28054,8 @@
    ]
   },
   "help.license.lead.copyright": {
-   "source": "3af6f074e190bb33",
-   "translation": "80e95e2dc2440a22",
+   "source": "d7b14c34868d87ae",
+   "translation": "94191d2010fd1ac3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28222,16 +28222,16 @@
    ]
   },
   "help.legal.bundled": {
-   "source": "ccb6228c7e828a95",
-   "translation": "ec2356d43a1b5ec5",
+   "source": "abd31001224c5cd0",
+   "translation": "2cc79fa91863eedb",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.legal.bundled_unversioned": {
-   "source": "07ab64eab3eb7c0c",
-   "translation": "ad3431793423eb60",
+   "source": "704cab00027eceb2",
+   "translation": "743d90e9aab85276",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28342,8 +28342,8 @@
    ]
   },
   "help.roles.asks_pause_resume_own": {
-   "source": "f71d76212b306898",
-   "translation": "e3857665ffdd2d12",
+   "source": "4683d7521ca4109e",
+   "translation": "ec529da327f75e43",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28448,8 +28448,8 @@
    ]
   },
   "help.topic.premium_services.intro.premium_services": {
-   "source": "51f18d1a2f3a0334",
-   "translation": "0ba19e2b3501e835",
+   "source": "9306a2928cbf504c",
+   "translation": "22cd478ed3ddefc4",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28585,16 +28585,16 @@
    ]
   },
   "help.topic.premium_services.wizard.intro": {
-   "source": "171a5b576dabfa7a",
-   "translation": "bb2de68a008cbad9",
+   "source": "ec7ca91668c022ce",
+   "translation": "83df0859d25b721d",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.premium_services.wizard.optional": {
-   "source": "30062070b00bf461",
-   "translation": "0dcef06d00e33403",
+   "source": "77deaf39172199d0",
+   "translation": "5d8af6cdf30219f2",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28657,8 +28657,8 @@
    ]
   },
   "help.topic.usenet.intro.usenet_downloads_nzb": {
-   "source": "f0928b823e1a01d8",
-   "translation": "6a7a66629ae51475",
+   "source": "27c3ddf9f150bb8e",
+   "translation": "aabee93e7b58e462",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28681,8 +28681,8 @@
    ]
   },
   "help.topic.usenet.news_servers.connections": {
-   "source": "0084cd62182af5d7",
-   "translation": "38317bfdcb2c9729",
+   "source": "36394c8eebc9f61d",
+   "translation": "0f1b713fb4f07342",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28697,8 +28697,8 @@
    ]
   },
   "help.topic.usenet.news_servers.articles_per_request": {
-   "source": "cf1b0f055ae84280",
-   "translation": "45e7db24767c68c6",
+   "source": "e8ff08df7dd42aa4",
+   "translation": "9f64df842e192e75",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28737,24 +28737,24 @@
    ]
   },
   "help.topic.usenet.downloads_recovery.usenet_download": {
-   "source": "dee9beb13793c5fb",
-   "translation": "4fe479a6289eaa17",
+   "source": "67f2bc874ab8e3f0",
+   "translation": "fbe2e675b9e83187",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
-  "help.topic.usenet.downloads_recovery.debridpulse_verifies_repairs": {
-   "source": "481932b4078190f3",
-   "translation": "4ef98815b5678147",
+  "help.topic.usenet.downloads_recovery.downloadpulse_verifies_repairs": {
+   "source": "a3eb9dbf46b6d2bc",
+   "translation": "a231cf6323a72490",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.usenet.downloads_recovery.behavior_shared_every": {
-   "source": "c9922b886eb6c0ec",
-   "translation": "6fc18dc07bc8fdaa",
+   "source": "e8f1886d7c9b1c69",
+   "translation": "7dc553f1bf761d94",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28810,8 +28810,8 @@
    "identical": "Brand name AllDebrid is never translated."
   },
   "help.topic.alldebrid.intro.alldebrid": {
-   "source": "b6d895e9d3a7c72f",
-   "translation": "15dd0c26b915d31f",
+   "source": "872c5efe3b877031",
+   "translation": "5a4bbca88de6312a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28860,8 +28860,8 @@
    ]
   },
   "help.topic.alldebrid.what_account_can.per_alldebrid_documentation": {
-   "source": "d03756c09aa28d11",
-   "translation": "cef134c628884ed2",
+   "source": "d372c0f735dba7ed",
+   "translation": "51af0978e29be47f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28892,16 +28892,16 @@
    ]
   },
   "help.topic.alldebrid.additional_settings.maximum_active_torrents": {
-   "source": "5a20f34125f2507a",
-   "translation": "8eefe73ce2f6910e",
+   "source": "d4c4e83add459a7e",
+   "translation": "ef0fbc79bee857fe",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.alldebrid.additional_settings.api_calls_per": {
-   "source": "d00b72498317baa3",
-   "translation": "a700f4b90024005a",
+   "source": "ce296d8a69428923",
+   "translation": "44cd4530c3bdcefa",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28959,8 +28959,8 @@
    "identical": "Brand name Debrid-Link is never translated."
   },
   "help.topic.debridlink.intro.debrid_link": {
-   "source": "b41d4e3cb67eaeba",
-   "translation": "e5a0fd718bc8e510",
+   "source": "2e41fb462dd94713",
+   "translation": "a06cd7b0d6361ddc",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -28985,24 +28985,24 @@
    ]
   },
   "help.topic.debridlink.what_account_can.premium_debrid_link": {
-   "source": "0f9bf93523a64af7",
-   "translation": "bbe74e076fcebc2c",
+   "source": "90be5d8899a0700b",
+   "translation": "654967455c9bfd02",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.debridlink.what_account_can.free_account_can": {
-   "source": "b262a867ad129bd3",
-   "translation": "4a6e426a96be11f1",
+   "source": "4a929daf2da561e4",
+   "translation": "bdbef0e55d9e940c",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.debridlink.what_account_can.limits_debrid_link": {
-   "source": "14098a76c4177f50",
-   "translation": "fc670187f1e8e455",
+   "source": "129856ce5357f340",
+   "translation": "dc471a70ed49945a",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29017,8 +29017,8 @@
    ]
   },
   "help.topic.debridlink.additional_settings.request_timeout": {
-   "source": "827c88ce1d3dc294",
-   "translation": "4e5bc68b1d43890f",
+   "source": "aabfacd803d62fca",
+   "translation": "2797c13f2b6417e7",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29034,8 +29034,8 @@
    "identical": "Brand name Premiumize is never translated."
   },
   "help.topic.premiumize.intro.premiumize": {
-   "source": "ea6d09f3cce7c148",
-   "translation": "2e0ff41a03a8aee5",
+   "source": "fd22ea1fa2f57154",
+   "translation": "79b572950091e257",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29060,24 +29060,24 @@
    ]
   },
   "help.topic.premiumize.what_account_can.while_premiumize_premium": {
-   "source": "7b5ef09fa49e5543",
-   "translation": "3bb5b01e270e5765",
+   "source": "c7f46eaa595c895d",
+   "translation": "98813e4a4dd75dd6",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.premiumize.what_account_can.what_free_expired": {
-   "source": "78aafceaf23f1cfb",
-   "translation": "23db6ad839eeb7b2",
+   "source": "944c5faccc3e0531",
+   "translation": "51b3c77a85aa8448",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.premiumize.what_account_can.premiumize_refuses_work": {
-   "source": "a2e7ef3909b30bd4",
-   "translation": "75514cdba3b56fcb",
+   "source": "1db84a46f98c0473",
+   "translation": "bf750bfc65319807",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29100,8 +29100,8 @@
    ]
   },
   "help.topic.premiumize.additional_settings.request_timeout": {
-   "source": "b1e72a837127f251",
-   "translation": "cb77769c6fbd9c58",
+   "source": "e310c25afffe04b0",
+   "translation": "db8a79b85e55447e",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29117,16 +29117,16 @@
    "identical": "Brand name Real-Debrid is never translated."
   },
   "help.topic.realdebrid.intro.real_debrid": {
-   "source": "0ea15f0249727831",
-   "translation": "85d61924b36d9869",
+   "source": "e2b8fa7d52ed7ca0",
+   "translation": "1284d718cf19f0bb",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.realdebrid.connecting.connect_real_debrid": {
-   "source": "1e12bdec9baf94ec",
-   "translation": "4fa3edc00a2e2d4b",
+   "source": "7ae63f386cecef8d",
+   "translation": "2d8ea9a2fd6115c3",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29149,8 +29149,8 @@
    ]
   },
   "help.topic.realdebrid.what_account_can.per_real_debrid": {
-   "source": "a738c22be7e30f4f",
-   "translation": "14c3609e857a68eb",
+   "source": "b62af8c8721691e0",
+   "translation": "beb14513877ca426",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29173,24 +29173,24 @@
    ]
   },
   "help.topic.realdebrid.additional_settings.maximum_active_torrents": {
-   "source": "6d7dc128c0618d83",
-   "translation": "d6e987ea30dc7545",
+   "source": "5f21a1563291655b",
+   "translation": "62e0615bc1017c8e",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.realdebrid.additional_settings.api_calls_per": {
-   "source": "3643de4cf3fdef98",
-   "translation": "7d6b528cfad61100",
+   "source": "b3bc407fa31ae3ec",
+   "translation": "714d973bd157b333",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.realdebrid.additional_settings.request_timeout": {
-   "source": "78f22f59021fa26d",
-   "translation": "75f8a6c9a7057c4e",
+   "source": "a8d4b1c3a5f479aa",
+   "translation": "d05d0d4b9f5bd566",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29206,16 +29206,16 @@
    "identical": "Brand name TorBox is never translated."
   },
   "help.topic.torbox.intro.torbox": {
-   "source": "415de5c8bc4c4a72",
-   "translation": "a11ba86cdcaece46",
+   "source": "f4bc029ccb79b280",
+   "translation": "20798ab273bdafc0",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.torbox.connecting.connect_torbox_shows": {
-   "source": "af465bc2efd2a0ae",
-   "translation": "e53048eb2bee8874",
+   "source": "9b2be55a319c3373",
+   "translation": "4731790e00380093",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29230,14 +29230,14 @@
    ]
   },
   "help.topic.torbox.connecting.disconnect_forgets_stored": {
-   "source": "773ea20ecf8ed490",
-   "translation": "52a8fe5916099d40",
+   "source": "b0ce37a3b22e3cc0",
+   "translation": "b94c35bb54c54afd",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The \"Disconnect\" button immediately deletes the saved token. TorBox does not give DebridPulse a way to revoke it; you can reset the token on TorBox's own website."
+   "backTranslation": "The \"Disconnect\" button immediately deletes the saved token. TorBox does not give DownloadPulse a way to revoke it; you can reset the token on TorBox's own website."
   },
   "help.topic.heading.what_plan_can": {
    "source": "d0cb3ed4524b707b",
@@ -29247,9 +29247,9 @@
     "ai-review"
    ]
   },
-  "help.topic.torbox.what_plan_can.debridpulse_follows_torbox": {
-   "source": "cf844f8439ce4492",
-   "translation": "6ba63797ebe30c85",
+  "help.topic.torbox.what_plan_can.downloadpulse_follows_torbox": {
+   "source": "2ce1710d56534ffe",
+   "translation": "e8bd75d4d76e892d",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29271,9 +29271,9 @@
     "ai-review"
    ]
   },
-  "help.topic.torbox.what_plan_can.debridpulse": {
-   "source": "06af44a7a520b24a",
-   "translation": "a84251577e21fa5f",
+  "help.topic.torbox.what_plan_can.downloadpulse": {
+   "source": "73a299eb501b40b7",
+   "translation": "f2bc2f1c10bf5c89",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29281,7 +29281,7 @@
    "findings": [
     {
      "kind": "style",
-     "note": "Reviewer: «запрос торрентов» reads as \"a request for (a list of) torrents\" rather than the single torrent request DebridPulse makes.",
+     "note": "Reviewer: «запрос торрентов» reads as \"a request for (a list of) torrents\" rather than the single torrent request DownloadPulse makes.",
      "status": "resolved",
      "resolution": "Changed to «запрос на торрент»; rest of the sentence unchanged."
     }
@@ -29304,8 +29304,8 @@
    ]
   },
   "help.topic.torbox.additional_settings.maximum_active_torrents": {
-   "source": "76d38379fc52449a",
-   "translation": "c062532e1f5f9db4",
+   "source": "83c5664424f99496",
+   "translation": "19a06422a4c3bf53",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29320,16 +29320,16 @@
    ]
   },
   "help.topic.torbox.additional_settings.api_calls_per": {
-   "source": "6d120ddb7be7c750",
-   "translation": "7a49e5c787d60462",
+   "source": "4dcd67dc01ec5bda",
+   "translation": "effb502042dfbb61",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.network_sources.intro.network_sources": {
-   "source": "baa9c77e7dbc7e51",
-   "translation": "ef15c850b6ee57e1",
+   "source": "93d35dfc1f3cf762",
+   "translation": "e8ec98f16cb4be93",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29442,50 +29442,50 @@
    ]
   },
   "help.topic.download_behavior.advanced_settings.graceful_stop_timeout": {
-   "source": "4d6da7615cfae246",
-   "translation": "f5179ed5a1b42e8b",
+   "source": "0f1d8c529f59f385",
+   "translation": "8a20e39f5f0a6e1c",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.download_behavior.advanced_settings.local_network_connections": {
-   "source": "b28b8747efb34261",
-   "translation": "4ee6621dc1866ba8",
+   "source": "f942770bdcbc6858",
+   "translation": "61cb8137da9d0b15",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The \"Local network connections\" setting allows downloads that you enter explicitly to reach private local network addresses. The \"Do not ask for confirmation of local connections\" setting can be used only while the first setting is on; with it, DebridPulse stops asking for confirmation every time.",
+   "backTranslation": "The \"Local network connections\" setting allows downloads that you enter explicitly to reach private local network addresses. The \"Do not ask for confirmation of local connections\" setting can be used only while the first setting is on; with it, DownloadPulse stops asking for confirmation every time.",
    "findings": [
     {
      "kind": "ambiguity",
-     "note": "Reviewer: Critical warning: «только пока первый включён» leaves \"первый\" without a noun, and «он отключает запрос подтверждения DebridPulse при каждом таком подключении» is ambiguous (genitive «DebridPulse» can read as a confirmation of DebridPulse) and adds «таком подключении» not in English.",
+     "note": "Reviewer: Critical warning: «только пока первый включён» leaves \"первый\" without a noun, and «он отключает запрос подтверждения DownloadPulse при каждом таком подключении» is ambiguous (genitive «DownloadPulse» can read as a confirmation of DownloadPulse) and adds «таком подключении» not in English.",
      "status": "resolved",
-     "resolution": "Names «первый параметр» explicitly and renders \"it stops DebridPulse asking each time\" as «с ним DebridPulse перестаёт каждый раз запрашивать подтверждение»; severity, scope and the dependency on the first switch are unchanged."
+     "resolution": "Names «первый параметр» explicitly and renders \"it stops DownloadPulse asking each time\" as «с ним DownloadPulse перестаёт каждый раз запрашивать подтверждение»; severity, scope and the dependency on the first switch are unchanged."
     }
    ]
   },
   "help.topic.download_behavior.advanced_settings.provider_poll_interval": {
-   "source": "cc03a5d88b037b30",
-   "translation": "12d60fa86c4e6e95",
+   "source": "1f5acaeecfc01f2d",
+   "translation": "52de68405f8e3545",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.download_behavior.advanced_settings.resolution_failure_retries": {
-   "source": "147d94cfe3392e74",
-   "translation": "21d79dcfb8bbeb2e",
+   "source": "a19d21fcb271eb6b",
+   "translation": "fcdda70e33734c03",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.transfer_methods.intro.each_card_group": {
-   "source": "332e9b654d8544fd",
-   "translation": "0736d42a5714d1ac",
+   "source": "5488a1e07d6d894e",
+   "translation": "719f843fbbf932a9",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29604,8 +29604,8 @@
    ]
   },
   "help.topic.disk_recovery.recovery.stalled_download_timeout": {
-   "source": "8376f35357c6a214",
-   "translation": "1bea29882932b718",
+   "source": "54ff42bdac2419b4",
+   "translation": "9d1692c886a8ded7",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29652,14 +29652,14 @@
    ]
   },
   "help.topic.engine_activity.controls.terminate": {
-   "source": "c302c6096a1dce71",
-   "translation": "b7647068cced5474",
+   "source": "669c74faf51e70e5",
+   "translation": "7557844d889e04f1",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "The “Terminate” button, after your confirmation, stops the job and releases its execution. DebridPulse keeps the transfer and can start it again under the normal recovery rules.",
+   "backTranslation": "The “Terminate” button, after your confirmation, stops the job and releases its execution. DownloadPulse keeps the transfer and can start it again under the normal recovery rules.",
    "findings": [
     {
      "kind": "ambiguity",
@@ -29766,8 +29766,8 @@
    ]
   },
   "help.topic.tuning_direct.related.which_network_protocols": {
-   "source": "6bc98a2ebaa52365",
-   "translation": "3837854b40322783",
+   "source": "9655e9ac7dcf5184",
+   "translation": "206d6cf69e985d2b",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29870,8 +29870,8 @@
    ]
   },
   "help.topic.tuning_webdav.intro.these_settings_decide": {
-   "source": "26ed60e8a443aa42",
-   "translation": "1d638f2dc374bc32",
+   "source": "1bff31d028d71573",
+   "translation": "9a0a036157c36fc8",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29934,8 +29934,8 @@
    ]
   },
   "help.topic.tuning_usenet.settings.article_cache_limit": {
-   "source": "29af9ffc1ba99636",
-   "translation": "704c8eaeb7662f50",
+   "source": "5cbc9c7f0547c685",
+   "translation": "f7a3d3bcb8cbe132",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29950,8 +29950,8 @@
    ]
   },
   "help.topic.tuning_usenet.settings.request_timeout": {
-   "source": "ca67d0ad4bceaaf0",
-   "translation": "695b16a223833c56",
+   "source": "337ca1d0e7aeac42",
+   "translation": "38593811596d8f44",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29974,8 +29974,8 @@
    ]
   },
   "help.topic.tuning_media.intro.these_settings_apply": {
-   "source": "aa9b9eb6f12b6fae",
-   "translation": "69b7d597e37e9708",
+   "source": "4ebc4ce658c5ff7a",
+   "translation": "cf1c0e3344ae2f62",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -29990,8 +29990,8 @@
    ]
   },
   "help.topic.tuning_media.choosing_what_downloaded.target_resolution": {
-   "source": "826c3624c68d9138",
-   "translation": "74bac4f32dde0c99",
+   "source": "5d7e5f7014cae60b",
+   "translation": "f4eff37e32be3352",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30062,8 +30062,8 @@
    ]
   },
   "help.topic.automatic_extraction.intro.when_enable": {
-   "source": "4c84d7ea6cc626c1",
-   "translation": "27d06b4280459864",
+   "source": "7309a6bbd9a20ce8",
+   "translation": "a9cff764cefd2e66",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30146,8 +30146,8 @@
    ]
   },
   "help.topic.auth_status.browser_sessions.browser_session_lifetime": {
-   "source": "fb3dd1b01aee2424",
-   "translation": "35234e24f24ca6d1",
+   "source": "16c12b39d4995b1c",
+   "translation": "74264498f1f3d6ee",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30292,8 +30292,8 @@
    ]
   },
   "help.topic.oidc.intro.lets_people_sign": {
-   "source": "6601268390d57b87",
-   "translation": "53956fbfacb0e418",
+   "source": "32f7268587720116",
+   "translation": "896b7167556be3b7",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30315,9 +30315,9 @@
     "ai-review"
    ]
   },
-  "help.topic.oidc.connection.public_debridpulse_base": {
-   "source": "ce0ec774454ee132",
-   "translation": "17494bc812f8b95f",
+  "help.topic.oidc.connection.public_downloadpulse_base": {
+   "source": "d02d71de923d2f82",
+   "translation": "7cc2f3fb7d9bc46c",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30370,8 +30370,8 @@
    ]
   },
   "help.topic.oidc.access_control.allow_any_authenticated": {
-   "source": "7e0c0970a1d739ff",
-   "translation": "c0c8c38d06c9e580",
+   "source": "2f194f1f5e158830",
+   "translation": "52af5dd4606ae913",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30434,8 +30434,8 @@
    ]
   },
   "help.topic.user_accounts.intro.people_who_sign": {
-   "source": "629fae92e9011c9f",
-   "translation": "8cbb7823c5724829",
+   "source": "39ba9ae97ba88bdb",
+   "translation": "06f244745ba0767c",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30450,8 +30450,8 @@
    ]
   },
   "help.topic.user_accounts.roles.admin": {
-   "source": "d842fe15c800b665",
-   "translation": "ffe552f3fab3d46f",
+   "source": "97ad0a560a42c3d3",
+   "translation": "3c7fe12569177a13",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30516,8 +30516,8 @@
    ]
   },
   "help.topic.user_accounts.account_actions.every_person_has": {
-   "source": "ac201a8cac06686f",
-   "translation": "998086c6bf903da2",
+   "source": "94bd262954b2c3e4",
+   "translation": "74eba9bdaaf5c212",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30557,9 +30557,9 @@
     "ai-review"
    ]
   },
-  "help.topic.user_accounts.account_actions.debridpulse_always_keeps": {
-   "source": "bec4c17e8eeeef98",
-   "translation": "f898f11e0140a2fa",
+  "help.topic.user_accounts.account_actions.downloadpulse_always_keeps": {
+   "source": "a1f5c015f0a8b640",
+   "translation": "0f114f952a194801",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30640,8 +30640,8 @@
    ]
   },
   "help.topic.integration_accounts.what_integration_can.ask_pause_resume": {
-   "source": "5055fc79dc800b3f",
-   "translation": "89a2ee39d23f5e1a",
+   "source": "770db5f851886075",
+   "translation": "73e20b3c4bfeca2f",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30686,8 +30686,8 @@
    "backTranslation": "Deleting the account also irrevocably revokes its tokens."
   },
   "help.topic.delivery_profiles.intro.delivery_profile_tells": {
-   "source": "ae61afbde9514233",
-   "translation": "584c6f941289f4e5",
+   "source": "1ddd72ea0ccd2877",
+   "translation": "2b5f89c8003ebc3d",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30726,8 +30726,8 @@
    ]
   },
   "help.topic.delivery_profiles.what_profile_sets.dp_download_path": {
-   "source": "bd982e897316652e",
-   "translation": "167825b5dd5ab59f",
+   "source": "29ddddc10f6e1a27",
+   "translation": "1b28fc09747389af",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30794,8 +30794,8 @@
    ]
   },
   "help.topic.deployment_type.intro.deployment_type_decides": {
-   "source": "cb4b22acd11f3374",
-   "translation": "8fbd8cfac2c8c3c5",
+   "source": "ab6fe464e2a1e244",
+   "translation": "6c6f68ebc1698543",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -30858,14 +30858,14 @@
    ]
   },
   "help.topic.deployment_type.standalone.without_password_no": {
-   "source": "c21747bb0f36a0c5",
-   "translation": "7c653f85e52ab929",
+   "source": "c84bb49e874004e4",
+   "translation": "ab6283b951382c6e",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "If no password is set, no sign-in is required, and DebridPulse is used as the built-in administrator."
+   "backTranslation": "If no password is set, no sign-in is required, and DownloadPulse is used as the built-in administrator."
   },
   "help.topic.heading.what_switching_keeps": {
    "source": "f6854b87b690dd2b",
@@ -30944,14 +30944,14 @@
    "backTranslation": "Switching clears the built-in administrator's password, disables sign-in by username and password and through OpenID Connect, and ends all browser sessions."
   },
   "help.topic.deployment_type.what_switching_changes.afterwards_no_sign": {
-   "source": "1928d347b829df55",
-   "translation": "7aff25a3c17ae9bd",
+   "source": "e49f4d7d661070e6",
+   "translation": "ff5b13675de7cf56",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "After this no sign-in is required: anyone who can reach DebridPulse at an address it accepts can use it as the built-in administrator. This is not limited to this computer and does not expire over time."
+   "backTranslation": "After this no sign-in is required: anyone who can reach DownloadPulse at an address it accepts can use it as the built-in administrator. This is not limited to this computer and does not expire over time."
   },
   "help.topic.deployment_type.what_switching_changes.stays_open_until": {
    "source": "ed0cbb2fe9a83de1",
@@ -31042,8 +31042,8 @@
    ]
   },
   "help.topic.discord.principal_controls.notification_events_choose": {
-   "source": "6ce54557dba81ce4",
-   "translation": "69cf2faa71d2dd34",
+   "source": "beedaaf55ac98357",
+   "translation": "dc7bfb7338a51429",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31103,9 +31103,9 @@
     }
    ]
   },
-  "help.topic.statistics_reporting.intro.outbound_summary_debridpulse": {
-   "source": "3c822d3a421d78c9",
-   "translation": "9b03f2e450562aea",
+  "help.topic.statistics_reporting.intro.outbound_summary_downloadpulse": {
+   "source": "9359d629cf230850",
+   "translation": "723ecb8eb33d0804",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31128,8 +31128,8 @@
    ]
   },
   "help.topic.statistics_reporting.who_receives.it": {
-   "source": "4ff66b3f4958813a",
-   "translation": "56559c9c9b701ca2",
+   "source": "b9fa3eebcdaf4fed",
+   "translation": "2b16bcb990d19836",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31279,9 +31279,9 @@
     "ai-review"
    ]
   },
-  "help.topic.event_logging.intro.debridpulse_records_event": {
-   "source": "735340433a5bce51",
-   "translation": "3da6ab9581ae0dd9",
+  "help.topic.event_logging.intro.downloadpulse_records_event": {
+   "source": "390d2058573c2430",
+   "translation": "184068bce3d9f036",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31423,15 +31423,15 @@
     "ai-review"
    ]
   },
-  "help.topic.backups.statistics_snapshots.separately_debridpulse_saves": {
-   "source": "a3c4dee36d3fa797",
-   "translation": "466eccf119d95e1d",
+  "help.topic.backups.statistics_snapshots.separately_downloadpulse_saves": {
+   "source": "0645358008bcd782",
+   "translation": "03335a62db6a27f0",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "In addition, every “Statistics snapshot interval” DebridPulse saves in its own database a record of activity over the previous 24 hours and deletes snapshots older than the “Statistics snapshot retention period” value. With a value of 0, no new snapshots are created."
+   "backTranslation": "In addition, every “Statistics snapshot interval” DownloadPulse saves in its own database a record of activity over the previous 24 hours and deletes snapshots older than the “Statistics snapshot retention period” value. With a value of 0, no new snapshots are created."
   },
   "help.topic.backups.statistics_snapshots.snapshots": {
    "source": "e1ecbc32a4d3f9b2",
@@ -31441,23 +31441,23 @@
     "ai-review"
    ]
   },
-  "help.topic.backups.statistics_snapshots.debridpulse_keeps_saving": {
-   "source": "124efa4baa61548d",
-   "translation": "96bc17d203376612",
+  "help.topic.backups.statistics_snapshots.downloadpulse_keeps_saving": {
+   "source": "df29a314a856deb4",
+   "translation": "be4d19a4f0fc29d7",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
-  "help.topic.database_reset.intro.erases_debridpulse_download": {
-   "source": "fd2d5f524967fee3",
-   "translation": "76b3feb06e3fd71e",
+  "help.topic.database_reset.intro.erases_downloadpulse_download": {
+   "source": "61233d06787911bd",
+   "translation": "f62629c35fe873de",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "Erases DebridPulse's download history so that it starts from zero. Use this only if you really want to start everything over."
+   "backTranslation": "Erases DownloadPulse's download history so that it starts from zero. Use this only if you really want to start everything over."
   },
   "help.topic.heading.what_removed_kept": {
    "source": "4805e4205000f3a6",
@@ -31558,8 +31558,8 @@
    ]
   },
   "setup.welcome.title": {
-   "source": "76defe5ecea03c43",
-   "translation": "5ed80df8a501fa2f",
+   "source": "a803869137c4da6e",
+   "translation": "180be63a23b51808",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31574,8 +31574,8 @@
    ]
   },
   "setup.deployment.standalone.text": {
-   "source": "d4af6261460d538e",
-   "translation": "2dc16c4d7fc15313",
+   "source": "d32a72b38c9c6735",
+   "translation": "8080fd0cf8c1b814",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31936,8 +31936,8 @@
    ]
   },
   "setup.welcome.body.thanks": {
-   "source": "27770b2cb0d433e3",
-   "translation": "7b0fabc29c9c7253",
+   "source": "038f3f4ce79838f0",
+   "translation": "b8bb0288201c2d9d",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31968,8 +31968,8 @@
    ]
   },
   "setup.welcome.change_language_hint": {
-   "source": "e8dd514d01e04c22",
-   "translation": "144ca8b7b95e384c",
+   "source": "5e2a23b9294fc3ec",
+   "translation": "b3d41a2b006910d5",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -31992,16 +31992,16 @@
    ]
   },
   "setup.deployment.body.types": {
-   "source": "e1771ec33b8c2d34",
-   "translation": "cd4333c1fdb18a5b",
+   "source": "ad7569b4dbac5a79",
+   "translation": "c09a88b364cc7284",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "setup.deployment.body.choose": {
-   "source": "3dc8787f44cce18c",
-   "translation": "30ee099964719eb0",
+   "source": "7653b41fea336ba2",
+   "translation": "b6687613fc4c5032",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32016,16 +32016,16 @@
    ]
   },
   "setup.directory.body.purpose": {
-   "source": "abdda6335ab5d827",
-   "translation": "557b3a90b57b5bec",
+   "source": "a390e6cbc1104bc1",
+   "translation": "e6b6f57e37a9dbd8",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "setup.directory.body.choose": {
-   "source": "2e5b96c7722596bc",
-   "translation": "f36aa727c9bfb404",
+   "source": "50c110300d57823d",
+   "translation": "32770895d539ad8e",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32048,8 +32048,8 @@
    ]
   },
   "setup.administrator.body": {
-   "source": "e5a587bf86176b3e",
-   "translation": "1ef179984f88966f",
+   "source": "356a86f9b02cdbaf",
+   "translation": "dade9e314f9a6f7b",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32072,8 +32072,8 @@
    ]
   },
   "setup.premium.body.what": {
-   "source": "d3c512907c62a0a5",
-   "translation": "e1d7b0da9a504b67",
+   "source": "33f044a1bce6443c",
+   "translation": "6dfd602b463a54f8",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32088,40 +32088,40 @@
    ]
   },
   "setup.premium.body.optional": {
-   "source": "a27c6f036a51098d",
-   "translation": "a4c4fd7e60cf6d74",
+   "source": "be363f1407eadd9c",
+   "translation": "2fd17573f67bb43b",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "setup.getting_started.tagline": {
-   "source": "78eb299238a8a36b",
-   "translation": "0bb6948c25006913",
+   "source": "722de0eb04a07dc1",
+   "translation": "d0645df3cf1eea75",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "setup.getting_started.body": {
-   "source": "ede5292e8731a827",
-   "translation": "a9ac5e22c91b44eb",
+   "source": "1555427bdffacba9",
+   "translation": "372413edf3225a50",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "setup.getting_started.step.open": {
-   "source": "48ab559c629f8121",
-   "translation": "7e83d296b0adfc0e",
+   "source": "96848bd612e37b7d",
+   "translation": "f299b982c0ca0696",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "setup.getting_started.step.add": {
-   "source": "439f30650a7083fc",
-   "translation": "8a206a60c7007a5f",
+   "source": "5b6e4ad52c40f064",
+   "translation": "6c4e2c1690939c56",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32144,8 +32144,8 @@
    ]
   },
   "settings.local_port.hint": {
-   "source": "d8e1af9d7fc30755",
-   "translation": "4f30616272cf4f65",
+   "source": "74a139419d7baf83",
+   "translation": "b550b33d9dd7a1da",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32194,14 +32194,14 @@
    "backTranslation": "Change the local port to {port}?"
   },
   "settings.local_port.confirm_message": {
-   "source": "0c475e9c1a08eade",
-   "translation": "8a2a932ebea38c06",
+   "source": "a8f98cea88fa796a",
+   "translation": "571f5026b2ca5c06",
    "provenance": [
     "ai-generated",
     "ai-review",
     "ai-back-translation"
    ],
-   "backTranslation": "one: Over the last week {count} external application connected through port {current}: {clients}. It will not be able to connect to DebridPulse until it uses port {port}. | few: Over the last week {count} external applications connected through port {current}: {clients}. They will not be able to connect to DebridPulse until they use port {port}. | many: Over the last week {count} external applications connected through port {current}: {clients}. They will not be able to connect to DebridPulse until they use port {port}. | other: Over the last week {count} of an external application (fractional gen. sg.) connected through port {current}: {clients}. They will not be able to connect to DebridPulse until they use port {port}."
+   "backTranslation": "one: Over the last week {count} external application connected through port {current}: {clients}. It will not be able to connect to DownloadPulse until it uses port {port}. | few: Over the last week {count} external applications connected through port {current}: {clients}. They will not be able to connect to DownloadPulse until they use port {port}. | many: Over the last week {count} external applications connected through port {current}: {clients}. They will not be able to connect to DownloadPulse until they use port {port}. | other: Over the last week {count} of an external application (fractional gen. sg.) connected through port {current}: {clients}. They will not be able to connect to DownloadPulse until they use port {port}."
   },
   "settings.local_port.confirm_more": {
    "source": "5f4f590acbda8ee3",
@@ -32230,8 +32230,8 @@
    ]
   },
   "settings.local_port.saved": {
-   "source": "5aef08e79810e067",
-   "translation": "a32d3257b18f0015",
+   "source": "f360b3c20941a361",
+   "translation": "d6f7b4b3052f26a5",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32270,8 +32270,8 @@
    ]
   },
   "desktop.local_port.unavailable": {
-   "source": "c3fdc6b99811a51a",
-   "translation": "47d69181e551c600",
+   "source": "e0d5aeb9b3a7f047",
+   "translation": "25546bc007e99f44",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32286,8 +32286,8 @@
    ]
   },
   "help.topic.deployment_type.local_port.what": {
-   "source": "5893511cd980ea31",
-   "translation": "3307987580751718",
+   "source": "7ec1841efa3cf549",
+   "translation": "aaa63910f8022c9d",
    "provenance": [
     "ai-generated",
     "ai-review"
@@ -32302,32 +32302,32 @@
    ]
   },
   "help.topic.deployment_type.local_port.change": {
-   "source": "5bdcfa6ed38e2283",
-   "translation": "1ae8a73ffcb2ba85",
+   "source": "f68ed9a8b5671532",
+   "translation": "232200b96bc9a63f",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.deployment_type.local_port.in_use": {
-   "source": "0b96ffc105b4eb58",
-   "translation": "0f8213b341c739f4",
+   "source": "867618338026ca0b",
+   "translation": "da3b08a59d10d41a",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.topic.deployment_type.local_port.taken": {
-   "source": "da971a0e2d26a2e0",
-   "translation": "f0231d8d54cc8008",
+   "source": "f735941008e313a2",
+   "translation": "24c08c5b9417ceab",
    "provenance": [
     "ai-generated",
     "ai-review"
    ]
   },
   "help.settings.access_integrations.local_port": {
-   "source": "f1b1a29303c6c29a",
-   "translation": "06b4cfe134118d11",
+   "source": "f91b8050d39e9911",
+   "translation": "226e3179e9dbbf9c",
    "provenance": [
     "ai-generated",
     "ai-review"

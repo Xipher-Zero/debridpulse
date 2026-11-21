@@ -390,7 +390,7 @@ async def test_same_host_credential_is_not_forgeable_by_editing_its_scope() -> N
         assert _status(await _connect(guard, "files.test:25", forged, password)) == 407
         exact = guard.job_options("ftp://files.test:2121/f.bin")
         assert _status(await _connect(guard, "files.test:30007", username, exact["all-proxy-passwd"])) == 407
-        assert _status(await _connect(guard, "files.test:30007", "debridpulse", password)) == 407
+        assert _status(await _connect(guard, "files.test:30007", "downloadpulse", password)) == 407
         assert _status(await _connect(guard, "files.test:30007", username, "")) == 407
     finally:
         await guard.stop()
@@ -458,10 +458,10 @@ async def test_default_scope_is_the_unchanged_exact_endpoint_credential(scheme, 
         uri = f"{scheme}://files.test/f.bin"
         default = guard.job_options(uri)
         assert default == guard.job_options(uri, scope=RouteScope.ENDPOINT)
-        assert default["all-proxy-user"] == "debridpulse"
+        assert default["all-proxy-user"] == "downloadpulse"
         assert default["all-proxy-passwd"] == guard._token("files.test", port)
         for family in ("http", "https", "ftp"):
-            assert default[f"{family}-proxy-user"] == "debridpulse"
+            assert default[f"{family}-proxy-user"] == "downloadpulse"
             assert default[f"{family}-proxy-passwd"] == default["all-proxy-passwd"]
     finally:
         await guard.stop()
@@ -497,7 +497,7 @@ async def test_same_host_scope_pins_every_per_protocol_proxy_to_the_guard() -> N
             assert options[f"{family}-proxy"] == proxy
             assert options[f"{family}-proxy-user"] == options["all-proxy-user"]
             assert options[f"{family}-proxy-passwd"] == options["all-proxy-passwd"]
-        assert options["all-proxy-user"] != "debridpulse"
+        assert options["all-proxy-user"] != "downloadpulse"
     finally:
         await guard.stop()
 
@@ -632,7 +632,7 @@ async def test_existing_in_process_consumers_still_report_a_silent_destination_a
 @pytest.mark.parametrize("scheme", ["http", "https", "ftp", "sftp"])
 async def test_aria2_reports_a_guard_timeout_or_refusal_exactly_like_a_policy_refusal(tmp_path, scheme) -> None:
     """The guard's distinct answers (502 refused, 504 timed out) never change
-    what a real aria2 job reports or how DebridPulse classifies it: aria2
+    what a real aria2 job reports or how DownloadPulse classifies it: aria2
     sees every non-200 CONNECT answer as the same proxy failure."""
     from executors.aria2.translation import native_failure
 
@@ -659,7 +659,7 @@ async def test_aria2_reports_a_guard_timeout_or_refusal_exactly_like_a_policy_re
     assert next(iter(verdicts.values()))[0] == "error"
 
 
-# ── one download budget: an aggregate rate, enforced by DebridPulse ──────────
+# ── one download budget: an aggregate rate, enforced by DownloadPulse ──────────
 
 async def test_a_download_budget_paces_every_consumer_together_and_follows_its_rate_live() -> None:
     from services.downloader_egress_guard import EgressBudget

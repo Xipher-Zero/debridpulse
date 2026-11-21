@@ -247,7 +247,7 @@ async def test_resume_and_startup_reconcile_race_admits_exactly_one_writer(runti
     )
     await engine.reconcile_executions()
     current = (await repository.artifacts(transfer.id))[0]
-    # Resume is one new writer planned from DebridPulse material -- never a
+    # Resume is one new writer planned from DownloadPulse material -- never a
     # native resume of the fenced one, and never two racing writers.
     assert current.execution is not None and current.execution != original
     assert len(await repository.executions(transfer.id)) == 2

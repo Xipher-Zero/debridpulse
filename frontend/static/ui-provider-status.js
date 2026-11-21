@@ -177,7 +177,7 @@
 
   // What was last drawn, so a language change draws it again (no request).
   let lastRender = null;
-  document.addEventListener('debridpulse:locale-changed', () => { if (lastRender) render(...lastRender); });
+  document.addEventListener('downloadpulse:locale-changed', () => { if (lastRender) render(...lastRender); });
 
   function render(entries, mode = 'ready') {
     const host = statusHost();
@@ -307,7 +307,7 @@
 
   function publish(entries, owned) {
     render(entries);
-    document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail:{entries:entries.slice(), generation:owned}}));
+    document.dispatchEvent(new CustomEvent('downloadpulse:provider-status', {detail:{entries:entries.slice(), generation:owned}}));
   }
 
   /* One generation owns one complete snapshot of every candidate. It is
@@ -346,7 +346,7 @@
   }
 
   // Provider status is administration: an account without it never observes.
-  if (!window.debridPulseAuth?.can('administer')) return;
+  if (!window.downloadPulseAuth?.can('administer')) return;
   window.DPProviderStatus = Object.freeze({refresh, invalidate, forget, candidates, aggregateState});
   render([], 'loading');
   const reobserve = () => refresh().catch(() => render([], 'unknown'));
@@ -356,6 +356,6 @@
   // missed such announcements. Neither carries a status -- each only asks this
   // owner to re-observe the canonical endpoints, under the same generation
   // guard as every other refresh.
-  document.addEventListener('debridpulse:integration-status-changed', reobserve);
-  document.addEventListener('debridpulse:pulse-connected', reobserve);
+  document.addEventListener('downloadpulse:integration-status-changed', reobserve);
+  document.addEventListener('downloadpulse:pulse-connected', reobserve);
 })();

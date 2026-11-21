@@ -1,35 +1,35 @@
 {
- "schema": "debridpulse-localization-nonlocalizable/1",
+ "schema": "downloadpulse-localization-nonlocalizable/1",
  "about": "Strings the census finds that must not be translated, each with the reason (reviewed with the candidate that listed it). Matched by owner and exact English. A server message (backend) is listed the same way when its raise names no code; the reason says where its words go instead.",
  "exempt": [
   {
    "owner": "frontend/static/index.html",
-   "english": "DebridPulse",
+   "english": "DownloadPulse",
    "reason": "Product name."
   },
   {
    "owner": "frontend/static/index.html",
-   "english": "Debrid<span>Pulse</span>",
+   "english": "Download<span>Pulse</span>",
    "reason": "Product name (the sidebar wordmark)."
   },
   {
    "owner": "frontend/static/app.js",
-   "english": "DebridPulse",
+   "english": "DownloadPulse",
    "reason": "Product name (the browser tab title while idle)."
   },
   {
    "owner": "frontend/static/index.html",
-   "english": "Open the DebridPulse changelog",
+   "english": "Open the DownloadPulse changelog",
    "reason": "#update-badge is never shown (a holdover; it carries no update information). Not removed here: unrelated to localization."
   },
   {
    "owner": "frontend/static/index.html",
-   "english": "<a href=\"https://github.com/Xipher-Zero/debridpulse/blob/main/CHANGELOG.md\" target=\"_blank\" rel=\"noopener\">📦 <span></span> available</a>",
+   "english": "<a href=\"https://github.com/Xipher-Zero/downloadpulse/blob/main/CHANGELOG.md\" target=\"_blank\" rel=\"noopener\">📦 <span></span> available</a>",
    "reason": "#update-badge is never shown (see above)."
   },
   {
    "owner": "frontend/static/app.js",
-   "english": "DebridPulse icon runtime is unavailable",
+   "english": "DownloadPulse icon runtime is unavailable",
    "reason": "Developer invariant: thrown only when operator-title.js failed to load; never shown."
   },
   {
@@ -64,7 +64,7 @@
   },
   {
    "owner": "frontend/static/ui-theme-bootstrap.js",
-   "english": "DebridPulse (Default)",
+   "english": "DownloadPulse (Default)",
    "reason": "The palette catalog's fallback data when the server sends none; the picker shows the native palette by its key (theme.palette.native)."
   },
   {
@@ -170,7 +170,7 @@
   {
    "owner": "frontend/static/ui-file-selection.js",
    "english": "file-selection",
-   "reason": "Machine reason in the debridpulse:detail-closed event detail; never shown."
+   "reason": "Machine reason in the downloadpulse:detail-closed event detail; never shown."
   },
   {
    "owner": "frontend/static/ui-group-candidates.js",
@@ -1424,7 +1424,7 @@
   },
   {
    "owner": "frontend/static/ui-settings-page.js",
-   "english": "DebridPulse",
+   "english": "DownloadPulse",
    "reason": "Product name used as the Discord webhook username placeholder: the value Discord shows when none is set, not interface words."
   },
   {
@@ -1459,7 +1459,7 @@
   },
   {
    "owner": "frontend/static/ui-settings-page.js",
-   "english": "https://id.example/application/o/debridpulse",
+   "english": "https://id.example/application/o/downloadpulse",
    "reason": "Example issuer URL in a field placeholder: a format sample, not words."
   },
   {
@@ -1710,7 +1710,7 @@
   {
    "owner": "backend/auth/oidc.py",
    "english": "missing JOSE header",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/auth/oidc.py",
@@ -1775,67 +1775,67 @@
   {
    "owner": "backend/auth/oidc_verification.py",
    "english": "OIDC verification requires a valid configuration fingerprint",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/auth/passwords.py",
    "english": "password must not be empty",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail. (Every caller refuses an empty password first, with `account.password_required`.)"
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail. (Every caller refuses an empty password first, with `account.password_required`.)"
   },
   {
    "owner": "backend/api/auth_routes.py",
    "english": "Frontend asset not found: {0}",
-   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/api/auth_routes.py",
    "english": "{0} holds content that cannot be drawn inline",
-   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/api/auth_routes.py",
    "english": "{0} cannot be inlined in a style element",
-   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Packaging fault of the server-rendered sign-in page (a missing or unsafe bundled asset): raised while the page is assembled, logged, and answered as a generic server error. Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/application/service.py",
    "english": "unknown advisory control {0}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/staged_input.py",
    "english": "staged input identity is not well formed",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/staged_input.py",
    "english": "staged input digest is not well formed",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/staged_input.py",
    "english": "staged input length is negative",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/staged_input.py",
    "english": "staged input reference is not an object",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/staged_input.py",
    "english": "staged input reference is incomplete",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/staged_input.py",
    "english": "staged input length does not match its reference",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/staged_input.py",
    "english": "staged input digest does not match its reference",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/core/config.py",
@@ -1865,22 +1865,22 @@
   {
    "owner": "backend/core/localization.py",
    "english": "messages and sources must be objects",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/core/localization.py",
    "english": "not an error code: {0}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/core/localization.py",
    "english": "error parameter {0} could carry a secret",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/core/localization.py",
    "english": "error parameter {0} is not a scalar",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/core/scheduler.py",
@@ -1889,7 +1889,7 @@
   },
   {
    "owner": "backend/main.py",
-   "english": "CORS_ORIGINS=* is refused: DebridPulse's CORS allows credentials, so a wildcard would let ",
+   "english": "CORS_ORIGINS=* is refused: DownloadPulse's CORS allows credentials, so a wildcard would let ",
    "reason": "Startup, migration or storage-integrity failure raised outside a request (logged; the process stops or retries). Never a response detail; operator-facing only in the server log, which stays English."
   },
   {
@@ -1900,12 +1900,12 @@
   {
    "owner": "backend/executors/aria2/definition.py",
    "english": "not an aria2 size",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail. (Its caller replaces it with the field's own range refusal.)"
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail. (Its caller replaces it with the field's own range refusal.)"
   },
   {
    "owner": "backend/executors/aria2/definition.py",
    "english": "aria2 log and session files are normalized absolute paths",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/api/routes.py",
@@ -1930,7 +1930,7 @@
   {
    "owner": "backend/application/lifetime.py",
    "english": "a pre-restore execution is still live",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/db/database.py",
@@ -1990,27 +1990,27 @@
   {
    "owner": "backend/db/event_journal.py",
    "english": "unknown event category {0}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/db/event_journal.py",
    "english": "event type {0} is not in category {1}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/db/event_journal.py",
    "english": "unknown event severity {0}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/db/event_journal.py",
    "english": "invalid event outcome {0}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/db/event_journal.py",
    "english": "invalid event subject kind {0}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/db/migrations/v112.py",
@@ -2070,132 +2070,132 @@
   {
    "owner": "backend/executors/aria2/admin.py",
    "english": "Execution is not owned by this application",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/executors/aria2/admin.py",
    "english": "Unsupported execution action",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/executors/aria2/client.py",
    "english": "aria2 system.multicall returned an invalid response",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/aria2/client.py",
    "english": "aria2 multicall {0} failed: ",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/aria2/client.py",
    "english": "aria2 multicall {0} returned an invalid result wrapper",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/aria2/client.py",
    "english": "Connection to aria2 lost: {0}",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/aria2/client.py",
    "english": "Transient connection error to aria2: {0}",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/aria2/client.py",
    "english": "Network error communicating with aria2: {0}",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/process_ownership.py",
    "english": "transient secret exceeds one pipe",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/executors/process_ownership.py",
    "english": "transient secret exceeds the pipe the system granted",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/executors/sabnzbd/admin.py",
    "english": "a configured server has no canonical identity",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB answered HTTP {0}",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB returned a non-JSON response",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB returned an unexpected response shape",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB reported an API error",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB rejected the request",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB response is missing its {0} section",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB {0} response has no usable slot list",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB is unreachable",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB did not return a native job identity",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "An exact history lookup needs a native id",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB did not apply the history id filter",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB's filtered history did not prove its scope",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/client.py",
    "english": "SAB did not report a usable effective speed limit",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/executor.py",
    "english": "SAB queue listing was not authoritative",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/executor.py",
    "english": "SAB absence not yet confirmed",
-   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DebridPulse cannot name its condition. Marked `unclassified` where it is a response detail."
+   "reason": "A managed service's or upstream's own words (aria2, SABnzbd, a provider, a mail/Discord endpoint), passed through as data; DownloadPulse cannot name its condition. Marked `unclassified` where it is a response detail."
   },
   {
    "owner": "backend/executors/sabnzbd/runtime.py",
@@ -2205,37 +2205,37 @@
   {
    "owner": "backend/integrations/account_entitlement.py",
    "english": "refresh and retry intervals must be positive",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/integrations/account_entitlement.py",
    "english": "account state is too large",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/integrations/account_entitlement.py",
    "english": "account state envelope is malformed",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/integrations/account_entitlement.py",
    "english": "account state contraction is malformed",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/integrations/catalog.py",
    "english": "Unsupported integration definition kind",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/integrations/configuration.py",
    "english": "Unknown integration group",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/integrations/configuration.py",
    "english": "Unknown integration secret clear request",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/integrations/runtime_state.py",
@@ -2325,87 +2325,87 @@
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "Unsafe ZIP member path: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "ZIP member escapes extraction directory: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "ZIP member traverses a symlink: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "ZIP directory replaces a symlink: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "ZIP file replaces a symlink: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "Cannot read RAR header for {0}: {1}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "RAR signature mismatch for {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "Unsupported 7-Zip input format: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "{0} could not safely inspect {1}: {2}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "{0} failed to extract {1}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "No 7z binary found (install 7zip in the container)",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "Safe RAR extraction requires a 7z-compatible binary",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/extractor.py",
    "english": "Unsupported archive format: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/secure.py",
    "english": "Safe .tar.zst extraction requires the zstd decoder",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/secure.py",
    "english": "zstd did not expose a decompression stream",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/secure.py",
    "english": "zstd could not decompress {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/postprocessors/archive/secure.py",
    "english": "Unsupported composite archive format: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/providers/alldebrid/account.py",
@@ -3245,37 +3245,37 @@
   {
    "owner": "backend/services/artifact_sampling.py",
    "english": "Malformed FTP reply",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/artifact_sampling.py",
    "english": "Truncated FTP reply",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/artifact_sampling.py",
    "english": "FTP arguments must be single-line text",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/artifact_sampling.py",
    "english": "FTP evidence needs a file path",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/artifact_sampling.py",
    "english": "unusable private key",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/backup.py",
    "english": "member larger than declared",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/backup.py",
    "english": "database is still in use",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/backup.py",
@@ -3309,12 +3309,12 @@
   },
   {
    "owner": "backend/services/downloader_egress_guard.py",
-   "english": "Invalid DebridPulse egress guard port",
+   "english": "Invalid DownloadPulse egress guard port",
    "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
   },
   {
    "owner": "backend/services/downloader_egress_guard.py",
-   "english": "DebridPulse egress guard failed to bind",
+   "english": "DownloadPulse egress guard failed to bind",
    "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
   },
   {
@@ -3324,7 +3324,7 @@
   },
   {
    "owner": "backend/services/downloader_egress_guard.py",
-   "english": "DebridPulse egress guard is not running",
+   "english": "DownloadPulse egress guard is not running",
    "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
   },
   {
@@ -3339,7 +3339,7 @@
   },
   {
    "owner": "backend/services/downloader_egress_guard.py",
-   "english": "DebridPulse egress guard refused the connection",
+   "english": "DownloadPulse egress guard refused the connection",
    "reason": "Download egress-guard refusal inside the managed downloader's proxy path: it ends the downloader's connection (the downloader's own error is translated into a NormalizedError, `error_category.<category>`) or is logged when the guard starts. Never a response detail."
   },
   {
@@ -3380,82 +3380,82 @@
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Unsafe archive member path: longer than the filesystem allows",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Unsafe archive member path: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Unsafe ZIP symlink member: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Unsafe TAR special/link member: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Invalid archive member size for {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Archive listing did not contain member metadata",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Extracted archive created a symlink: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Extracted archive created a special file: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Extracted path escapes staging directory: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Extracted archive created a hard link: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Extraction target escapes destination: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Extraction target traverses symlink: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Extraction directory collides with unsafe target: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/extraction_safety.py",
    "english": "Extraction would overwrite existing file: {0}",
-   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation for direction in the WS3e ledger."
+   "reason": "Archive-extraction refusal stored as the transfer's `extraction_error` text (Details, the extraction toast, Discord). Persisted English: a code needs an additive stored field (schema, backup and restore change), outside this candidate -- recorded as a limitation in docs/LOCALIZATION.md (Limits)."
   },
   {
    "owner": "backend/services/maintenance_gate.py",
    "english": "Application operation requires an asyncio task",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/maintenance_gate.py",
    "english": "Application maintenance requires an asyncio task",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/network_safety.py",
@@ -3520,42 +3520,42 @@
   {
    "owner": "backend/services/ssh_channel.py",
    "english": "channel material too large",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/ssh_channel.py",
    "english": "incomplete channel option",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/ssh_channel.py",
    "english": "channel descriptors missing",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/ssh_channel.py",
    "english": "incomplete login option",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/services/ssh_channel.py",
    "english": "unexpected channel host or empty command",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/_engine_base.py",
    "english": "_resolution_provider_group is implemented by transfers.engine.TransferEngine",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/_engine_base.py",
    "english": "_resolve is implemented by transfers.engine.TransferEngine",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/_engine_base.py",
    "english": "_observe_resource is implemented by transfers.engine.TransferEngine",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/_engine_base.py",
@@ -3565,22 +3565,22 @@
   {
    "owner": "backend/transfers/candidate_activation.py",
    "english": "activate_candidate requires the caller's real RecoveryClaim",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/codec.py",
    "english": "Transient input cannot be persisted",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/codec.py",
    "english": "Execution handle is not in the canonical layout",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/errors.py",
    "english": "Retry delay must be finite",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/input_required.py",
@@ -3625,177 +3625,177 @@
   {
    "owner": "backend/transfers/material.py",
    "english": "Material ranges are integer byte offsets",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/material.py",
    "english": "Material ranges must be non-negative half-open intervals",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Authentication field descriptors must be unique",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Unsupported authentication method",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Authentication method fields do not match the canonical contract",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Input fact names must be canonical",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Input fact values must be bounded printable text",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "An input authority is a credential-free absolute origin",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Unsupported input-required reason",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Authentication challenges require unique accepted methods",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Input challenge facts do not match the canonical reason contract",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Candidate materialization must be a canonical kind",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Accepted input methods must be unique canonical input methods",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Materialization plans require a canonical kind and a root",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Only a FILE plan names an exact target",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Executors must declare canonical materialization kinds",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Executors must declare canonical continuation capabilities, FULL_RESTART included",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Continuation alignment is a positive byte count",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "The minimum bandwidth ceiling is a positive byte rate",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/models.py",
    "english": "Execution work must belong to this execution attempt",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/recovery_repository.py",
    "english": "only a paused external hold is reinstated with its generation",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Provider must implement resolution and descriptor contracts",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Provider identity is missing or already registered",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Provider must declare resolution and supported request types",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Provider declares an unimplemented capability: {0}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Executor must implement the generalized execution contract",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Executor requires a unique identity",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Executor must declare neutral executor capabilities",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Executor declares an unimplemented capability: {0}",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Executor declares input-continued sampling without implementing it",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Executor declares boundary discovery without implementing it",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/registry.py",
    "english": "Executor declares native quiesce or private resume without per-execution pause",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/storage.py",
    "english": "StorageHealthError requires a hard storage state",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/transfers/storage.py",
    "english": "short storage probe write",
-   "reason": "Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "reason": "Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/api/settings_validation_routes.py",
-   "english": "Bundled DebridPulse legal documents are unavailable",
-   "reason": "Packaging fault (the bundled LICENSE/NOTICE files are missing): an uncaught error answered as a generic server error. Internal contract guard: an argument or state only DebridPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
+   "english": "Bundled DownloadPulse legal documents are unavailable",
+   "reason": "Packaging fault (the bundled LICENSE/NOTICE files are missing): an uncaught error answered as a generic server error. Internal contract guard: an argument or state only DownloadPulse's own code produces, not an operator-facing refusal. Where a response boundary ever forwards it, the response is marked `unclassified` (the explicit fallback) and the interface shows this English detail."
   },
   {
    "owner": "backend/external/service.py",
@@ -3845,12 +3845,12 @@
   {
    "owner": "frontend/static/ui-setup-wizard.js",
    "english": "Test First-Run Wizard",
-   "reason": "TEMPORARY development-only control (setup wizard WS3b, Test First-Run Wizard): operator-approved for refining the first-run pages and removed at the final wizard cleanup; never localized."
+   "reason": "TEMPORARY development-only control (setup wizard, Test First-Run Wizard): operator-approved for refining the first-run pages and removed at the final wizard cleanup; never localized."
   },
   {
    "owner": "frontend/static/ui-setup-wizard.js",
    "english": "Preview: nothing on these pages is saved. A provider's own Save, and its immediate actions such as Connect, Test and Enable, still take effect.",
-   "reason": "TEMPORARY development-only control (setup wizard WS3b, Test First-Run Wizard): operator-approved for refining the first-run pages and removed at the final wizard cleanup; never localized."
+   "reason": "TEMPORARY development-only control (setup wizard, Test First-Run Wizard): operator-approved for refining the first-run pages and removed at the final wizard cleanup; never localized."
   },
   {
    "owner": "backend/executors/media/netless.py",

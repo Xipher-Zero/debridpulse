@@ -1,4 +1,4 @@
-# aria2 is DebridPulse's own qualified package artifact (docs/SUPPLY_CHAIN_POLICY.md
+# aria2 is DownloadPulse's own qualified package artifact (docs/SUPPLY_CHAIN_POLICY.md
 # section 4a): Debian's aria2 1.37.0+debian-3 rebuilt by packaging/aria2/ with
 # the CONNECT exact-read patch and BitTorrent compiled out, built once per
 # architecture by the aria2 Package workflow and consumed here by its immutable
@@ -7,7 +7,7 @@
 # one feature verifier are taken from it.
 FROM ghcr.io/xipher-zero/debridpulse-aria2@sha256:3734be43479c98b54419f821509a8fe142eb2a7fae0812ca7ccc79fda1cb44e5 AS aria2-packages
 
-# FFmpeg is likewise DebridPulse's own qualified package artifact (section 4b):
+# FFmpeg is likewise DownloadPulse's own qualified package artifact (section 4b):
 # Debian's ffmpeg 7:7.1.5-0+deb13u1 source rebuilt by packaging/ffmpeg/ for
 # local stream copy only (file/pipe protocols, no encoder, device, network
 # protocol or external library), consumed by its multi-arch manifest DIGEST
@@ -20,10 +20,10 @@ WORKDIR /app
 
 ARG APP_VERSION=unknown
 ARG VCS_REF=unknown
-LABEL org.opencontainers.image.title="DebridPulse: Universal Transfer Manager"
+LABEL org.opencontainers.image.title="DownloadPulse: Universal Transfer Manager"
 LABEL org.opencontainers.image.version="${APP_VERSION}"
 LABEL org.opencontainers.image.description="Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines"
-LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/debridpulse"
+LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/downloadpulse"
 LABEL org.opencontainers.image.revision="${VCS_REF}"
 LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 
@@ -31,7 +31,7 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # Debian's RAR codec is in non-free and plugs into the 7zip `7z` binary.
 # zstd is the exact outer decoder for .tar.zst/.tzst composite archives.
 # rsync is the rsync executor's native client (rsync daemon and rsync over SSH;
-# the SSH transport is DebridPulse's own channel, so no OpenSSH client ships).
+# the SSH transport is DownloadPulse's own channel, so no OpenSSH client ships).
 # ffmpeg (ffmpeg, ffprobe) is the Media Downloads executor's one local lossless
 # finalizer: stream copy into the planned container (Matroska included), never
 # a re-encode, never a network input (its yt-dlp, yt-dlp-ejs and deno come from
@@ -41,7 +41,7 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # zz- prefix ensures these last-match-wins dpkg rules sort after the base image's
 # docker filter configuration.
 #
-# DP 1.0.12 leveling remediation (DEP-001): the base image is now pinned by
+# Leveling remediation (DEP-001): the base image is pinned by
 # verified multiarch manifest digest (see docs/SUPPLY_CHAIN_POLICY.md), so the
 # base filesystem candidate is fixed at build time -- a blanket `apt-get
 # upgrade` is deliberately NOT run here. Security freshness for the apt layer
@@ -80,14 +80,14 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 ARG ARIA2_PACKAGE_VERSION=1.37.0+debian-3+dp2
 ARG FFMPEG_PACKAGE_VERSION=7:7.1.5-0+deb13u1+dp1
 COPY --from=aria2-packages /packages/ /tmp/aria2/
-COPY --from=aria2-packages /VERSION /verify-features.sh /usr/share/debridpulse/aria2/
+COPY --from=aria2-packages /VERSION /verify-features.sh /usr/share/downloadpulse/aria2/
 COPY --from=ffmpeg-packages /packages/ /tmp/ffmpeg/
-COPY --from=ffmpeg-packages /VERSION /verify-features.sh /usr/share/debridpulse/ffmpeg/
+COPY --from=ffmpeg-packages /VERSION /verify-features.sh /usr/share/downloadpulse/ffmpeg/
 RUN printf '%s\n' \
       'path-include=/usr/share/doc/7zip-rar/copyright' \
       'path-include=/usr/share/doc/unrar/copyright' \
       'path-include=/usr/share/doc/7zip-rar/unRarLicense.txt' \
-      > /etc/dpkg/dpkg.cfg.d/zz-debridpulse-license-notices && \
+      > /etc/dpkg/dpkg.cfg.d/zz-downloadpulse-license-notices && \
     sed -ri 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources && \
     apt-get update && \
     apt-get install -y --no-install-recommends --only-upgrade \
@@ -113,10 +113,10 @@ RUN printf '%s\n' \
     unrar \
     7zip \
     7zip-rar && \
-    test "$(cat /usr/share/debridpulse/aria2/VERSION)" = "${ARIA2_PACKAGE_VERSION}" && \
-    bash /usr/share/debridpulse/aria2/verify-features.sh "${ARIA2_PACKAGE_VERSION}" && \
-    test "$(cat /usr/share/debridpulse/ffmpeg/VERSION)" = "${FFMPEG_PACKAGE_VERSION}" && \
-    bash /usr/share/debridpulse/ffmpeg/verify-features.sh "${FFMPEG_PACKAGE_VERSION}" && \
+    test "$(cat /usr/share/downloadpulse/aria2/VERSION)" = "${ARIA2_PACKAGE_VERSION}" && \
+    bash /usr/share/downloadpulse/aria2/verify-features.sh "${ARIA2_PACKAGE_VERSION}" && \
+    test "$(cat /usr/share/downloadpulse/ffmpeg/VERSION)" = "${FFMPEG_PACKAGE_VERSION}" && \
+    bash /usr/share/downloadpulse/ffmpeg/verify-features.sh "${FFMPEG_PACKAGE_VERSION}" && \
     rm -rf /var/lib/apt/lists/* /tmp/aria2 /tmp/ffmpeg
 
 # Python deps. DP 1.0.12 leveling remediation (DEP-001): requirements.txt is
@@ -135,10 +135,10 @@ RUN pip install --no-cache-dir --require-hashes -r requirements.txt
 
 # `par2` performs the posting's verification/repair. `unrar` is present only
 # because the service refuses to start acquiring without it ("Essential modules
-# are missing"); it is never invoked for DebridPulse work, which is always
+# are missing"); it is never invoked for DownloadPulse work, which is always
 # submitted repair-only and runs with the service's own unpackers disabled --
-# DebridPulse owns archive extraction.
-# The Usenet acquisition service (SABnzbd) is bundled as a DebridPulse-private
+# DownloadPulse owns archive extraction.
+# The Usenet acquisition service (SABnzbd) is bundled as a DownloadPulse-private
 # component: it binds loopback only, its port is never published, and its web
 # application is never exposed or proxied. Operators configure Usenet, never
 # this service. The version is pinned and its checksum verified.
@@ -189,7 +189,7 @@ RUN mkdir -p /app/data /app/data/usenet /app/config /download && \
 
 # The exact source revision this image was built from, read by the running
 # application's build identity (core.version.read_build_revision).
-ENV DEBRIDPULSE_BUILD_REVISION=${VCS_REF}
+ENV DOWNLOADPULSE_BUILD_REVISION=${VCS_REF}
 
 EXPOSE 8095
 

@@ -1,12 +1,12 @@
 # Neutral `INPUT_REQUIRED` lifecycle
 
-Roadmap Item 3 defines one universal nonterminal transfer condition for work that
-cannot continue until a user supplies transient input. The initial reason is
-`AUTH_REQUIRED`. Roadmap Item 4 adds the generic browser interaction that consumes
-that existing contract; it does not change the transfer-state model.
+This document defines one universal nonterminal transfer condition for work that
+cannot continue until a user supplies transient input. Its reasons include
+`AUTH_REQUIRED`. A generic browser interaction consumes that contract; it does not
+change the transfer-state model.
 
 `INPUT_REQUIRED` is not a provider state, executor state, retry state, failure,
-cancellation, or pause. The transfer remains the same logical DebridPulse
+cancellation, or pause. The transfer remains the same logical DownloadPulse
 transfer: its top-level ID, accepted requests, artifacts, destination ownership,
 and applicable attempt history remain intact while progress is suspended.
 Authentication refusal is translated to this neutral contract at an integration
@@ -79,7 +79,7 @@ submission. Local acceptance does not claim that the remote side will accept the
 key, that it belongs to the username, or that a passphrase is correct.
 
 A locally accepted key gives the control a green, textual **Key supplied** state.
-Green means only that private-key material was supplied to DebridPulse for this
+Green means only that private-key material was supplied to DownloadPulse for this
 attempt. It does **not** mean authenticated, authorized, verified, or remotely
 accepted. Clicking the selected-key control reopens the native picker so the key
 can be replaced. A failed replacement does not silently replace a previously
@@ -210,7 +210,7 @@ operator provider switch of another root of that transfer still commits (its
 pinned route opens and the root's earlier download is stopped), but that root
 resolves and downloads on the chosen provider only after the challenge is
 answered; until then it waits with nothing running. A switch of the challenged root itself is refused as busy. Other
-transfers are unaffected. This serialization is deliberate in 1.0.13.
+transfers are unaffected. This serialization is deliberate.
 
 Submitting input resolves only the missing-input condition. It does not override:
 
@@ -244,8 +244,8 @@ interaction rather than leaving an invisible challenge:
 
 `POST /api/torrents/{transfer_id}/cancel`
 
-## Current production use and deferred integrations
+## Current production use and limits
 
-The neutral lifecycle is now consumed by the current General HTTP & HTTPS path for qualified conventional HTTP resource username/password authentication. The browser also implements the neutral `username_private_key` method with an optional passphrase when a challenge advertises it; that capability is deliberately protocol-neutral and does **not** imply that SSH, SFTP, or SCP is a current production transport.
+The neutral lifecycle is consumed by the network sources that ask for input: the General HTTP & HTTPS path for conventional username/password authentication, and the SSH-based sources (SFTP through aria2; SCP and rsync through the rsync executor) for username/password sign-in and confirmation of the server's identity. The rsync executor also advertises the neutral `username_private_key` method, with an optional passphrase, which the browser implements protocol-neutrally.
 
-Still deferred are saved credentials, credential profiles/discovery, filesystem key discovery, SSH-agent integration, browser credential storage, persistent passphrases, a vault, and the later FTP/SCP/SFTP/SSH/rsync/provider work in deferred roadmap Items 12–16. Those integrations must consume this same challenge contract rather than add protocol-specific authentication UI or move secrets into durable storage.
+Not implemented are saved credentials, credential profiles/discovery, filesystem key discovery, SSH-agent integration, browser credential storage, persistent passphrases and a vault. Any integration that needs transient input must consume this same challenge contract rather than add protocol-specific authentication UI or move secrets into durable storage.

@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "zh-Hant",
  "register": "Traditional Chinese (Taiwan software usage). Traditional characters only, Taiwan standard forms (台/臺 as in common Taiwan usage, 裡, 為, 著). Help prose and messages are neutral, polite written Chinese addressing the reader as 您 where address is needed; buttons and menu commands use the short verb or verb-object forms standard in Taiwan software (儲存, 取消, 刪除, 重試); headings and labels use nouns. Full-width punctuation (，。、：；！？（）) and Taiwan-style quotation marks 「」 (『』 nested) in Chinese text; half-width for Latin literals, numbers and units; no space between Chinese and Latin words or numbers, consistently. Taiwan IT vocabulary (伺服器, 使用者, 資料夾, 網路, 設定, 預設, 資訊, 檔案, 程式).",
  "terms": {

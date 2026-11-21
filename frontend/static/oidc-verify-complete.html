@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title data-i18n="settings.oidc.complete_title">OIDC verification · DebridPulse</title>
+<title data-i18n="settings.oidc.complete_title">OIDC verification · DownloadPulse</title>
 <style>
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -24,7 +24,7 @@ p { margin:0;color:#c2bdd6;font-size:13px;line-height:1.55; }
 (() => {
   'use strict';
   const payload = {
-    type: 'debridpulse-oidc-verification',
+    type: 'downloadpulse-oidc-verification',
     ok: true,
     message: 'OIDC verification successful — provider sign-in and authorization completed.',
     // The opener says the outcome from its catalog, in the shown language.
@@ -44,7 +44,7 @@ p { margin:0;color:#c2bdd6;font-size:13px;line-height:1.55; }
 
   try {
     if ('BroadcastChannel' in window) {
-      const channel = new BroadcastChannel('debridpulse-oidc-verification');
+      const channel = new BroadcastChannel('downloadpulse-oidc-verification');
       channel.postMessage(payload);
       window.setTimeout(() => channel.close(), 250);
     }

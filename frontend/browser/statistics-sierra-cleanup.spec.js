@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test');
  * whole-number count ticks, Transfer Methods as the server names them, and
  * Events Severity in its fixed order. */
 
-const PREF_KEY = 'debridpulse.downloads.date-presentation.v1';
+const PREF_KEY = 'downloadpulse.downloads.date-presentation.v1';
 const bucket = (date, count) => ({date, count, premium: 0, network: 0, unattributed: count});
 const PERIODS = {
   '1h': [bucket('09:05', 1), bucket('14:06', 2)],

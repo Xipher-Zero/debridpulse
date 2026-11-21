@@ -54,7 +54,7 @@ def test_lucide_runtime_is_single_semantic_glyph_authority_without_global_replac
     assert "window.DPIcons.renderThemeGlyph(!!isLight);" in app
 
 
-def test_transfer_status_mapping_matches_debridpulse_semantics() -> None:
+def test_transfer_status_mapping_matches_downloadpulse_semantics() -> None:
     from i18n_node import english
 
     shell = SHELL_RUNTIME.read_text(encoding="utf-8")

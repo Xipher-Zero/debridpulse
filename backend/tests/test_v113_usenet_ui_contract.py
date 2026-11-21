@@ -328,7 +328,7 @@ def test_tuning_headers_have_centred_neutral_explanatory_text():
     # DP 1.0.13 consolidation: operator-facing flavour text, in the SAME
     # de-emphasised titlebar treatment the Download Behavior & Limits header
     # uses -- one declaration, two users, never a second heading style.
-    assert says(panel, "How DebridPulse handles downloads from direct network sources.")
+    assert says(panel, "How DownloadPulse handles downloads from direct network sources.")
     assert says(panel, "Global download behavior shared by all Usenet servers.")
     assert "dp-settings-download-engine-header-copy" in SETTINGS[
         SETTINGS.index("function executorTuningCard("):SETTINGS.index("function directTransfersTuning(")]
@@ -366,7 +366,7 @@ def test_usenet_tuning_exposes_no_queue_or_concurrency_setting():
     controls |= set(re.findall(r"selectField\('([a-z0-9_]+)'", block))
     # DP 1.0.13 work item F widened this card to the approved acquisition
     # controls. What it may NEVER hold is a second owner for something
-    # DebridPulse already owns globally.
+    # DownloadPulse already owns globally.
     assert controls == {
         "usenet_operation_timeout_seconds",
         "usenet_article_cache_megabytes",

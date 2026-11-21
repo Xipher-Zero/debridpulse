@@ -3,7 +3,7 @@ build-input hardening contract.
 
 Source-level assertions against the Dockerfile, the runtime Python lock, and
 the supply-chain policy document. Does not build the image or touch a
-registry -- Fork Image / Container Security / Candidate Runtime
+registry -- Image / Container Security / Candidate Runtime
 Qualification remain the authority for the actual built artifact (see
 docs/SUPPLY_CHAIN_POLICY.md).
 """
@@ -162,8 +162,8 @@ def _step(workflow: str, name: str) -> str:
     return workflow[start:] if following == -1 else workflow[start:following]
 
 
-def test_fork_image_workflow_publishes_only_the_full_sha_tag():
-    workflow = _workflow("fork-image.yml")
+def test_image_workflow_publishes_only_the_full_sha_tag():
+    workflow = _workflow("image.yml")
     # Exactly one tag rule, and it is the full source SHA -- never a truncation.
     assert workflow.count("type=raw,value=sha-${{ github.sha }}") == 2
     assert "type=sha" not in workflow
@@ -177,8 +177,8 @@ def test_fork_image_workflow_publishes_only_the_full_sha_tag():
     assert '":latest"' in workflow and '":v"' in workflow
 
 
-def test_fork_image_checks_for_an_existing_candidate_before_publishing():
-    workflow = _workflow("fork-image.yml")
+def test_image_checks_for_an_existing_candidate_before_publishing():
+    workflow = _workflow("image.yml")
     check = workflow.index("- name: Check for an existing candidate for this source SHA")
     build = workflow.index("- name: Build and publish")
     assert check < build, "the existence check must precede the build/push step"
@@ -196,8 +196,8 @@ def test_fork_image_checks_for_an_existing_candidate_before_publishing():
     assert workflow.count("push: true") == 1
 
 
-def test_fork_image_reuses_a_valid_existing_candidate_without_overwriting_it():
-    workflow = _workflow("fork-image.yml")
+def test_image_reuses_a_valid_existing_candidate_without_overwriting_it():
+    workflow = _workflow("image.yml")
     existing = _step(workflow, "Check for an existing candidate for this source SHA")
     assert 'echo "exists=true" >> "$GITHUB_OUTPUT"' in existing
     assert 'echo "digest=$digest" >> "$GITHUB_OUTPUT"' in existing
@@ -217,8 +217,8 @@ def test_fork_image_reuses_a_valid_existing_candidate_without_overwriting_it():
     assert "steps.publish.outputs.digest" not in verify
 
 
-def test_fork_image_fails_closed_when_an_existing_tag_records_another_revision():
-    workflow = _workflow("fork-image.yml")
+def test_image_fails_closed_when_an_existing_tag_records_another_revision():
+    workflow = _workflow("image.yml")
     existing = _step(workflow, "Check for an existing candidate for this source SHA")
     assert 'existing_revision" != "$GITHUB_SHA"' in existing
     assert "refusing to reuse or overwrite" in existing
@@ -228,11 +228,11 @@ def test_fork_image_fails_closed_when_an_existing_tag_records_another_revision()
     assert 'for arch in amd64 arm64' in existing
 
 
-def test_fork_image_serializes_runs_for_the_same_source_sha():
-    workflow = _workflow("fork-image.yml")
+def test_image_serializes_runs_for_the_same_source_sha():
+    workflow = _workflow("image.yml")
     head = workflow[:workflow.index("\njobs:")]
     assert "concurrency:" in head
-    assert "group: fork-image-${{ github.sha }}" in head
+    assert "group: image-${{ github.sha }}" in head
     # Never cancel a publication that is already in flight.
     assert "cancel-in-progress: false" in head
     assert "cancel-in-progress: true" not in workflow
@@ -240,7 +240,7 @@ def test_fork_image_serializes_runs_for_the_same_source_sha():
 
 def test_no_candidate_consumer_or_promotion_step_truncates_the_source_sha():
     for name in (
-        "fork-image.yml",
+        "image.yml",
         "container-security.yml",
         "candidate-runtime-qualification.yml",
         "release-promotion.yml",

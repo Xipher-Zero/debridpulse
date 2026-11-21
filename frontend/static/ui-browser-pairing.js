@@ -1,4 +1,4 @@
-/* DebridPulse browser-pairing approval owner (WS-S1).
+/* DownloadPulse browser-pairing approval owner (WS-S1).
  *
  * The ONE owner of the "Connect a browser" dialog. A browser extension that
  * asks to connect opens this server at `/?connect-browser=<code>`; signing in
@@ -36,7 +36,7 @@
   }
 
   async function answer(method, path, body) {
-    const response = await window.debridPulseAuth.fetch(path, {
+    const response = await window.downloadPulseAuth.fetch(path, {
       method, headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
       body: body === undefined ? undefined : JSON.stringify(body)});
     let data = null;
@@ -64,7 +64,7 @@
 
   async function ask(code) {
     const modal = window.DPSettingsModal;
-    if (!window.debridPulseAuth.can('browsers.own')) { tell('browser.pairing.not_permitted'); return; }
+    if (!window.downloadPulseAuth.can('browsers.own')) { tell('browser.pairing.not_permitted'); return; }
     const shown = await answer('GET', `/api/account/browser-pairings/${encodeURIComponent(code)}`);
     if (!shown.ok || !shown.data) {
       modal.open({title: said('browser.pairing.title'), dismiss: true, className: 'dp-browser-pairing-dialog',
@@ -127,7 +127,7 @@
 
   function start() {
     const code = takeCode();
-    if (!code || !window.DPSettingsModal || !window.debridPulseAuth) return;
+    if (!code || !window.DPSettingsModal || !window.downloadPulseAuth) return;
     void ask(code);
   }
 

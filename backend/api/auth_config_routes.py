@@ -61,7 +61,7 @@ from core.localization import code_of, disclosed, fact
 
 
 router = APIRouter()
-logger = logging.getLogger("debridpulse.auth")
+logger = logging.getLogger("downloadpulse.auth")
 
 
 class OidcVerificationRequest(BaseModel):
@@ -346,7 +346,7 @@ def _oidc_verification_failure_page(*, status_code: int) -> HTMLResponse:
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title data-i18n="settings.oidc.complete_title">OIDC verification · DebridPulse</title>
+<title data-i18n="settings.oidc.complete_title">OIDC verification · DownloadPulse</title>
 <style>
 :root { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -367,7 +367,7 @@ p { margin:0;color:#c2bdd6;font-size:13px;line-height:1.55; }
 (() => {
   'use strict';
   const payload = {
-    type: 'debridpulse-oidc-verification',
+    type: 'downloadpulse-oidc-verification',
     ok: false,
     message: 'OIDC verification failed — provider sign-in or authorization did not complete successfully.',
     // The opener says the outcome from its catalog, in the shown language.
@@ -384,7 +384,7 @@ p { margin:0;color:#c2bdd6;font-size:13px;line-height:1.55; }
   } catch (_) {}
   try {
     if ('BroadcastChannel' in window) {
-      const channel = new BroadcastChannel('debridpulse-oidc-verification');
+      const channel = new BroadcastChannel('downloadpulse-oidc-verification');
       channel.postMessage(payload);
       window.setTimeout(() => channel.close(), 250);
     }
@@ -639,7 +639,7 @@ async def change_deployment_type(request: Request, change: DeploymentTypeChange)
         current = get_settings()
         if current.deployment_type == target:
             return JSONResponse(
-                {"detail": f"DebridPulse is already {_DEPLOYMENT_LABELS[target]}; nothing was changed", "code": "deployment.unchanged", "params": {"type": fact(target)}},
+                {"detail": f"DownloadPulse is already {_DEPLOYMENT_LABELS[target]}; nothing was changed", "code": "deployment.unchanged", "params": {"type": fact(target)}},
                 status_code=409)
         clean = validate_and_sanitise(current.model_copy(
             update={"deployment_type": target, "auth_password_enabled": False, "auth_oidc_enabled": False},
@@ -685,7 +685,7 @@ async def verify_pending_oidc_configuration(
     if principal is None or not getattr(principal, "authenticated", False):
         return JSONResponse({"detail": "Authentication required", "code": "auth.required", "params": {}}, status_code=401)
     if standalone_deployment(get_settings()):
-        return JSONResponse({"detail": "OpenID Connect cannot be enabled while DebridPulse is Standalone", "code": "oidc.standalone", "params": {}},
+        return JSONResponse({"detail": "OpenID Connect cannot be enabled while DownloadPulse is Standalone", "code": "oidc.standalone", "params": {}},
                             status_code=409)
     if not oidc_verify_rate_limiter.allow(peer_key(request)):
         return JSONResponse(

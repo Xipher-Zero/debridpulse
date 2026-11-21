@@ -63,7 +63,7 @@ from services import account_appearance
 
 
 router = APIRouter()
-logger = logging.getLogger("debridpulse.auth")
+logger = logging.getLogger("downloadpulse.auth")
 
 
 # The login page remains server-rendered and self-contained. The only executable
@@ -110,7 +110,7 @@ _AUTH_PAGE_STYLE = """
 /* An alternative palette (ui-theme-palettes.css, inlined with it) gives the
    page's shared names (--bg, --text, --accent, --accent2, --border ...) its
    own; these are the page's other decorative names, from the same core. The
-   error material and --danger keep DebridPulse's meaning. */
+   error material and --danger keep DownloadPulse's meaning. */
 body[data-dp-palette] {
   --card:color-mix(in srgb,var(--dp-surface-1) 55%,transparent);--card2:color-mix(in srgb,var(--dp-bg-app) 40%,transparent);
   --card-edge:color-mix(in srgb,var(--dp-accent-purple) 42%,transparent);
@@ -308,7 +308,7 @@ _BRAND_PULSE_HTML = f"""<svg class="brand-pulse" viewBox="0 0 600 120" aria-hidd
 
 # The sign-in was genuine but its account may not sign in: it is disabled or
 # deleted.
-_NOT_OPERATIONAL = "login.error.not_operational"   # "This account cannot sign in to DebridPulse."
+_NOT_OPERATIONAL = "login.error.not_operational"   # "This account cannot sign in to DownloadPulse."
 
 
 def _session_lifetime_seconds(cfg) -> int:
@@ -343,7 +343,7 @@ def _logo_svg(prefix: str, *, class_name: str = "") -> str:
     """The product logo for drawing inline: ``logo.svg``, its one geometry
     source, so ``ui-logo.css`` gives it the colours of the theme in force.
     Its ids are prefixed, so another inline copy cannot capture its
-    gradients. Beside the DebridPulse wordmark (or a labelled host) it is
+    gradients. Beside the DownloadPulse wordmark (or a labelled host) it is
     decorative: hidden from assistive technology, without its title or
     description, which would also draw a native tooltip."""
     return _inline_svg(_static_asset("logo.svg"), prefix, class_name=class_name)
@@ -430,7 +430,7 @@ def _auth_csp(*, allow_form: bool) -> str:
 
 async def _login_appearance() -> dict:
     """The installation's login appearance (``account_appearance.login``: its
-    one row and nothing else), or DebridPulse Dark for this response when it
+    one row and nothing else), or DownloadPulse Dark for this response when it
     cannot be read in time; sign-in never waits on it."""
     try:
         return await asyncio.wait_for(account_appearance.login(), _APPEARANCE_READ_SECONDS)
@@ -563,7 +563,7 @@ async def _login_page(
         controls.append(f'<p class="muted auth-only-message">{_text("login.not_required", locale)}</p>')
 
     interactive_controls = "\n".join(controls)
-    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">{_text("login.subtitle", locale)}</div><span class="sr-only">{_text("login.secure_access", locale)}</span></div>
+    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Download<span>Pulse</span></div><div class="brand-sub">{_text("login.subtitle", locale)}</div><span class="sr-only">{_text("login.secure_access", locale)}</span></div>
   {error_html}
   {interactive_controls}
   <div class="foot"><span class="foot-icon">{_LUCIDE_SHIELD}</span><div>{_text("login.foot.http", locale)}<br>{_text("login.foot.https", locale, https='<span class="https">HTTPS</span>')}</div></div>"""
@@ -583,7 +583,7 @@ async def _state_free_auth_page(
 ) -> HTMLResponse:
     """Render an authentication error without allocating browser challenge
     state. ``message`` is the catalog key of the error to show."""
-    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Debrid<span>Pulse</span></div><div class="brand-sub">{_text("login.unavailable", locale)}</div><span class="sr-only">{_text("login.secure_access", locale)}</span></div>
+    card = f"""  <div class="brand-lockup">{_BRAND_PULSE_HTML}{_AUTH_MARK_HTML}<div class="brand">Download<span>Pulse</span></div><div class="brand-sub">{_text("login.unavailable", locale)}</div><span class="sr-only">{_text("login.secure_access", locale)}</span></div>
   <div class="error" role="alert">{_text(message, locale)}</div>
   <a class="auth-action secondary" href="/login"><span>{_text("login.return", locale)}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>"""
     response = HTMLResponse(
@@ -705,8 +705,8 @@ async def application_javascript_bundle(request: Request):
     authority = json.dumps(_authority(principal), separators=(",", ":"))
     presentation = json.dumps(await _presentation(principal), separators=(",", ":"))
     response = Response(
-        content=(f"window.debridPulseAuthority=Object.freeze({authority});\n"
-                 f"window.debridPulsePresentation=Object.freeze({presentation});\n{auth_js}\n;\n{app_js}"),
+        content=(f"window.downloadPulseAuthority=Object.freeze({authority});\n"
+                 f"window.downloadPulsePresentation=Object.freeze({presentation});\n{auth_js}\n;\n{app_js}"),
         media_type="application/javascript",
     )
     response.headers["Cache-Control"] = "no-store"
@@ -810,14 +810,14 @@ async def theme_bootstrap_script(request: Request):
     (``_appearance``), so the first paint already has the account's mode and
     palette -- no native-dark frame for a Light account, and no other
     account's or browser's choice. It is per-request and never stored. The
-    product logo's one source comes with it (``window.debridPulseLogo``), so
+    product logo's one source comes with it (``window.downloadPulseLogo``), so
     the sidebar draws it inline, in the theme in force, at first paint; so
-    does the sidebar's signal field (``window.debridPulseSignalField``). The
-    page's language comes with it too (``window.debridPulseLocale``,
+    does the sidebar's signal field (``window.downloadPulseSignalField``). The
+    page's language comes with it too (``window.downloadPulseLocale``,
     ``_locale``): the next script, ``ui-i18n.js``, reads it before the body is
     parsed, so a page in another language never shows English first. Whether
     this is the installed desktop application comes with it too
-    (``window.debridPulseDesktop``): ``ui-desktop-start.js`` shows its starting
+    (``window.downloadPulseDesktop``): ``ui-desktop-start.js`` shows its starting
     cover from the first paint only there."""
     principal = getattr(request.state, "principal", Principal.anonymous())
     appearance = json.dumps(await _appearance(principal), separators=(",", ":"))
@@ -826,10 +826,10 @@ async def theme_bootstrap_script(request: Request):
     logo = json.dumps(_APP_LOGO_SVG).replace("<", "\\u003c")
     field = json.dumps(_SIGNAL_FIELD_SVG).replace("<", "\\u003c")
     response = Response(
-        content=(f"window.debridPulseLogo={logo};\nwindow.debridPulseSignalField={field};\n"
-                 f"window.debridPulseAppearance=Object.freeze({appearance});\n"
-                 f"window.debridPulseLocale=Object.freeze({locale});\n"
-                 f"window.debridPulseDesktop={'true' if desktop_installation() else 'false'};\n{script}"),
+        content=(f"window.downloadPulseLogo={logo};\nwindow.downloadPulseSignalField={field};\n"
+                 f"window.downloadPulseAppearance=Object.freeze({appearance});\n"
+                 f"window.downloadPulseLocale=Object.freeze({locale});\n"
+                 f"window.downloadPulseDesktop={'true' if desktop_installation() else 'false'};\n{script}"),
         media_type="application/javascript",
     )
     response.headers["Cache-Control"] = "no-store"

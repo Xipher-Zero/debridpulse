@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "pt-BR",
  "register": "Brazilian Portuguese. Buttons and menu commands use the infinitive (Salvar, Cancelar, Excluir); headings and labels use nouns. Help prefers impersonal constructions and addresses the reader as 'você' where an address is needed. Brazilian spelling and vocabulary (arquivo, tela, usuário, senha, registro, contato; gerund for ongoing states: Baixando). Established English loan words where Brazilian IT usage is settled (download, backup, token, webhook).",
  "terms": {

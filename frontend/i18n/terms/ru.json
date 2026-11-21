@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "ru",
  "register": "Russian. Formal 'вы' (lower case) wherever the reader is addressed. Buttons and menu commands use the infinitive standard in Russian software (Сохранить, Отменить, Удалить, Повторить); headings and labels use nouns. Correct case, gender and number agreement; Russian typography («…» quotes, ё where standard). Established IT loan words only where Russian usage is settled (токен, вебхук, сервер). This catalog is Russian only: it is not a source or variant of the Ukrainian catalog.",
  "terms": {

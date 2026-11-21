@@ -1,4 +1,4 @@
-"""DebridPulse's server side of localization.
+"""DownloadPulse's server side of localization.
 
 The interface's messages live in one place, the catalogs under
 ``frontend/static/i18n`` (``manifest.json`` names every locale; ``en.json`` is
@@ -44,7 +44,7 @@ secret (``_safe_params`` refuses secret-named or non-scalar values).
 
 Pseudo locales (``en-XA``, ``ar-XB``) are developer test locales, never
 offered: an account may hold one only where the installation runs with
-``DEBRIDPULSE_I18N_TEST_LOCALES=1`` (the isolated test instances). That
+``DOWNLOADPULSE_I18N_TEST_LOCALES=1`` (the isolated test instances). That
 setting admits nothing else: tests of a supported target point ``STATIC_DIR``
 at a synthetic catalog directory instead.
 """
@@ -63,7 +63,7 @@ from fastapi import HTTPException
 from core.logging_utils import sanitize_log_value
 
 DEFAULT_LOCALE = "en"
-TEST_LOCALES_ENV = "DEBRIDPULSE_I18N_TEST_LOCALES"
+TEST_LOCALES_ENV = "DOWNLOADPULSE_I18N_TEST_LOCALES"
 
 logger = logging.getLogger(__name__)
 

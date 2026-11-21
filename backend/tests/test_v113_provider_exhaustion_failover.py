@@ -398,7 +398,7 @@ async def test_operator_retry_begins_a_new_campaign_that_reconsiders_every_provi
 @pytest.mark.parametrize("ownership, cleaned", [
     (Ownership.CREATED, True), (Ownership.ADOPTED, True), (Ownership.OBSERVED, False),
 ])
-async def test_handoff_cleans_up_only_what_debridpulse_positively_owns(tmp_path, monkeypatch, ownership, cleaned):
+async def test_handoff_cleans_up_only_what_downloadpulse_positively_owns(tmp_path, monkeypatch, ownership, cleaned):
     first, second = RouteLab("alpha-route"), RouteLab("beta-route")
     first.script = [ownership]
     repository, engine = await lab(tmp_path, monkeypatch, first, second)

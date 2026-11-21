@@ -12,7 +12,7 @@ export const {IntlMessageFormat} = await import('data:text/javascript;base64,' +
 
 export const RICH_TAGS = new Set(['b', 'strong', 'em', 'i', 'code', 'kbd']);
 export const TYPE = {LITERAL: 0, ARGUMENT: 1, NUMBER: 2, DATE: 3, TIME: 4, SELECT: 5, PLURAL: 6, POUND: 7, TAG: 8};
-// The counts every plural is shown at (task WS5: 0 1 2 3 5 11 21 101 and a fraction).
+// The counts every plural is shown at (0 1 2 3 5 11 21 101 and a fraction).
 export const COUNTS = [0, 1, 2, 3, 5, 11, 21, 101, 1.5];
 const OTHER = 'other';                 // a select value no case names
 const formatLocale = tag => (tag.endsWith('-XA') || tag.endsWith('-XB') ? 'en' : tag);

@@ -1,7 +1,7 @@
 // @ts-check
 const {test, expect} = require('@playwright/test');
 
-/* DebridPulse 1.0.14 localization, WS3d: Settings administration and
+/* DownloadPulse 1.0.14 localization, WS3d: Settings administration and
  * integrations -- Authentication, Users & Access, Notifications and Data &
  * Maintenance -- say every word through the catalog, and a live language
  * change re-says them in place: an unsaved credential keeps its value, the
@@ -16,9 +16,9 @@ const {test, expect} = require('@playwright/test');
 
 // Proper names, example values and what the server wrote (a backup's
 // contents, "DP State", is the server's description of it).
-const NAMES = ['DP State', 'DebridPulse', 'Discord', 'OpenID Connect', 'OIDC', 'Sonarr', 'Radarr', 'qBittorrent', 'Usenet',
+const NAMES = ['DP State', 'DownloadPulse', 'Discord', 'OpenID Connect', 'OIDC', 'Sonarr', 'Radarr', 'qBittorrent', 'Usenet',
   'openid profile email', 'operator', 'groups',
-  'https://download.example.com', 'https://id.example/application/o/debridpulse', 'https://example.com/avatar.png'];
+  'https://download.example.com', 'https://id.example/application/o/downloadpulse', 'https://example.com/avatar.png'];
 
 // The installation's own data, shown as it is: account names, usernames and
 // emails, token labels, delivery profile IDs, categories and paths.
@@ -312,11 +312,11 @@ test('L12-WS3d: an open restore or remove confirmation formats its backup date a
   await manager.locator('[data-backup-remove]').click();
   const remove = page.locator('.dp-modal-dialog[data-tone="danger"]');
   const sentence = remove.locator('.dp-modal-message');
-  await expect(sentence).toHaveText(`${expected.en} will be permanently removed from DebridPulse backup storage.`);
+  await expect(sentence).toHaveText(`${expected.en} will be permanently removed from DownloadPulse backup storage.`);
   for (const [locale, words] of [['de', expected.de], ['en', expected.en]]) {
     await setLocale(page, locale);
     await settle(page);
-    await expect(sentence).toHaveText(`${words} will be permanently removed from DebridPulse backup storage.`);
+    await expect(sentence).toHaveText(`${words} will be permanently removed from DownloadPulse backup storage.`);
     await expect(remove).toHaveAttribute('data-tone', 'danger');
   }
   await remove.locator('[data-modal-cancel]').last().click();

@@ -29,7 +29,7 @@ async def test_unknown_size_http_progress_advances_live_then_completes_normally(
     assert artifact.candidates[0].expected_bytes == 0
     assert artifact.expected_bytes == 10
     # DP 1.0.13: the executor's own byte count is not progress; completion is
-    # DebridPulse-valid material over the accepted denominator (none yet).
+    # DownloadPulse-valid material over the accepted denominator (none yet).
     assert (await repository.get(transfer.id)).progress == 0.0
 
     executor.jobs[artifact.execution.attempt_id] = replace(

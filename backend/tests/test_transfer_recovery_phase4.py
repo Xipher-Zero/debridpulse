@@ -22,7 +22,7 @@ MANDATORY_PHASE4_SCENARIOS = (
     "tls_receive_decode", "connection_reset", "premature_eof", "read_timeout",
     "connect_timeout", "dns_failure", "http_429", "http_500", "http_503",
     "expired_signed_url", "provider_candidate_refresh", "aria2_restart",
-    "debridpulse_restart", "network_interruption", "pause_during_backoff",
+    "downloadpulse_restart", "network_interruption", "pause_during_backoff",
     "resume_after_pause", "provider_disable_active", "provider_disable_backoff",
     "provider_reenable", "storage_unavailable", "one_child_complete_sibling_failures",
     "unknown_executor_failure", "repeated_zero_progress", "repeated_meaningful_progress",
@@ -192,7 +192,7 @@ async def test_retained_progress_survives_failed_gid_and_recovery_quiescence(run
     assert current.target == target
     presentation = await repository.presentation(transfer.id, details=True)
     file_view = next(item for item in presentation["files"] if item["id"] == artifact.id)
-    # DP 1.0.13: retained progress is DebridPulse-valid material only. The
+    # DP 1.0.13: retained progress is DownloadPulse-valid material only. The
     # failed writer's own byte count (2 of 4, no exported material) proves
     # nothing reusable, so nothing is shown as retained or complete.
     assert presentation["retained_bytes"] == 0 and presentation["progress"] == 0

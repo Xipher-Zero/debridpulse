@@ -48,7 +48,7 @@ def test_the_trays_words_follow_a_chosen_language_and_ignore_an_unknown_one(tmp_
     assert words.tag == "en" and words.choose("en") is False
     assert words.choose("de") is True and words.tag == "de"
     german = supervisor.tray_menu(status, words)
-    assert german != english and "DebridPulse beenden" in repr(german)
+    assert german != english and "DownloadPulse beenden" in repr(german)
     assert words.choose("de") is False                                          # no change, no redraw
     assert words.choose("xx-unknown") is False and words.tag == "de"
     assert words.choose(None) is False and words.tag == "de"
@@ -69,6 +69,6 @@ def test_the_macos_application_menu_is_drawn_in_the_chosen_language(tmp_path):
     config = tmp_path / "config.json"
     config.write_text("{}", encoding="utf-8")
     words = supervisor.Words(config)
-    assert supervisor.main_menu(words)[0]["menuItems"][0]["text"] == "Quit DebridPulse"
+    assert supervisor.main_menu(words)[0]["menuItems"][0]["text"] == "Quit DownloadPulse"
     assert words.choose("de")
-    assert supervisor.main_menu(words)[0]["menuItems"][0]["text"] == "DebridPulse beenden"
+    assert supervisor.main_menu(words)[0]["menuItems"][0]["text"] == "DownloadPulse beenden"

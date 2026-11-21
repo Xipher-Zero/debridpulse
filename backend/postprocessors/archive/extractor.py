@@ -729,7 +729,7 @@ class Extractor:
                     (
                         archive,
                         False,
-                        f"Archive path is not accessible to DebridPulse: {archive}",
+                        f"Archive path is not accessible to DownloadPulse: {archive}",
                     )
                 )
 

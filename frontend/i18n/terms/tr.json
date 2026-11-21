@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "tr",
  "register": "Turkish. The reader is addressed with the formal 'siz' (verb forms -in/-ın, -iniz) or impersonal forms (-ebilirsiniz, yapılabilir); never 'sen'. Buttons and menu commands use the short imperative standard in Turkish software (Kaydet, İptal, Sil, Kaldır, Yeniden dene); headings and labels use nouns. Correct vowel harmony and consonant mutation in every suffix; dotted İ/i and dotless I/ı are distinct letters (İndir, İptal, Sıfırla). Suffixes are never attached directly to a {placeholder} whose final sound is unknown; the sentence is built so the placeholder needs no suffix. Turkish typography (“…” quotes). Established IT loan words only where Turkish usage is settled (token, webhook, sunucu, API).",
  "terms": {

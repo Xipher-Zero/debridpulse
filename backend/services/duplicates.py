@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from db.database import get_db
-logger = logging.getLogger("debridpulse.duplicates")
+logger = logging.getLogger("downloadpulse.duplicates")
 
 # ── Sentinel status values that indicate an active or completed entry ──────────
 _ACTIVE_STATUSES = frozenset({

@@ -238,7 +238,7 @@ test('Case C: pending-manifest click shows the approved informational copy, no t
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
   await expect(page.locator('#modal-title')).toHaveText('File list not available yet');
   await expect(page.locator('#modal-body')).toContainText(
-    'DebridPulse is still waiting for the file list for this download. ' +
+    'DownloadPulse is still waiting for the file list for this download. ' +
     'The transfer will continue preparing in the background. Try again shortly.');
   await expect(page.locator('.dp-fs-tree')).toHaveCount(0);
   await expect(page.locator('#modal-footer')).toBeHidden();
@@ -375,7 +375,7 @@ test('Case I (converse): a generic candidate-capable row never gains a file-sele
 });
 
 // ── Case J: stale projection auto-clears on the backend's semantic transition ──
-// TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+// TASK_DownloadPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
 // Section 7/14.1 -- the stale "Choose File" affordance must disappear from the
 // list/card projection AND an already-open Details panel the moment the
 // backend's manifest-commit boundary is crossed and the semantic
@@ -443,7 +443,7 @@ test('Case J (progress-only): a progress-only torrent_updated never forces an op
 });
 
 // ── Case K: obsolete torrent-list Now control is removed ───────────────────
-// TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+// TASK_DownloadPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
 // Section 13/14.4 -- the obsolete "Now" / download-priority row action is
 // removed at the canonical row-renderer source (no CSS-hide, no disabled
 // ghost, no replacement), while every other row action is preserved.

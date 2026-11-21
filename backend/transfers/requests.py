@@ -22,7 +22,7 @@ from core.localization import CodedValueError, fact
 
 
 class TorrentMetainfoRejected(ValueError):
-    """A ``.torrent`` metainfo DebridPulse does not accept, with an
+    """A ``.torrent`` metainfo DownloadPulse does not accept, with an
     operator-actionable message."""
 
 
@@ -85,7 +85,7 @@ def _raw_info(data: bytes) -> bytes:
 class TorrentIdentity:
     """A validated torrent metainfo: its v1 info-hash -- SHA-1 over the
     ``info`` dictionary's original encoded bytes -- whether it is a hybrid
-    (v1 + v2) torrent, whose v1 side is what DebridPulse uses, and the
+    (v1 + v2) torrent, whose v1 side is what DownloadPulse uses, and the
     torrent's own declared ``info.name`` when that is one safe, strict UTF-8
     name (``None`` otherwise: no naming authority)."""
     info_hash: str
@@ -96,7 +96,7 @@ class TorrentIdentity:
 
 def torrent_identity(data: bytes) -> TorrentIdentity:
     """THE validation of an uploaded ``.torrent``: raises
-    :class:`TorrentMetainfoRejected` for anything DebridPulse cannot identify.
+    :class:`TorrentMetainfoRejected` for anything DownloadPulse cannot identify.
 
     The info-hash is SHA-1 over the ``info`` value's original bytes. The
     strict decoder refuses non-canonical encodings (unsorted or duplicate

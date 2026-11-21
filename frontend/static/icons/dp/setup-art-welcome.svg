@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 600" preserveAspectRatio="xMidYMid slice" fill="none" stroke="#000" stroke-linecap="round" stroke-linejoin="round">
-  <!-- Setup wizard body scene, Welcome: many acquisition sources routed into DebridPulse as it comes online. Line art; a mask that the theme colours. -->
+  <!-- Setup wizard body scene, Welcome: many acquisition sources routed into DownloadPulse as it comes online. Line art; a mask that the theme colours. -->
   <circle cx="54" cy="64" r="30" stroke-width="1.6"/>
   <path d="M54 34 C36 52 36 76 54 94 C72 76 72 52 54 34" stroke-width="1.1" stroke-opacity="0.8"/>
   <path d="M24 64 L84 64" stroke-width="1.1" stroke-opacity="0.8"/>

@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.12 universal file-selection modal presentation.
+/* DownloadPulse v1.0.12 universal file-selection modal presentation.
  * Consumes the shared #overlay / #modal shell and the canonical dp-card
  * primitives. Owns only the file-tree, summary, footer, and Details entry
  * point composition. Theme-aware through the semantic --dp-* tokens.

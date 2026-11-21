@@ -228,7 +228,7 @@ class ConfigurableIntegration(Protocol):
     out-of-core implementation before the integration is operational.
 
     "Out-of-core" is about the transfer core, not about ownership: such a
-    service may be an operator-run endpoint or one DebridPulse bundles, starts
+    service may be an operator-run endpoint or one DownloadPulse bundles, starts
     and owns outright. The seam is identical either way, which is why nothing
     here names a service or assumes who runs it.
 
@@ -238,7 +238,7 @@ class ConfigurableIntegration(Protocol):
 
     The invariant is ONE-WAY AUTHORITY, not operator-only invocation:
 
-        DebridPulse canonical desired state -> native integration service
+        DownloadPulse canonical desired state -> native integration service
 
     and never the reverse. Service-side state is never imported back as
     canonical configuration, and this is not a synchronization loop.

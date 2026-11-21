@@ -1,16 +1,16 @@
-"""The ports of DebridPulse's private loopback listeners.
+"""The ports of DownloadPulse's private loopback listeners.
 
-DebridPulse runs listeners only it talks to -- the downloader egress guard and
+DownloadPulse runs listeners only it talks to -- the downloader egress guard and
 the services executors run for themselves (a native daemon's RPC, a bundled
 acquisition service). Each prefers its usual port, but a port is never
-DebridPulse's to reserve: another program on the same computer (a person's own
-download daemon, a second DebridPulse, a development server) may already
+DownloadPulse's to reserve: another program on the same computer (a person's own
+download daemon, a second DownloadPulse, a development server) may already
 listen on it. A taken port must not stop an executor, so each listener takes
 its usual port when it is free and otherwise one the operating system
 chooses, and says so. Every deployment follows the same rule; a container's
 own network almost always leaves the usual ports free.
 
-Nothing outside DebridPulse depends on these ports: the address in use is read
+Nothing outside DownloadPulse depends on these ports: the address in use is read
 from whoever owns the listener, never assumed. A port people configure for
 others to reach (the desktop application's Local Port) is not one of these: it
 is never moved silently.
@@ -21,7 +21,7 @@ import errno
 import logging
 import socket
 
-logger = logging.getLogger("debridpulse.ports")
+logger = logging.getLogger("downloadpulse.ports")
 
 LOOPBACK = "127.0.0.1"
 

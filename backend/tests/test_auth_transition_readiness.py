@@ -105,7 +105,7 @@ async def test_password_clear_intent_cannot_count_simultaneous_plaintext_as_fall
     current = _settings(
         auth_password_enabled=True,
         auth_oidc_enabled=True,
-        oidc_issuer_url="https://id.example/application/o/debridpulse",
+        oidc_issuer_url="https://id.example/application/o/downloadpulse",
         oidc_client_id="client",
         oidc_allow_all=True,
         public_base_url="https://pulse.example",
@@ -131,8 +131,8 @@ async def test_password_clear_intent_cannot_count_simultaneous_plaintext_as_fall
 async def test_dedicated_settings_cannot_enable_deny_everyone_oidc_as_only_auth():
     payload = {
         "auth_oidc_enabled": True,
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
-        "oidc_client_id": "debridpulse-client",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
+        "oidc_client_id": "downloadpulse-client",
         "public_base_url": "https://pulse.example",
         "oidc_allow_all": False,
         "oidc_allowed_subjects": [],
@@ -153,10 +153,10 @@ async def test_dedicated_settings_cannot_enable_deny_everyone_oidc_as_only_auth(
 async def test_open_mode_requires_password_fallback_before_first_oidc_only_mode():
     payload = {
         "auth_oidc_enabled": True,
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
-        "oidc_client_id": "debridpulse-client",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
+        "oidc_client_id": "downloadpulse-client",
         "public_base_url": "https://pulse.example",
-        "oidc_allowed_groups": ["debridpulse-operators"],
+        "oidc_allowed_groups": ["downloadpulse-operators"],
     }
     response = await settings_transition_rejection(
         _request(payload),
@@ -175,10 +175,10 @@ async def test_open_mode_can_enable_password_fallback_and_oidc_together():
         "auth_username": "operator",
         "auth_password": "temporary-secret",
         "auth_oidc_enabled": True,
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
-        "oidc_client_id": "debridpulse-client",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
+        "oidc_client_id": "downloadpulse-client",
         "public_base_url": "https://pulse.example",
-        "oidc_allowed_groups": ["debridpulse-operators"],
+        "oidc_allowed_groups": ["downloadpulse-operators"],
     }
     # In open mode the request acts as the standalone default Admin, whose own
     # password this same request sets.

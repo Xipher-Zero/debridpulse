@@ -144,7 +144,7 @@ def test_status_words_follow_the_presentation_vocabulary():
     # engine/service state being confirmed, not a question for the user.
     assert '"unknown": ("unknown", "Awaiting confirmation", "unknown")' in _source(
         "backend/transfers/presentation_repository.py")
-    assert "<b>Awaiting confirmation:</b> DebridPulse is confirming the download's real state" in how
+    assert "<b>Awaiting confirmation:</b> DownloadPulse is confirming the download's real state" in how
     assert "<b>Input Required, Awaiting confirmation:</b>" not in how
 
 
@@ -175,7 +175,7 @@ def test_report_destination_and_snapshot_semantics():
     assert reporting_destination(SimpleNamespace(stats_report_webhook_url="", discord_webhook_url="https://d")) == "https://d"
     settings = _panel("settingsPanel")
     assert "They go only to <b>Reporting Webhook</b>, or to the Primary Webhook when that is empty" in settings
-    assert "never to DebridPulse's users" in settings
+    assert "never to DownloadPulse's users" in settings
     # No browser surface reads the stored snapshots.
     assert not any("/stats/snapshots" in path.read_text(encoding="utf-8") for path in STATIC.glob("*.js"))
     assert "not currently viewable in the interface" in settings
@@ -231,4 +231,4 @@ def test_terminology_and_scope_stay_current():
     for future in ("browser plugin", "browser extension", "easy mode", "advanced mode"):
         assert future not in lowered, future
     assert HELP.count("a new installation opens the Setup Wizard") == 2   # Server and Standalone
-    assert "window.debridPulseAuth?.presentation?.context?.()" in HELP
+    assert "window.downloadPulseAuth?.presentation?.context?.()" in HELP

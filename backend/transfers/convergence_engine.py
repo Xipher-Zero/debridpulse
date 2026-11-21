@@ -2600,7 +2600,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 )
 
     async def pause(self, transfer_id: int, *, holder: str | None = None):
-        """DebridPulse Pause: durable pause intent, then every writer of the
+        """DownloadPulse Pause: durable pause intent, then every writer of the
         transfer through the one writer retirement (quiesce, forced
         checkpoint, fence). Afterwards no writer may make acquisition
         progress and the artifacts' material is exactly what was committed.

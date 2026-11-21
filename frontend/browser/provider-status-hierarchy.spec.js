@@ -222,7 +222,7 @@ test('each tier label is horizontally centred within the status region', async (
   // Headings show beneath a shown premium account; publish one and measure in
   // the same task.
   const geometry = await page.evaluate(until => {
-    document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: [
+    document.dispatchEvent(new CustomEvent('downloadpulse:provider-status', {detail: {entries: [
       {id: 'alldebrid', name: 'AllDebrid', state: 'healthy', status: {account: {entitlement: 'ready',
         service_class: 'premium', functional: 'usable', plan: 'Premium', expires_at: until}}}]}}));
     return Array.from(document.querySelectorAll('#provider-status-list .dp-provider-status-tier')).map(tier => {
@@ -280,7 +280,7 @@ const rdAccount = () => ({id: 'realdebrid', name: 'Real-Debrid', state: 'healthy
   status: {account: account('premium', EXPIRY())}});
 
 const compose = (page, entries) => page.evaluate(next => {
-  document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: next}}));
+  document.dispatchEvent(new CustomEvent('downloadpulse:provider-status', {detail: {entries: next}}));
   const footer = document.querySelector('#sidebar .sidebar-footer');
   const row = document.getElementById('premium-row');
   const label = document.getElementById('lbl-premium');
@@ -432,7 +432,7 @@ test('the heading still folds away when Network Sources is the sole standard con
 
 /* Only a functionally healthy premium account contributes to the crown. */
 const crowned = (page, entries) => page.evaluate(next => {
-  document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: next}}));
+  document.dispatchEvent(new CustomEvent('downloadpulse:provider-status', {detail: {entries: next}}));
   const row = document.getElementById('premium-row');
   return {visible: !!row && row.getClientRects().length > 0,
           blocks: [...document.querySelectorAll('#lbl-premium .dp-provider-premium-account')].map(block => block.textContent)};
@@ -493,9 +493,9 @@ test('premium lapsing and returning moves tier and crown with no provider-specif
   expect(shown.crown).toMatch(/^TorBox Pro until [A-Z][a-z]{2} \d{1,2}(?:, \d{4})?\(\d+ days remaining\)$/);
   expect(shown.flow.slice(0, 2)).toEqual(['CROWN', '# Premium Services']);
 
-  // Premium ends while DebridPulse runs: the backend announces it, the panel re-observes.
+  // Premium ends while DownloadPulse runs: the backend announces it, the panel re-observes.
   await liveStatus(page, {state: 'healthy', account: account('standard', null, 'Free', 'degraded')});
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:integration-status-changed')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:integration-status-changed')));
   await expect.poll(async () => (await panel(page)).torbox?.state).toBe('degraded');
   shown = await panel(page);
   expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['Usenet']);
@@ -505,7 +505,7 @@ test('premium lapsing and returning moves tier and crown with no provider-specif
 
   // Renewed: the same composition restores tier, crown and green.
   await liveStatus(page, {state: 'healthy', account: account('premium', days(60), 'Pro')});
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:integration-status-changed')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:integration-status-changed')));
   await expect.poll(async () => (await panel(page)).torbox?.state).toBe('healthy');
   shown = await panel(page);
   expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['TorBox', 'Usenet']);

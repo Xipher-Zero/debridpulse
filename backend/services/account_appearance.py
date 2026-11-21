@@ -5,13 +5,13 @@ Three independent choices, durably keyed by the internal account ID
 browser or OIDC subject: the interface mode, the palette chosen for Dark mode
 and the palette chosen for Light mode. Choosing one never sets or constrains
 another. An account without a record has the native appearance: Dark mode,
-DebridPulse Dark, and DebridPulse Light for Light mode.
+DownloadPulse Dark, and DownloadPulse Light for Light mode.
 
 The catalog -- each mode's palettes, in picker order, with their labels -- is
 ``CATALOG`` here, the one authority: the interface receives it with its
 first-paint script (``api.auth_routes.theme_bootstrap_script``) and this
 module accepts exactly its IDs. The first palette of each mode is its native
-DebridPulse palette. A stored ID the catalog no longer holds (a retired
+DownloadPulse palette. A stored ID the catalog no longer holds (a retired
 palette) reads as that mode's native palette and is never rewritten by a read.
 
 While interactive sign-in is off on a Server installation there is no
@@ -60,7 +60,7 @@ publications serialize, and the last to commit is the one the page shows.
 Once written the value is the installation's: it names no account, and
 nothing an account later does -- signing in, choosing a theme, its demotion,
 removal or merge -- changes it. The anonymous page reads that one row and
-nothing else (``login``). Without one it is DebridPulse Dark.
+nothing else (``login``). Without one it is DownloadPulse Dark.
 """
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ from core.localization import CodedValueError
 
 CATALOG = {
     "dark": (
-        ("debridpulse-dark", "DebridPulse (Default)"),
+        ("downloadpulse-dark", "DownloadPulse (Default)"),
         ("catppuccin-mocha", "Catppuccin Mocha"),
         ("dracula", "Dracula"),
         ("gruvbox-dark", "Gruvbox Dark"),
@@ -85,7 +85,7 @@ CATALOG = {
         ("oxocarbon-dark", "Oxocarbon Dark"),
     ),
     "light": (
-        ("debridpulse-light", "DebridPulse (Default)"),
+        ("downloadpulse-light", "DownloadPulse (Default)"),
         ("catppuccin-latte", "Catppuccin Latte"),
         ("nord-light", "Nord Light"),
         ("gruvbox-light", "Gruvbox Light"),
@@ -453,7 +453,7 @@ async def set_default_locale(tag: str) -> dict:
 
 def public(row) -> dict:
     """The sign-in page's appearance from its stored row: a known mode and a
-    palette of that mode. No row, or an unknown mode, is DebridPulse Dark; a
+    palette of that mode. No row, or an unknown mode, is DownloadPulse Dark; a
     palette the catalog no longer holds is that mode's native palette."""
     if row is None or row["mode"] not in PALETTES:
         return {"mode": DEFAULT["mode"], "palette": DEFAULT["dark_palette"]}

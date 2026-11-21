@@ -1,4 +1,4 @@
-"""Connection-boundary egress guard for DebridPulse-owned downloads.
+"""Connection-boundary egress guard for DownloadPulse-owned downloads.
 
 Download URLs retain their original hostname all the way through aria2 so HTTPS
 SNI and certificate hostname verification remain end-to-end.  Each owned aria2
@@ -9,7 +9,7 @@ gets a second opportunity to resolve the provider hostname for the target
 connection.
 
 aria2 reaches the guard over loopback; the guard listens on loopback only.  Its
-port is controlled by DEBRIDPULSE_EGRESS_GUARD_PORT.
+port is controlled by DOWNLOADPULSE_EGRESS_GUARD_PORT.
 
 Each job credential is signed for one route scope. ``RouteScope.ENDPOINT`` (the
 default) admits exactly the authorized hostname and port. ``RouteScope.SAME_HOST``
@@ -68,12 +68,12 @@ from services.network_safety import PUBLIC_DESTINATION_SCHEMES, default_destinat
 from services.network_safety import validate_provider_download_url
 from services.network_safety import private_lan_address, reject_non_public_resolution
 
-logger = logging.getLogger("debridpulse.downloader_egress_guard")
+logger = logging.getLogger("downloadpulse.downloader_egress_guard")
 
 # aria2's per-protocol proxy preferences, which take precedence over --all-proxy.
 _PER_PROTOCOL_PROXY_PREFERENCES = ("http", "https", "ftp")
 
-_PROXY_USER = "debridpulse"
+_PROXY_USER = "downloadpulse"
 _LOOPBACK = "127.0.0.1"
 # Lowest port a same-host scope admits besides the authorized one. Servers
 # select passive data ports from their unprivileged range; privileged service
@@ -170,7 +170,7 @@ class EgressBudget:
     """One live download byte-rate budget shared by every relayed connection
     whose route names it (``0`` = unlimited).
 
-    It enforces a rate it is given and owns no policy: DebridPulse's one
+    It enforces a rate it is given and owns no policy: DownloadPulse's one
     aggregate owner (``transfers.runtime_coordination``) assigns an executor
     its share, and the executor sets it here. Pacing is on bytes delivered
     from the destination, so the sum over every connection of the budget never
@@ -296,7 +296,7 @@ def _connect_blocking(tunnel: socket.socket, guard: tuple, request: bytes, timeo
         tunnel.settimeout(max(0.001, deadline - time.monotonic()))
         chunk = tunnel.recv(1)
         if not chunk or len(answer) >= 1024:
-            raise PermissionError("DebridPulse egress guard refused the connection")
+            raise PermissionError("DownloadPulse egress guard refused the connection")
         answer += chunk
     return answer
 
@@ -348,14 +348,14 @@ class DownloaderEgressGuard:
         raw = (
             self._configured_port
             if self._configured_port is not None
-            else os.getenv("DEBRIDPULSE_EGRESS_GUARD_PORT", "6811")
+            else os.getenv("DOWNLOADPULSE_EGRESS_GUARD_PORT", "6811")
         )
         try:
             port = int(raw)
         except (TypeError, ValueError) as exc:
-            raise RuntimeError("Invalid DebridPulse egress guard port") from exc
+            raise RuntimeError("Invalid DownloadPulse egress guard port") from exc
         if port < 0 or port > 65535:
-            raise RuntimeError("Invalid DebridPulse egress guard port")
+            raise RuntimeError("Invalid DownloadPulse egress guard port")
         return port
 
     async def ensure_started(self) -> None:
@@ -392,7 +392,7 @@ class DownloaderEgressGuard:
                 self._server.close()
                 await self._server.wait_closed()
                 self._server = None
-                raise RuntimeError("DebridPulse egress guard failed to bind")
+                raise RuntimeError("DownloadPulse egress guard failed to bind")
             self._bound_port = int(sockets[0].getsockname()[1])
             logger.info("Downloader egress guard listening on %s:%s", host, self._bound_port)
 
@@ -514,7 +514,7 @@ class DownloaderEgressGuard:
 
     def _proxy_url(self) -> str:
         if self._server is None or self._bound_port <= 0:
-            raise RuntimeError("DebridPulse egress guard is not running")
+            raise RuntimeError("DownloadPulse egress guard is not running")
         return f"http://{_LOOPBACK}:{self._bound_port}"
 
     def job_options(self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT,
@@ -631,7 +631,7 @@ class DownloaderEgressGuard:
                                        budget)
         server = self._server
         if server is None or not server.sockets:
-            raise RuntimeError("DebridPulse egress guard is not running")
+            raise RuntimeError("DownloadPulse egress guard is not running")
         listener = server.sockets[0].getsockname()
         family = server.sockets[0].family
         address = listener[0]
@@ -662,7 +662,7 @@ class DownloaderEgressGuard:
                     while not answer.endswith(b"\r\n\r\n"):
                         chunk = await loop.sock_recv(tunnel, 1)
                         if not chunk or len(answer) >= 1024:
-                            raise PermissionError("DebridPulse egress guard refused the connection")
+                            raise PermissionError("DownloadPulse egress guard refused the connection")
                         answer += chunk
         except BaseException:
             tunnel.close()
@@ -673,7 +673,7 @@ class DownloaderEgressGuard:
                 raise TunnelTargetRefused("The server refused the connection")
             if answer.startswith(b"HTTP/1.1 504 "):
                 raise TunnelTargetTimeout("The server did not answer in time")
-            raise PermissionError("DebridPulse egress guard refused the connection")
+            raise PermissionError("DownloadPulse egress guard refused the connection")
         return tunnel
 
     async def _resolve(self, host: str, port: int) -> list[tuple]:
@@ -812,7 +812,7 @@ class DownloaderEgressGuard:
             if admitted is None:
                 writer.write(
                     b"HTTP/1.1 407 Proxy Authentication Required\r\n"
-                    b"Proxy-Authenticate: Basic realm=\"DebridPulse\"\r\n"
+                    b"Proxy-Authenticate: Basic realm=\"DownloadPulse\"\r\n"
                     b"Connection: close\r\n\r\n"
                 )
                 await writer.drain()
@@ -840,7 +840,7 @@ class DownloaderEgressGuard:
                 # Proxy-Status (RFC 9209) says the refusal is this guard's own,
                 # so a client can never mistake it for the origin's answer.
                 writer.write(b"HTTP/1.1 403 Forbidden\r\n"
-                             b"Proxy-Status: debridpulse; error=destination_ip_prohibited\r\n"
+                             b"Proxy-Status: downloadpulse; error=destination_ip_prohibited\r\n"
                              b"Connection: close\r\n\r\n")
                 await writer.drain()
                 return

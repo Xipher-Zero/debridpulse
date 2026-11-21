@@ -406,7 +406,7 @@ async def test_p3_8_a_hard_backup_failure_ends_only_that_backup(tmp_path, monkey
 async def test_a_backup_whose_first_observation_failed_stays_owned_observed_and_cleaned_up(tmp_path, monkeypatch):
     """TB1 on the standby path: TorBox answered the created torrent's id, then
     its first observation was not readable (transfer 524's invalid JSON). The
-    backup is still bound -- the torrent is DebridPulse's, unready, never
+    backup is still bound -- the torrent is DownloadPulse's, unready, never
     fabricated ready -- so the ordinary backup observation sees it next, no
     second one is created, and removal cleans it up."""
     from providers.torbox.client import TorBoxProtocolError

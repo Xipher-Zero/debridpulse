@@ -52,7 +52,7 @@ def pw_error(header: str, code_line: str, *, call_log: str = "waiting for locato
     }
 
 
-def pw_doc(cases: list[tuple[str, str, dict | None]], *, root: str = "/home/runner/work/debridpulse/debridpulse/frontend/browser") -> dict:
+def pw_doc(cases: list[tuple[str, str, dict | None]], *, root: str = "/home/runner/work/downloadpulse/downloadpulse/frontend/browser") -> dict:
     """cases: (spec file, title, error-or-None)."""
     suites: dict[str, dict] = {}
     for file, title, error in cases:
@@ -480,7 +480,7 @@ def test_the_runtime_layer_runs_against_the_supported_rsync_and_nothing_skips() 
 
 
 def test_the_runtime_layer_runs_aria2_built_by_the_package_image_s_one_script() -> None:
-    """The runtime layer exercises the aria2 DebridPulse ships: the runner's own
+    """The runtime layer exercises the aria2 DownloadPulse ships: the runner's own
     aria2 source rebuilt by the ONE build script the package image uses (the
     CONNECT exact-read patch, BitTorrent compiled out, +dp2), qualified by the
     same feature verifier before any test runs."""
@@ -862,7 +862,7 @@ def test_resolve_anchor_cli_exit_codes(repo) -> None:
 # Normalization: volatile noise only.
 # --------------------------------------------------------------------------------------
 def test_normalization_removes_only_volatile_noise() -> None:
-    a = ("Error: expect(locator).toBeChecked() failed at /home/runner/work/debridpulse/debridpulse/frontend/browser/x.spec.js:272:3 "
+    a = ("Error: expect(locator).toBeChecked() failed at /home/runner/work/downloadpulse/downloadpulse/frontend/browser/x.spec.js:272:3 "
          "http://127.0.0.1:8081/api/settings 2026-09-19T05:44:15.5805Z run_id: 35413335456 "
          "id 20670d5cec91443e84b9af12e1505182 sha " + "a" * 40 + " tmp /tmp/claude-1000/x/scratchpad/pristine/out.png")
     b = ("Error: expect(locator).toBeChecked() failed at /tmp/qualification/anchor-src/frontend/browser/x.spec.js:280:9 "

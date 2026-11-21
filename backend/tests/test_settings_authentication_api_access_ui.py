@@ -40,7 +40,7 @@ def test_integration_token_disclosure_is_one_time_and_never_page_state():
     assert "state." not in issue
     assert "data-setting" not in issue and "data-commit" not in issue
     assert "readonly" in issue
-    assert says(issue, "Copy this token now. DebridPulse will not display it again.")
+    assert says(issue, "Copy this token now. DownloadPulse will not display it again.")
     assert "embeddedActionField(" in issue
     assert "request('POST', `/accounts/${encodeURIComponent(account.id)}/tokens`" in issue
 

@@ -2,7 +2,7 @@
 
 Small committed media for the Media Downloads finalization tests
 (`tests/test_v113_media_downloads_runtime.py`). They are committed rather than
-synthesized at test time because DebridPulse's FFmpeg (`packaging/ffmpeg/`)
+synthesized at test time because DownloadPulse's FFmpeg (`packaging/ffmpeg/`)
 has no encoder by design. Generated once with a full FFmpeg build:
 
 ```sh

@@ -45,9 +45,9 @@ async function open(browser, options = {}) {
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
-  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id)
+  await page.waitForFunction(() => Boolean(window.downloadPulseAuth?.authority?.account_id)
     && typeof window.nav === 'function' && typeof window.loadSettings === 'function');
-  const self = await page.evaluate(() => window.debridPulseAuth.authority.account_id);
+  const self = await page.evaluate(() => window.downloadPulseAuth.authority.account_id);
   const accounts = (options.accounts || directory)(self, options);
   page.__accounts = accounts;
   await page.route(url => url.pathname.startsWith('/api/'), route => {
@@ -303,7 +303,7 @@ test('the operator\'s narrow table: every row as tall as an Edit row, the notice
     for (const id of ['acct-builtin', null, 'acct-a']) {
       const off = await page.evaluate(id => {
         const row = id ? document.querySelector(`tr[data-account-row="${id}"]`)
-          : document.querySelector(`tr[data-account-row="${window.debridPulseAuth.authority.account_id}"]`);
+          : document.querySelector(`tr[data-account-row="${window.downloadPulseAuth.authority.account_id}"]`);
         const actions = row.lastElementChild.querySelector(':scope > .dp-settings-users-actions > *');
         const r = row.getBoundingClientRect(), a = actions.getBoundingClientRect();
         return {off: Math.abs((a.top + a.bottom) / 2 - (r.top + r.bottom) / 2), controls: row.lastElementChild.querySelectorAll('button').length};

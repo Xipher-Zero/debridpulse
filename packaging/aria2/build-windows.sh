@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# DebridPulse's aria2 for Windows x64 (docs/SUPPLY_CHAIN_POLICY.md section 4a):
-# the same Debian aria2 source package, with Debian's patches and DebridPulse's
+# DownloadPulse's aria2 for Windows x64 (docs/SUPPLY_CHAIN_POLICY.md section 4a):
+# the same Debian aria2 source package, with Debian's patches and DownloadPulse's
 # connect-tunnel-exact-read.patch, configured without BitTorrent, as upstream's
 # own mingw-config builds it: TLS is Windows' own (WinTLS/SChannel, the system
 # certificate store); SFTP is libssh2 on OpenSSL's libcrypto, the backend
 # Debian's libssh2 uses, so aria2 verifies the same host key types (ECDSA,
 # Ed25519, RSA) as on Linux -- libssh2's Windows CNG backend has no Ed25519 and,
-# by default, no ECDSA, and would negotiate an RSA key DebridPulse's evidence
+# by default, no ECDSA, and would negotiate an RSA key DownloadPulse's evidence
 # never confirmed (refused: "Unexpected SSH host key"). Every library is
 # Debian's signed source package built static with Debian's mingw-w64
 # toolchain -- so aria2c.exe needs only DLLs every Windows has. Not built in:
 # sqlite3, which aria2 uses only to import a browser's cookie database
-# (--load-cookies of a Firefox/Chromium file), which DebridPulse never does.
+# (--load-cookies of a Firefox/Chromium file), which DownloadPulse never does.
 #
 # Usage: build-windows.sh <work-dir> <out-dir>
 #   ARIA2_SOURCE_VERSION  exact aria2 source version to fetch (as build-package.sh)
 # Produces <out-dir>/bin/aria2c.exe, <out-dir>/source/ (every Debian source
-# package as fetched + both DebridPulse aria2 files + this script), the
+# package as fetched + both DownloadPulse aria2 files + this script), the
 # copyright files, the executable's imported DLLs (imports.txt) and VERSION.
 set -euo pipefail
 

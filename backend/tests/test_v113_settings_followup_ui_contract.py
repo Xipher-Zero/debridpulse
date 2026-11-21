@@ -487,8 +487,8 @@ def test_one_neutral_acceptance_seam_serves_every_owner_of_provider_configuratio
     """Usenet server cards are their own canonical writer; the header must
     converge with no Apply Settings, no reload and no poll."""
     usenet = read("ui-settings-usenet-servers.js")
-    assert "debridpulse:integration-accepted" in usenet
-    assert "debridpulse:integration-accepted" in SETTINGS
+    assert "downloadpulse:integration-accepted" in usenet
+    assert "downloadpulse:integration-accepted" in SETTINGS
     assert usenet.count("dispatchEvent") == 1, "more than one publication seam exists"
     # Convergence is published, never polled. (ui-settings-page.js keeps one
     # pre-existing interval, the OIDC sign-in popup watcher; this pass adds none.)

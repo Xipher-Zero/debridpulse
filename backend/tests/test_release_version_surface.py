@@ -20,7 +20,7 @@ def read(path: Path) -> str:
 
 
 def test_release_container_metadata_uses_authoritative_version_file() -> None:
-    workflow = read(ROOT / ".github" / "workflows" / "fork-image.yml")
+    workflow = read(ROOT / ".github" / "workflows" / "image.yml")
     dockerfile = read(ROOT / "Dockerfile")
 
     assert 'version=$(tr -d \'\\r\\n\' < VERSION)' in workflow
@@ -42,21 +42,21 @@ def test_release_container_metadata_uses_authoritative_version_file() -> None:
         "codeql.yml",
         "container-security.yml",
         "candidate-runtime-qualification.yml",
-        "fork-image.yml",
+        "image.yml",
     ):
         workflow_text = read(ROOT / ".github" / "workflows" / workflow_name)
         assert f"'{release_branch}'" in workflow_text, (
             f"{workflow_name} does not gate the current release branch {release_branch}"
         )
 
-    # Fork Image is now immutable-only. Mutable aliases are owned by the
+    # Image is now immutable-only. Mutable aliases are owned by the
     # exact-SHA Release Promotion gate after all independent qualifiers pass.
     promotion = read(ROOT / ".github" / "workflows" / "release-promotion.yml")
     assert "type=raw,value=latest" not in workflow
     assert "type=ref,event=tag" not in workflow
     assert 'target_tag="latest"' in promotion
     assert 'target_tag="$GITHUB_REF_NAME"' in promotion
-    assert '"Fork Image"' in promotion
+    assert '"Image"' in promotion
 
 
 # --- release.py: the GitHub Release body is exactly the version's own entry ---

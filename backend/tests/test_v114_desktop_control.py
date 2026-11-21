@@ -1,6 +1,6 @@
 """The installed desktop application's private control channel (WS5).
 
-Each case starts a real DebridPulse backend the way the desktop supervisor
+Each case starts a real DownloadPulse backend the way the desktop supervisor
 does -- ``desktop.supervisor.Channel`` for the two anonymous pipes,
 ``executors.process_ownership.ProcessOwnership.spawn`` for the process -- on
 its own disposable data root, and then attacks or uses it:
@@ -68,13 +68,13 @@ class Backend:
         (self.root / "downloads").mkdir(parents=True, exist_ok=True)
         _config(self.root / "config" / "config.json", locked=self.locked, folder=self.folder, extra=self.config_extra)
         ends = self.channel.child_ends() if self.channel else ()
-        extra = {"DB_PATH": str(self.root / "data" / "debridpulse.db"),
+        extra = {"DB_PATH": str(self.root / "data" / "downloadpulse.db"),
                  "CONFIG_PATH": str(self.root / "config" / "config.json"),
                  "STATIC_DIR": str(ROOT / "frontend" / "static")}
         if self.desktop:
-            extra["DEBRIDPULSE_DESKTOP"] = "1"
+            extra["DOWNLOADPULSE_DESKTOP"] = "1"
         if self.control is not None or ends:
-            extra["DEBRIDPULSE_DESKTOP_CONTROL"] = self.control if self.control is not None else f"{ends[0]},{ends[1]}"
+            extra["DOWNLOADPULSE_DESKTOP_CONTROL"] = self.control if self.control is not None else f"{ends[0]},{ends[1]}"
         for key in ("SYSTEMROOT", "TEMP", "TMP", "LOCALAPPDATA", "APPDATA"):
             if os.environ.get(key):
                 extra[key] = os.environ[key]
@@ -230,9 +230,9 @@ async def test_quit_is_not_held_by_a_page_that_keeps_the_event_stream_open(tmp_p
     try:
         took, code, log = await _quit_with_an_open_event_stream(backend)
         # The stream is cancelled once the graceful window has passed, and
-        # DebridPulse's own shutdown then runs to the end: a clean exit.
+        # DownloadPulse's own shutdown then runs to the end: a clean exit.
         assert code == 0 and took is not None and took < supervisor.GRACEFUL_SECONDS + 20, (took, code)
-        assert b"Shutting down DebridPulse" in log
+        assert b"Shutting down DownloadPulse" in log
     finally:
         await backend.stop()
 
@@ -418,21 +418,21 @@ def test_an_operation_that_is_not_a_name_is_refused_without_touching_the_applica
 
 def test_the_first_paint_script_says_whether_this_is_the_desktop_application():
     """The server's own answer (core.config.desktop_installation: only the
-    supervisor starts a backend with DEBRIDPULSE_DESKTOP=1) is what the first
+    supervisor starts a backend with DOWNLOADPULSE_DESKTOP=1) is what the first
     paint is told, and the starting cover acts on nothing else."""
     import subprocess
     source = (BACKEND / "api" / "auth_routes.py").read_text(encoding="utf-8")
-    assert "window.debridPulseDesktop={'true' if desktop_installation() else 'false'};" in source
+    assert "window.downloadPulseDesktop={'true' if desktop_installation() else 'false'};" in source
     probe = "from core.config import desktop_installation; print(desktop_installation())"
     for value, expected in (("1", "True"), ("", "False"), ("true", "False")):
-        env = {key: item for key, item in os.environ.items() if key != "DEBRIDPULSE_DESKTOP"}
+        env = {key: item for key, item in os.environ.items() if key != "DOWNLOADPULSE_DESKTOP"}
         if value:
-            env["DEBRIDPULSE_DESKTOP"] = value
+            env["DOWNLOADPULSE_DESKTOP"] = value
         answer = subprocess.run([sys.executable, "-c", probe], cwd=BACKEND, env=env,
                                 capture_output=True, text=True, check=True).stdout.strip()
         assert answer == expected, (value, answer)
     cover = (BACKEND.parent / "frontend" / "static" / "ui-desktop-start.js").read_text(encoding="utf-8")
-    assert "if (window.debridPulseDesktop !== true) {" in cover          # only the server's exact true
+    assert "if (window.downloadPulseDesktop !== true) {" in cover          # only the server's exact true
     # Its words are drawn once, in their loaded face (never first in a fallback that then resizes).
     assert "document.fonts.load(face)" in cover and "const FACE_WAIT_MS = 1000;" in cover
     css = (BACKEND.parent / "frontend" / "static" / "ui-desktop-start.css").read_text(encoding="utf-8")
@@ -442,7 +442,7 @@ def test_the_first_paint_script_says_whether_this_is_the_desktop_application():
     assert "setTimeout(() => lift('ready'), Math.max(0, MIN_SHOWN_MS - performance.now()));" in cover  # ... never added
     assert "const LIFT_AFTER_MS = 20000;" in cover                         # never a trap
     app = (BACKEND.parent / "frontend" / "static" / "app.js").read_text(encoding="utf-8")
-    assert app.count("new CustomEvent('debridpulse:interface-ready')") == 1   # said once, by one owner
+    assert app.count("new CustomEvent('downloadpulse:interface-ready')") == 1   # said once, by one owner
 
 
 # ── Desktop saves: the file goes where the person's own Save dialog says ────
@@ -485,7 +485,7 @@ def test_saving_where_chosen_is_the_desktop_applications_alone_and_holds_no_main
     operation -- exactly these two paths, nothing beside them."""
     from api.routes import _require_desktop
     from core.localization import DisplayError
-    assert os.environ.get("DEBRIDPULSE_DESKTOP") != "1"
+    assert os.environ.get("DOWNLOADPULSE_DESKTOP") != "1"
     with pytest.raises(DisplayError) as refused:
         _require_desktop()
     assert refused.value.code == "desktop.only" and refused.value.status_code == 404

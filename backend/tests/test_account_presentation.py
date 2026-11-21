@@ -50,8 +50,8 @@ async def _stored(account_id: str):
 def _bundle_presentation(script: str) -> dict:
     _authority, _, rest = script.partition("\n")
     head, _, _ = rest.partition("\n")
-    assert head.startswith("window.debridPulsePresentation=Object.freeze(") and head.endswith(");"), head[:80]
-    return json.loads(head[len("window.debridPulsePresentation=Object.freeze("):-2])
+    assert head.startswith("window.downloadPulsePresentation=Object.freeze(") and head.endswith(");"), head[:80]
+    return json.loads(head[len("window.downloadPulsePresentation=Object.freeze("):-2])
 
 
 async def test_every_account_is_advanced_until_it_chooses_and_each_choice_is_its_own(live):
@@ -79,7 +79,7 @@ async def test_a_presentation_choice_and_a_theme_choice_never_write_each_other(l
     alice = live.people["alice"].id
     await client.patch(APPEARANCE, headers=as_("alice"), json={"mode": "light", "light_palette": "nord-light"})
     await client.put(OWN, headers=as_("alice"), json={"presentation_mode": "easy"})
-    assert await account_appearance.load(alice) == {"mode": "light", "dark_palette": "debridpulse-dark",
+    assert await account_appearance.load(alice) == {"mode": "light", "dark_palette": "downloadpulse-dark",
                                                     "light_palette": "nord-light"}
     await client.patch(APPEARANCE, headers=as_("alice"), json={"dark_palette": "dracula"})
     assert await _stored(alice) == "easy"

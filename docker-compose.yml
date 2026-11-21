@@ -1,23 +1,23 @@
-# DebridPulse: self-hosted transfer manager
+# DownloadPulse: self-hosted transfer manager
 # Generic bridge-network example. Adapt host paths, UID/GID and timezone.
 
 services:
-  debridpulse:
-    image: ghcr.io/xipher-zero/debridpulse:v1.0.13
+  downloadpulse:
+    image: ghcr.io/xipher-zero/downloadpulse:v1.0.0
     build: .
-    container_name: debridpulse
+    container_name: downloadpulse
     restart: unless-stopped
     ports:
       - "8095:8095"
     volumes:
-      - /mnt/user/appdata/debridpulse/data:/app/data
-      - /mnt/user/appdata/debridpulse/config:/app/config
+      - /mnt/user/appdata/downloadpulse/data:/app/data
+      - /mnt/user/appdata/downloadpulse/config:/app/config
       - /mnt/user/downloads:/download
     environment:
       - PUID=99
       - PGID=100
       - CONFIG_PATH=/app/config/config.json
-      - DB_PATH=/app/data/debridpulse.db
+      - DB_PATH=/app/data/downloadpulse.db
       - TZ=Europe/Berlin
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8095/api/health"]

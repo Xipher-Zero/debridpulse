@@ -236,9 +236,9 @@ test('OIDC islands: one row while every control stays useful, else a centred isl
   await page.route('**/api/auth/config', async route => {
     if (route.request().method() !== 'GET') return route.fallback();
     const current = await (await route.fetch()).json();
-    return route.fulfill({json: {...current, public_base_url: 'https://debridpulse.example.net',
-      public_base_url_effective: 'https://debridpulse.example.net', oidc_provider_name: 'Authentik',
-      oidc_issuer_url: 'https://id.example.net/application/o/debridpulse/',
+    return route.fulfill({json: {...current, public_base_url: 'https://downloadpulse.example.net',
+      public_base_url_effective: 'https://downloadpulse.example.net', oidc_provider_name: 'Authentik',
+      oidc_issuer_url: 'https://id.example.net/application/o/downloadpulse/',
       // A generated client ID is long: forty characters, as Authentik issues them.
       oidc_client_id: 'Hk3pQ9sXv2LmT8wZr4NbYc6JdF1gUe7AoK5iRt0S', oidc_client_secret_configured: true}});
   });
@@ -333,7 +333,7 @@ test('OIDC islands: one row while every control stays useful, else a centred isl
   await resize(page, 780);
   const callback = page.locator('[data-setting="oidc_callback_url"]');
   await expect(callback).toHaveJSProperty('readOnly', true);
-  await expect(callback).toHaveValue(/^https:\/\/debridpulse\.example\.net\/.+callback$/);
+  await expect(callback).toHaveValue(/^https:\/\/downloadpulse\.example\.net\/.+callback$/);
   const copy = page.locator('[data-action="copy-oidc-callback"]');
   await expect(copy).toBeEnabled();
   await expect(copy).toHaveAttribute('aria-label', 'Copy OIDC Callback URL');
@@ -500,7 +500,7 @@ test('every governing header of Authentication, Users & Access, Notifications an
 
 /* ── The account-scoped User Notifications page, in a REAL User session ── */
 const authApi = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -533,7 +533,7 @@ test('a real non-admin User keeps their own Notifications: the same two cards, h
 
   const {context, page} = await signIn(browser, user);
   try {
-    expect(await page.evaluate(() => window.debridPulseAuthority?.role)).toBe('user');
+    expect(await page.evaluate(() => window.downloadPulseAuthority?.role)).toBe('user');
     await page.locator('#sidebar .nav-item', {hasText: 'Notifications'}).click();
     await expect(page.locator('#page-title')).toHaveText('Notifications');
     const view = page.locator('#view-settings');

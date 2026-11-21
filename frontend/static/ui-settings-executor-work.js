@@ -1,11 +1,11 @@
 /* Executor Work (Settings → Downloads).
  *
- * The operational view of what DebridPulse's executors are doing with the work
- * DebridPulse gave them, for the moment something is not converging -- and the
- * legal DebridPulse-owned controls for pausing, resuming or terminating it.
+ * The operational view of what DownloadPulse's executors are doing with the work
+ * DownloadPulse gave them, for the moment something is not converging -- and the
+ * legal DownloadPulse-owned controls for pausing, resuming or terminating it.
  *
  * This renderer knows about NO executor. It reads one neutral projection
- * (`/executor-work`) whose rows are DebridPulse facts -- a durable attempt id,
+ * (`/executor-work`) whose rows are DownloadPulse facts -- a durable attempt id,
  * a neutral execution state, progress, an executor display identity and the
  * controls that are legal right now -- and it renders exactly those. It never
  * sees a GID, an NZO id, a native status name or a native action URL, so an
@@ -14,7 +14,7 @@
  *
  * Actions post the generic action for a durable attempt id. The backend
  * resolves current ownership, re-takes the observation, verifies the action is
- * still legal and dispatches the canonical DebridPulse command. Nothing here
+ * still legal and dispatches the canonical DownloadPulse command. Nothing here
  * decides legality and nothing here may assume the row it last drew is still
  * true.
  *
@@ -23,9 +23,9 @@
  * selection, the live metrics and the actions.
  *
  * Live while shown, to an Admin: the application's one stream says WHEN the
- * executions changed (debridpulse:execution-activity-changed, bridged by
+ * executions changed (downloadpulse:execution-activity-changed, bridged by
  * app.js from its transfer and statistics signals, carrying nothing) and keeps
- * time (debridpulse:pulse-heartbeat); what is shown is only ever an accepted
+ * time (downloadpulse:pulse-heartbeat); what is shown is only ever an accepted
  * GET /executor-work answer, the Admin-only projection the server authorizes
  * on every request. Nothing here is fetched unless this card is on screen to
  * an Admin. At most one request is in flight; re-reads are spaced (measured,
@@ -54,7 +54,7 @@
   const REQUEST_TIMEOUT_MS = 20000;
   // Re-read admission. GET /executor-work observes every owned execution again
   // through its executor (one batch per executor): measured at 12 ms for 2
-  // executions, 55 ms for 10, 138 ms for 25 and 280 ms for 50 in DebridPulse's
+  // executions, 55 ms for 10, 138 ms for 25 and 280 ms for 50 in DownloadPulse's
   // own work (in-memory executors; a real executor's answer adds its own
   // time), while execution activity is signalled up to every 0.5 s. So, as
   // Statistics does: re-reads start at least 2 s apart, or five times the last
@@ -437,22 +437,22 @@
       if (event.target?.closest?.('#view-settings')) queueMicrotask(sync);
     });
   }
-  document.addEventListener('debridpulse:settings-rendered', attach);
+  document.addEventListener('downloadpulse:settings-rendered', attach);
   // A language change says the shown answer again from what it holds (no
   // request): rows are patched in place, so a focused control keeps focus.
-  document.addEventListener('debridpulse:locale-changed', () => {
+  document.addEventListener('downloadpulse:locale-changed', () => {
     if (!listNode()) return;
     if (lastError) { showError(lastError.message); return; }
     if (!lastData) return;
     lastShown = '';
     render(lastData);
   });
-  document.addEventListener('debridpulse:navigation', () => queueMicrotask(sync));
+  document.addEventListener('downloadpulse:navigation', () => queueMicrotask(sync));
   document.addEventListener('visibilitychange', sync);
-  document.addEventListener('debridpulse:execution-activity-changed', invalidated);
+  document.addEventListener('downloadpulse:execution-activity-changed', invalidated);
   // A reconnected stream may have missed changes: re-read once.
-  document.addEventListener('debridpulse:pulse-connected', invalidated);
-  document.addEventListener('debridpulse:pulse-heartbeat', () => {
+  document.addEventListener('downloadpulse:pulse-connected', invalidated);
+  document.addEventListener('downloadpulse:pulse-heartbeat', () => {
     if (Date.now() - lastAccepted >= AGING_MS) invalidated();
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', attach, {once: true});

@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "pt-PT",
  "register": "European Portuguese (Portugal, AO1990 spelling as used in Portugal: ação, atividade, contacto, receção). Buttons and menu commands use the infinitive (Guardar, Cancelar, Eliminar); headings and labels use nouns. Help is impersonal or uses the third person without 'você'. European vocabulary (ficheiro, ecrã, utilizador, palavra-passe, registo, definições) and grammar: 'a' + infinitive for ongoing states (A descarregar…), never the Brazilian gerund; clitic placement of Portugal (Guarde-o). The noun 'download' is kept as settled loan word; the verb is 'descarregar'. 'Transferência' is reserved for the Transfer concept.",
  "terms": {

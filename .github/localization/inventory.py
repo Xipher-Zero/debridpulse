@@ -1,4 +1,4 @@
-"""DebridPulse localization census (WS0).
+"""DownloadPulse localization census.
 
 Reproducibly lists every human-visible, first-party authored string the
 interface can show, from source, so coverage is reconciled against the real
@@ -382,7 +382,7 @@ def census() -> dict:
     # A server message is coded at its raise, exempt with a reason, or outstanding.
     for entry in server:
         entry["reason"] = reasons.get((entry["owner"], entry["english"]), "") if not entry["coded"] else ""
-    return {"schema": "debridpulse-localization-inventory/1", "entries": entries, "exempt": exempt, "server": server}
+    return {"schema": "downloadpulse-localization-inventory/1", "entries": entries, "exempt": exempt, "server": server}
 
 
 def summarize(data: dict) -> dict:

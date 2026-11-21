@@ -309,7 +309,7 @@ class FakeSab:
         """Let the service do what it would do, to every job it may run.
 
         Models the two behaviours this fence exists to survive: a job that is
-        NOT paused makes progress without waiting for DebridPulse, and its
+        NOT paused makes progress without waiting for DownloadPulse, and its
         post-processing renames an obfuscated member to the JOB name -- which
         is SABnzbd 5.1.3's ``deobfuscate(nzo, files, nzo.final_name)``.
 

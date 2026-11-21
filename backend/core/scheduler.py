@@ -13,7 +13,7 @@ from services.maintenance_gate import ApplicationMaintenanceActive
 
 application = None
 
-logger = logging.getLogger("debridpulse.scheduler")
+logger = logging.getLogger("downloadpulse.scheduler")
 _tasks = []
 
 

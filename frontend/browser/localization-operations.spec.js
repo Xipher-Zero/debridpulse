@@ -1,7 +1,7 @@
 // @ts-check
 const {test, expect} = require('@playwright/test');
 
-/* DebridPulse 1.0.14 localization, WS3b: the download operations --
+/* DownloadPulse 1.0.14 localization, WS3b: the download operations --
  * Downloads, Details, file selection, provider and source switching and the
  * folder picker -- say every word through the catalog, and an open dialog,
  * picker or chooser is re-worded in place on a live language change, keeping
@@ -12,7 +12,7 @@ const {test, expect} = require('@playwright/test');
  * (page.route): no provider is invoked and nothing is switched. */
 
 // Proper names, and what the fixtures wrote (transfer, file, engine and folder names).
-const NAMES = ['DebridPulse', 'AllDebrid', 'Debrid-Link', 'Real-Debrid', 'TorBox', 'aria2', 'synthetic-30.bin', 'one.bin',
+const NAMES = ['DownloadPulse', 'AllDebrid', 'Debrid-Link', 'Real-Debrid', 'TorBox', 'aria2', 'synthetic-30.bin', 'one.bin',
   'collection 41', 'Song 1.webm', 'Song 2.webm', '/download/Alpha', '/download/broken', '/download/odd', '/download', 'Alpha',
   'broken', 'odd', 'host.example', 'synthetic-user'];
 
@@ -199,7 +199,7 @@ test('L12-WS3b: an open file chooser and an open folder picker are re-worded in 
         reason: 'not_validated'}]})}); });
   await boot(page);
 
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:file-selection-available', {detail: {transfer_id: 41}})));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:file-selection-available', {detail: {transfer_id: 41}})));
   await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toBeVisible();
   const box = page.locator('#modal-body input[type="checkbox"]').first();
   await box.focus();

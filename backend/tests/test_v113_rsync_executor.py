@@ -60,7 +60,7 @@ def _program(argv) -> list[str]:
     exactly ``python -I -S -c <gate> <fd> <program> <argv...>`` -- never a
     shell -- and the gate execs ``<program>`` with ``<argv...>`` unchanged.
     The spy patches ``asyncio`` itself, so it also sees execs that are not
-    DebridPulse's (the fixture SSH server's own shell); those pass as they are."""
+    DownloadPulse's (the fixture SSH server's own shell); those pass as they are."""
     argv = [str(item) for item in argv]
     if argv[:5] != [sys.executable, "-I", "-S", "-c", ownership_module._GATE]:
         return argv
@@ -95,7 +95,7 @@ def _executor(tmp_path, guard, **options) -> RsyncExecutor:
 
 
 def _restarted(tmp_path, guard, **options) -> RsyncExecutor:
-    """The executor after DebridPulse restarted: a new process, whose memory
+    """The executor after DownloadPulse restarted: a new process, whose memory
     holds no run (``executor._LIVE``). An in-process rebuild -- every
     reconfiguration -- keeps its binding's runs instead (ARCH-A01)."""
     executor_module._LIVE.clear()
@@ -458,7 +458,7 @@ async def test_input_continues_a_challenged_attempt_after_a_restart(tmp_path, da
     handle = first.prepare(request)
     await first.start(request, handle)
     await _settle(first, handle)
-    # DebridPulse restarted: a new executor holds no memory of the attempt,
+    # DownloadPulse restarted: a new executor holds no memory of the attempt,
     # which core already recorded as started.
     restarted = _restarted(tmp_path, guard)
     asked = _core_authority(restarted, started={handle.attempt_id})
@@ -754,7 +754,7 @@ async def test_rsync_continues_exactly_at_the_authorized_boundary_and_never_rewr
     target = tmp_path / "downloads" / "continued.bin"
     boundary = 1024 * 1024
     # The retained prefix carries a marker rsync would overwrite if it resent
-    # it; beyond the boundary sit bytes DebridPulse never authorized.
+    # it; beyond the boundary sit bytes DownloadPulse never authorized.
     retained = bytearray(PAYLOAD[:boundary])
     retained[:6] = b"MARKER"
     target.write_bytes(bytes(retained) + b"unauthorized-tail" * 1000)
@@ -919,7 +919,7 @@ async def test_one_attempt_owns_one_group_across_restart_and_cancel_is_observed_
         # A repeated (e.g. after a lost acknowledgement) start never creates a second group.
         again = await executor.start(request, handle)
         assert again.state == ExecutionState.RUNNING and executor._runs["attempt-owned"].owned.group == group
-        # A new executor (DebridPulse restarted) sees the still-alive group as owned
+        # A new executor (DownloadPulse restarted) sees the still-alive group as owned
         # and running, refuses a second start, and stops it only by observed truth.
         restarted = _restarted(tmp_path, guard)
         assert (await restarted.observe(handle)).state == ExecutionState.RUNNING

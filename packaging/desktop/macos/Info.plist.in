@@ -2,14 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>DebridPulse</string>
-  <key>CFBundleDisplayName</key><string>DebridPulse</string>
-  <key>CFBundleIdentifier</key><string>org.debridpulse.desktop</string>
+  <key>CFBundleName</key><string>DownloadPulse</string>
+  <key>CFBundleDisplayName</key><string>DownloadPulse</string>
+  <key>CFBundleIdentifier</key><string>net.downloadpulse.desktop</string>
   <key>CFBundleVersion</key><string>@VERSION@</string>
   <key>CFBundleShortVersionString</key><string>@VERSION@</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleExecutable</key><string>DebridPulse</string>
-  <key>CFBundleIconFile</key><string>DebridPulse</string>
+  <key>CFBundleExecutable</key><string>DownloadPulse</string>
+  <key>CFBundleIconFile</key><string>DownloadPulse</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>

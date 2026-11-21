@@ -263,7 +263,7 @@ def file_manifest(native: dict) -> FileManifest | None:
 # -- the one status translator ----------------------------------------------------------
 
 # TorBox reports one ``download_state`` string per object -- qBittorrent's
-# states for torrents and its own for web and Usenet downloads. DebridPulse
+# states for torrents and its own for web and Usenet downloads. DownloadPulse
 # only needs to know whether the files can be requested now, whether TorBox
 # is still working, or whether it failed; this is the one place that decides.
 _PREPARING_PREFIXES = ("queued", "allocating", "metadl", "checkingresumedata", "downloading", "stalled",

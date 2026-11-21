@@ -21,11 +21,11 @@ STATIC = BACKEND.parent / "frontend" / "static"
 
 
 def _zone(tz: str | None, desktop: bool) -> str:
-    env = {k: v for k, v in os.environ.items() if k not in ("TZ", "DEBRIDPULSE_DESKTOP")}
+    env = {k: v for k, v in os.environ.items() if k not in ("TZ", "DOWNLOADPULSE_DESKTOP")}
     if tz is not None:
         env["TZ"] = tz
     if desktop:
-        env["DEBRIDPULSE_DESKTOP"] = "1"
+        env["DOWNLOADPULSE_DESKTOP"] = "1"
     done = subprocess.run([sys.executable, "-c", "from core.config import display_timezone; print(repr(display_timezone()))"],
                           cwd=BACKEND, env=env, capture_output=True, text=True, timeout=60)
     assert done.returncode == 0, done.stderr[-2000:]

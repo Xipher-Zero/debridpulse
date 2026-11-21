@@ -6,7 +6,7 @@ seam; application composition names no executor.
 Ownership, exactly:
 * The acquisition service is external to the transfer core's implementation --
   core speaks only the generic executor contract and names no service -- and
-  internal to DebridPulse product ownership. DebridPulse bundles it, starts it,
+  internal to DownloadPulse product ownership. DownloadPulse bundles it, starts it,
   stops it, restarts it when it is unhealthy, owns its whole configuration, and
   never exposes it to an operator. No operator-run instance exists for this
   integration, so there is nothing to reconcile ownership with.
@@ -33,15 +33,15 @@ from integrations.usenet.definition import MAX_CONNECTIONS, MIN_CONNECTIONS
 # SAB's own server-configuration section/keys.
 SERVERS_SECTION = "servers"
 MISC_SECTION = "misc"
-# Non-secret server fields DebridPulse can compare against SAB's readback.
+# Non-secret server fields DownloadPulse can compare against SAB's readback.
 # `password` is deliberately absent: SAB returns a constant mask for it, so
 # password drift is not detectable (an accepted, reported limitation).
 COMPARABLE_SERVER_FIELDS = ("host", "port", "ssl", "connections", "priority",
                             "pipelining_requests", "timeout", "enable")
 
-# Executor-wide acquisition tuning: DebridPulse canonical field -> the native
+# Executor-wide acquisition tuning: DownloadPulse canonical field -> the native
 # key that carries it. Characterized against the bundled SABnzbd 5.1.3; every
-# one of them applies live, none needs a restart. The DebridPulse canonical
+# one of them applies live, none needs a restart. The DownloadPulse canonical
 # field names the SEMANTIC; the native key never leaves this module.
 _CACHE_LIMIT_KEY = "cache_limit"
 _DIRECT_WRITE_KEY = "direct_write"
@@ -80,7 +80,7 @@ def derived_display_name(server) -> str:
     return override or str(getattr(server, "host", "") or "").strip()
 
 
-# Every native server DebridPulse manages carries this prefix, so a stale one
+# Every native server DownloadPulse manages carries this prefix, so a stale one
 # left behind by an earlier configuration is always recognisable as ours.
 MANAGED_PREFIX = "dp-"
 
@@ -109,7 +109,7 @@ class ServerIdentityError(ValueError):
 class DriftReport:
     """What SAB's effective configuration says versus DP's desired state.
 
-    Purely informational. Nothing here is ever written back into DebridPulse's
+    Purely informational. Nothing here is ever written back into DownloadPulse's
     canonical configuration.
     """
     reachable: bool
@@ -336,7 +336,7 @@ class SabnzbdAdministration:
         real NNTP connection and leaves the stored server list untouched, so an
         edited-but-unsaved card can be tested with no shadow configuration.
 
-        A connection count below the DebridPulse floor is REFUSED rather than
+        A connection count below the DownloadPulse floor is REFUSED rather than
         raised to 1 for the duration of the test. Coercing it would let a
         configuration report a successful test and then sit there unable to
         acquire, which is precisely the false readiness this guards against.
@@ -369,7 +369,7 @@ class SabnzbdAdministration:
     # not who invoked it.
 
     async def apply_topology(self) -> bool:
-        """Converge the service's working paths onto the DebridPulse topology.
+        """Converge the service's working paths onto the DownloadPulse topology.
 
         **Idempotent by design.** The service legitimately refuses to move its
         working directory while it has queue or post-processing state, so a
@@ -394,7 +394,7 @@ class SabnzbdAdministration:
     async def apply_tuning(self) -> None:
         """Push the canonical executor-wide acquisition tuning. One way, never back.
 
-        Every value here is a DebridPulse-owned canonical field projected onto
+        Every value here is a DownloadPulse-owned canonical field projected onto
         the native key that carries it; nothing native is ever read back into
         the canonical namespace. The service applies all three live.
         """
@@ -427,7 +427,7 @@ class SabnzbdAdministration:
             )
         # Remove EVERY native server the canonical configuration does not
         # declare. The service is internal and private -- no operator UI, no
-        # published port, no operator credential -- so a server DebridPulse did
+        # published port, no operator credential -- so a server DownloadPulse did
         # not declare has no legitimate origin. Left in place it would still
         # take part in acquisition, with a credential DP never stored and the
         # operator cannot see or revoke, so tolerating it would put the
@@ -553,7 +553,7 @@ class SabnzbdAdministration:
         if not report.reachable:
             return {**base, "state": "unhealthy", "error": report.error}
         if report.drifted:
-            # The service is reachable but does not match what DebridPulse
+            # The service is reachable but does not match what DownloadPulse
             # requires, so acquisition cannot be trusted to behave as configured.
             return {**base, "state": "unhealthy", "drifted": True,
                     "differences": list(report.differences)}

@@ -2,9 +2,9 @@
 category selects from (``AppSettings.external_delivery``).
 
 A profile decides what a client may deliver and how a delivered path reads
-from the client's side; it never decides where DebridPulse writes, which
+from the client's side; it never decides where DownloadPulse writes, which
 provider or executor works, or a queue position. Its ``local_root`` confines
-delivery to completed material DebridPulse already wrote beneath it, and its
+delivery to completed material DownloadPulse already wrote beneath it, and its
 ``import_root`` is the same directory as the external client sees it (a
 shared volume mounted elsewhere). Nothing is copied, linked or moved.
 
@@ -39,7 +39,7 @@ def client_flavor(root: str):
 
 
 def _absolute(value: str, field: str, flavor=None) -> str:
-    """A normalized fully qualified path: DebridPulse's own (``local_root``,
+    """A normalized fully qualified path: DownloadPulse's own (``local_root``,
     this host's rules) or the client's (``import_root``, ``client_flavor``)."""
     text = str(value or "").strip()
     flavor = flavor or os.path
@@ -72,7 +72,7 @@ class DeliveryProfile(BaseModel):
     source_kinds: list[Literal["links", "magnet", "nzb_link", "nzb", "torrent"]] = Field(
         default_factory=lambda: list(SOURCE_KINDS))
     representation: Literal["shared_path"] = "shared_path"
-    # DebridPulse's own view of the shared directory: the download folder or
+    # DownloadPulse's own view of the shared directory: the download folder or
     # a directory beneath it.
     local_root: str
     # The same directory as the external client sees it; empty = the same path.
@@ -132,7 +132,7 @@ class DeliveryProfile(BaseModel):
 
     def public(self) -> dict:
         """What a permitted client may know about the profile: never its
-        client list or DebridPulse's own local root."""
+        client list or DownloadPulse's own local root."""
         return {"id": self.id, "categories": list(self.categories), "source_kinds": list(self.source_kinds),
                 "representation": self.representation, "import_root": self.effective_import_root,
                 "retention_hours": self.retention_hours}

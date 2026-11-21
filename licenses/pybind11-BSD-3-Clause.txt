@@ -1,5 +1,5 @@
 pybind11 -- compiled into the google-re2 1.1.20251105 extension module
-(re2/_re2*.so) that DebridPulse ships (internals ABI identifier v5; the exact
+(re2/_re2*.so) that DownloadPulse ships (internals ABI identifier v5; the exact
 pybind11 release is not identifiable from the binary). https://github.com/pybind/pybind11.
 Licence text reproduced from the project's LICENSE at v2.13.6.
 

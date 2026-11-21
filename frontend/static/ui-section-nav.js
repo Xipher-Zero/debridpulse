@@ -1,4 +1,4 @@
-/* DebridPulse section navigator: the one owner of how a master-card header
+/* DownloadPulse section navigator: the one owner of how a master-card header
  * presents its section tabs -- on desktop and tablet (780px and wider), and
  * on a handheld (779px and narrower), where the page also gives it its
  * identity's levels (below).

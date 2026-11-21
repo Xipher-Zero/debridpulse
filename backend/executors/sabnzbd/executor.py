@@ -19,7 +19,7 @@ against a real SABnzbd 5.1.3:
 
 Naming is separated from correlation in TIME, because SABnzbd 5.1.3 leaves no
 other way. Characterized against the bundled service: a queue slot publishes
-exactly one DebridPulse-settable string, the job name, and queue search matches
+exactly one DownloadPulse-settable string, the job name, and queue search matches
 that name alone -- the uploaded file's name survives only into history, where it
 is neither visible in the queue nor searchable, and no custom metadata field
 exists. So the correlation token can only occupy the job name, and only while
@@ -32,7 +32,7 @@ nzo.final_name)``: an obfuscated dominant member, and its lookalikes, are
 renamed to the JOB name. Running the bundled module against a token-named job
 reproduced the production defect exactly -- ``dp-9ce15fce994c527f7712b4c4.mp4``
 beside an untouched ``rename.par2``. Giving SAB the release name instead is the
-whole correction; DebridPulse renames nothing afterwards and reconstructs no
+whole correction; DownloadPulse renames nothing afterwards and reconstructs no
 collection from any single member.
 
 Separating the two names in time is not sufficient on its own, because the job
@@ -44,7 +44,7 @@ permanently contaminated: the service can only rename a job that is still
 queued. So the handoff is a fence, and the invariant is absolute:
 
     No native job may acquire or post-process while its name is the
-    DebridPulse correlation token.
+    DownloadPulse correlation token.
 
 Every job is therefore created PAUSED, and the ``RESUME`` control is withheld
 until the job is bound AND provably carries its release name. This adds no
@@ -101,7 +101,7 @@ CONTEXT_STAGED_INPUT = "staged_input"
 # obsolete. It is read exactly once per execution, to converge it, and this is
 # the only place the name appears.
 LEGACY_CONTEXT_MANIFEST = "nzb_base64"
-# The longest native job name DebridPulse will assign. SAB sanitizes a job name
+# The longest native job name DownloadPulse will assign. SAB sanitizes a job name
 # into a folder name, and a release name is the only thing that belongs here.
 _MAXIMUM_DISPLAY_NAME = 200
 # Below this, SABnzbd parses the figure as a percentage rather than a byte rate
@@ -119,7 +119,7 @@ _EXACT_LOOKUPS_PER_BATCH = 8
 # it is seen again at least this long after the first, which no such hand-off
 # spans.
 ABSENCE_CONFIRMATION_SECONDS = 60.0
-# Bound on the unconfirmed negatives, and on the jobs DebridPulse itself
+# Bound on the unconfirmed negatives, and on the jobs DownloadPulse itself
 # removed, remembered between observations.
 _UNCONFIRMED_ABSENCES = 1024
 
@@ -174,7 +174,7 @@ class SabnzbdExecutor:
         self.converge = converge
         # nzo_id -> when an authoritative read first found the job in neither
         # listing (``_absence_confirmed``); and the jobs SAB reported removed
-        # by DebridPulse's own delete. Process-lifetime only, both bounded.
+        # by DownloadPulse's own delete. Process-lifetime only, both bounded.
         self._unconfirmed_absence: OrderedDict[str, float] = OrderedDict()
         self._removed_by_us: OrderedDict[str, None] = OrderedDict()
         self._clock = time.monotonic
@@ -197,7 +197,7 @@ class SabnzbdExecutor:
 
         The completed tree is deliberately NOT declared. Its name is derived at
         post-processing time from the job's release name and uniquified by the
-        service, so DebridPulse cannot name it in advance. Declaring a path that
+        service, so DownloadPulse cannot name it in advance. Declaring a path that
         is merely plausible would be worse than declaring none: possession of a
         finished payload is taken from the location SAB itself reports.
 
@@ -439,7 +439,7 @@ class SabnzbdExecutor:
     def _absence_confirmed(self, nzo_id: str) -> bool:
         """May this authoritative "in neither listing" answer be absence?
 
-        Yes when SAB reported this exact job removed by DebridPulse's own
+        Yes when SAB reported this exact job removed by DownloadPulse's own
         delete, or when the same answer was first seen at least
         ``ABSENCE_CONFIRMATION_SECONDS`` ago -- past any queue ->
         post-processing hand-off. Otherwise the first sighting is remembered
@@ -573,7 +573,7 @@ class SabnzbdExecutor:
                                      in_history: bool) -> str:
         """Ensure a queued job carries its release name; report the name it has.
 
-        An acknowledgement is not truth, and DebridPulse may have stopped
+        An acknowledgement is not truth, and DownloadPulse may have stopped
         between binding a job and naming it. Observation is where that is
         noticed, and renaming is only possible while the job is still queued.
         A job already carrying its release name, or one renamed to something
@@ -790,9 +790,9 @@ class SabnzbdExecutor:
 
         The payload is located SOLELY from the position SAB reports for this
         job. The completed directory is named from the job's release name and
-        uniquified by the service, so no path DebridPulse could compose from its
+        uniquified by the service, so no path DownloadPulse could compose from its
         own correlation token would be right -- and an output path was never a
-        safe way to identify anything. A report DebridPulse cannot contain
+        safe way to identify anything. A report DownloadPulse cannot contain
         inside its own working area is uncertainty, never a guess.
         """
         plan_root = str(handle.correlation.get("root") or "")
@@ -813,7 +813,7 @@ class SabnzbdExecutor:
                                         error=failure(Category.PATH_POLICY_VIOLATION,
                                                       domain=Domain.SECURITY))
         if not topology.deliver(source, plan_root):
-            # SAB succeeded but DebridPulse could not take ownership of the
+            # SAB succeeded but DownloadPulse could not take ownership of the
             # payload. Uncertain -- never a false success, never falsely terminal.
             return ExecutionObservation(
                 handle, ExecutionState.UNKNOWN,

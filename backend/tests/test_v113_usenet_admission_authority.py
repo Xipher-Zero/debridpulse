@@ -1,4 +1,4 @@
-"""1.0.13: DebridPulse core is the SOLE admission authority for Usenet work.
+"""1.0.13: DownloadPulse core is the SOLE admission authority for Usenet work.
 
 SAB's native queue is proven (Gate 1) to accept effectively unlimited jobs.
 That is never DP capacity. These tests drive the REAL engine and prove that

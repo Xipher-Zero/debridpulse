@@ -1,4 +1,4 @@
-"""Assemble DebridPulse's desktop application layout for the platform it runs on.
+"""Assemble DownloadPulse's desktop application layout for the platform it runs on.
 
 Run on the target system (Windows x64, macOS, Linux) from a clean checkout with
 any Python 3.12; it builds the one layout every desktop package carries:
@@ -15,7 +15,7 @@ any Python 3.12; it builds the one layout every desktop package carries:
     <out>/backend/usenet/   the bundled Usenet service (``--usenet``): SABnzbd's
                             source at the Dockerfile's pin, hash-checked, where
                             executors.sabnzbd.runtime resolves it; on macOS with
-                            DebridPulse's one recorded headless patch applied; on
+                            DownloadPulse's one recorded headless patch applied; on
                             Windows with its helpers (from --tools) where it runs them
     <out>/LICENSE, NOTICE, SOURCE_OFFER.md, docs/DEPENDENCY_LICENSES.md, LICENSES/,
                             licenses/ (+ licenses/desktop/ from packaging/desktop/notices) (both licence
@@ -81,7 +81,7 @@ def fetch(url: str, digest: str, into: Path) -> Path:
     return into
 
 
-# DebridPulse's one modification of the bundled Usenet service, for the macOS
+# DownloadPulse's one modification of the bundled Usenet service, for the macOS
 # bundle only: SABnzbd's macOS menu-bar runner is removed, so the service runs
 # headless in the foreground through its own main(), as on every other system
 # (with PyObjC importable it would otherwise always start that runner, which
@@ -92,12 +92,12 @@ def fetch(url: str, digest: str, into: Path) -> Path:
 USENET_MACOS_PATCH = {
     "version": "5.1.3",
     "path": "packaging/desktop/macos/sabnzbd-5.1.3-headless.patch",
-    "sha256": "d5ad15b5f5799e2feed709b3f886400ab7056a345483d1d6bf25b21b1d67638c",
+    "sha256": "dab8ee2916022f2517adf4efdd91402c85f67c797b9b0111fa6d05a70ec76fe3",
     "file": "SABnzbd.py",
     "file_sha256_before": "f20b0a7fa96b66856afb851bc63e361f01b9ddea2c19891e5cc1c3a4b644bd4e",
-    "file_sha256_after": "dfcf164eb31ed3975414c0ba459c4ec51e266f9b006bb78e38e289d555068206",
+    "file_sha256_after": "7ac22288ef89dee77da2f70db329c715c49e9b75e1921c190d2edadaeb8461a9",
 }
-USENET_PATCH_COPY = "DEBRIDPULSE-MODIFICATIONS.patch"
+USENET_PATCH_COPY = "DOWNLOADPULSE-MODIFICATIONS.patch"
 # SABnzbd on Windows runs its helpers only from fixed places under its own
 # directory (sabnzbd/newsunpack.py find_programs), never from PATH, and
 # refuses to download without par2: the bundled tools are copied there too.
@@ -316,7 +316,7 @@ def main() -> int:
     parser.add_argument("--requirements", type=Path, help="another hash lock (an interim test system only, "
                                                           "e.g. the Intel mac-vm's cryptography substitution; "
                                                           "recorded in BUILD-INFO.json)")
-    parser.add_argument("--shell", type=Path, help="a native shell DebridPulse built (debridpulse-shell and "
+    parser.add_argument("--shell", type=Path, help="a native shell DownloadPulse built (downloadpulse-shell and "
                         "PROVENANCE.json: packaging/desktop/neutralino/build-macos.sh), in place of the released one")
     parser.add_argument("--icons", type=Path, help="icons already derived by this script elsewhere "
                                                    "(a system without ImageMagick)")
@@ -389,10 +389,10 @@ def main() -> int:
     tag, neu_digest = NEUTRALINO
     zipped = fetch(f"https://github.com/neutralinojs/neutralinojs/releases/download/{tag}/neutralinojs-{tag}.zip",
                    neu_digest, args.cache / f"neutralinojs-{tag}.zip")
-    # DebridPulse's own name: the webview keys its profile on the program name.
-    target = out / "desktop" / "shell" / ("debridpulse-shell.exe" if os.name == "nt" else "debridpulse-shell")
-    if args.shell:   # built from the pinned source with DebridPulse's patch (macOS)
-        target.write_bytes((args.shell / "debridpulse-shell").read_bytes())
+    # DownloadPulse's own name: the webview keys its profile on the program name.
+    target = out / "desktop" / "shell" / ("downloadpulse-shell.exe" if os.name == "nt" else "downloadpulse-shell")
+    if args.shell:   # built from the pinned source with DownloadPulse's patch (macOS)
+        target.write_bytes((args.shell / "downloadpulse-shell").read_bytes())
         shell = json.loads((args.shell / "PROVENANCE.json").read_text(encoding="utf-8"))
         if hashlib.sha256(target.read_bytes()).hexdigest() != shell["binary_sha256"]:
             raise SystemExit("the built shell is not the one its provenance names")

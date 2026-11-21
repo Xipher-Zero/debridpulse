@@ -47,7 +47,7 @@ async function closeSignedIn() {
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -394,7 +394,7 @@ test('OIDC Access Control: heading left, Allow Any right; then the Default Role 
     .map(control => [control.dataset.setting || control.id, control.type === 'checkbox' ? control.checked : control.value]));
   const before = await values();
   await expect(access.locator('.dp-settings-oidc-section-copy')).toHaveText(
-    'When enabled, anyone who successfully signs in through your identity provider can access DebridPulse. '
+    'When enabled, anyone who successfully signs in through your identity provider can access DownloadPulse. '
     + 'Turn this off to restrict access using the allowed subjects, email addresses, and groups below; '
     + 'a user must match every list that is filled in.');
   await expect(access.locator('.dp-settings-field:has(> #dp-settings-field-oidc-allowed-subjects) .form-hint')).toHaveText(

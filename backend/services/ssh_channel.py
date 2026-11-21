@@ -5,7 +5,7 @@ SSH) runs this module as its remote-shell program. It is not a second SSH
 client policy: the server identity, the credential and the connection are all
 decided by the owners that decide them for every other SSH consumer.
 
-* The connection is one DebridPulse already opened through the egress guard
+* The connection is one DownloadPulse already opened through the egress guard
   (``DownloaderEgressGuard.open_tunnel``), handed down as an inherited
   descriptor -- the tool never resolves or connects to anything itself.
 * Identity, then authentication, run through the one SSH step

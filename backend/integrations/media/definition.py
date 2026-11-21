@@ -49,7 +49,7 @@ def supported_player_clients() -> tuple[str, ...] | None:
     """The YouTube player clients the packaged yt-dlp offers an unauthenticated
     extraction, in yt-dlp's own priority order -- read from that yt-dlp (the
     one the sandboxed worker imports), never listed here. A client yt-dlp marks
-    as requiring a signed-in account is not offered: DebridPulse never signs
+    as requiring a signed-in account is not offered: DownloadPulse never signs
     in. ``None`` when the installed yt-dlp does not say: then nothing explicit
     can be validated and only Automatic is used."""
     try:
@@ -80,11 +80,11 @@ class MediaOptions(BaseModel):
     # yt-dlp's fragments in flight at once within ONE segmented (HLS/DASH)
     # download; a plain HTTP file is one request whatever it is. Every one of
     # them is its own guarded connection on the attempt's route, drawing on the
-    # executor's one download budget. Never DebridPulse's execution concurrency.
+    # executor's one download budget. Never DownloadPulse's execution concurrency.
     concurrent_fragment_downloads: int = Field(default=1, ge=1, le=8)
     # YouTube extraction's ordered player-client preference, handed to yt-dlp
     # as its ``youtube`` ``player_client`` extractor argument; empty is
-    # Automatic (no argument at all). Not a DebridPulse route or retry: yt-dlp
+    # Automatic (no argument at all). Not a DownloadPulse route or retry: yt-dlp
     # asks the clients itself, once per extraction.
     youtube_player_clients: list[str] = Field(default_factory=list)
 

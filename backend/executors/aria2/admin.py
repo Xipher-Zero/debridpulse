@@ -19,7 +19,7 @@ logger = logging.getLogger("alldebrid.aria2")
 class Aria2Administration:
     """aria2's own administration surface and managed-daemon lifecycle,
     registered through the generic integration seam (``lifecycle`` /
-    ``administration`` of the aria2 executor). It holds no DebridPulse global
+    ``administration`` of the aria2 executor). It holds no DownloadPulse global
     policy and is never used by neutral runtime-limit operations."""
 
     def __init__(self, executor, repository, commands, runtime):

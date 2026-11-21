@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.12 cross-cutting accessibility and dropdown semantics.
+/* DownloadPulse v1.0.12 cross-cutting accessibility and dropdown semantics.
  *
  * This module does not call the API, alter transfer state, replace established
  * app.js behavior, or repair canonical presentation. It makes inherited
@@ -761,16 +761,16 @@
     if (document.documentElement.dataset.dpAccessibilityLifecycle === '1') return;
     document.documentElement.dataset.dpAccessibilityLifecycle = '1';
 
-    document.addEventListener('debridpulse:navigation', function () {
+    document.addEventListener('downloadpulse:navigation', function () {
       queueMicrotask(function () {
         installNavigationSemantics();
         installFilterSemantics();
         installTabSemantics();
       });
     });
-    document.addEventListener('debridpulse:downloads-rendered', installFilterSemantics);
+    document.addEventListener('downloadpulse:downloads-rendered', installFilterSemantics);
     // A language change: every accessible name set here is said again.
-    document.addEventListener('debridpulse:locale-changed', function () {
+    document.addEventListener('downloadpulse:locale-changed', function () {
       installFilterSemantics();
       installTabSemantics();
       installDashboardErrorCardSemantics();

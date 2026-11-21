@@ -17,11 +17,11 @@ const { test, expect } = require('@playwright/test');
 const AUTH = {mode: 'Username & Password', authentication_required: true, password_enabled: true, password_ready: true,
   password_configured: true, username: 'synthetic-admin', oidc_configured: true, oidc_enabled: false,
   oidc_client_secret_configured: true, oidc_issuer_url: 'https://id.example.invalid/realms/synthetic',
-  oidc_client_id: 'debridpulse-synthetic-client-0123456789abcdef-0123456789abcdef',
-  public_base_url: 'https://debridpulse.example.invalid', oidc_allow_all: false,
+  oidc_client_id: 'downloadpulse-synthetic-client-0123456789abcdef-0123456789abcdef',
+  public_base_url: 'https://downloadpulse.example.invalid', oidc_allow_all: false,
   oidc_allowed_subjects: ['synthetic-subject-1'], oidc_allowed_emails: [], oidc_allowed_groups: ['synthetic-group']};
 
-const FIELDS = ['Username', 'Password', 'Provider Name', 'Public DebridPulse Base URL', 'OIDC Callback URL', 'Issuer URL',
+const FIELDS = ['Username', 'Password', 'Provider Name', 'Public DownloadPulse Base URL', 'OIDC Callback URL', 'Issuer URL',
   'Client ID', 'Client Secret', 'Scopes', 'Group Claim', 'Default Role for New OIDC Users'];
 const ALLOWLISTS = ['Allowed Subjects', 'Allowed Emails', 'Allowed Groups'];
 

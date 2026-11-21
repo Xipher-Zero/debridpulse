@@ -6,11 +6,11 @@ index 4891205..e4bc859 100644
      window::move(pos.first, pos.second);
  }
  
-+// DebridPulse: the window's frame in the application's theme. macOS: the title
++// DownloadPulse: the window's frame in the application's theme. macOS: the title
 +// bar drawn transparent over the window background, which is the theme's frame
 +// colour, in the theme's appearance (dark or light) -- the traffic lights and
 +// dragging stay the system's own. Elsewhere nothing (Windows' frame is
-+// coloured by the DebridPulse supervisor; Linux keeps its desktop's frame).
++// coloured by the DownloadPulse supervisor; Linux keeps its desktop's frame).
 +void setFrameTheme(double red, double green, double blue, bool dark) {
 +    #if defined(__APPLE__)
 +    id window = (id) windowHandle;
@@ -32,7 +32,7 @@ index 4891205..e4bc859 100644
      return output;
  }
  
-+// DebridPulse: {"caption": "#RRGGBB", "dark": bool} -- the frame's colour and
++// DownloadPulse: {"caption": "#RRGGBB", "dark": bool} -- the frame's colour and
 +// appearance (window::setFrameTheme).
 +json setFrameTheme(const json &input) {
 +    json output;

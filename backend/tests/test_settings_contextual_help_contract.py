@@ -35,17 +35,17 @@ def _hint_of(key: str) -> str:
 # ── Items 2-5 and 7: exact locked hints, on the intended fields ─────────────
 
 LOCKED = {
-    "rsync_directory_depth": "How many folder levels below an rsync folder that you add where DebridPulse will "
+    "rsync_directory_depth": "How many folder levels below an rsync folder that you add where DownloadPulse will "
                              "search for files. Files in deeper folders are not included.",
-    "webdav_directory_depth": "How many folder levels below a WebDAV folder that you add where DebridPulse will "
+    "webdav_directory_depth": "How many folder levels below a WebDAV folder that you add where DownloadPulse will "
                               "search for files. Files in deeper folders are not included.",
-    "webdav_max_files": "The maximum number of files DebridPulse will accept from a WebDAV folder. If the folder "
+    "webdav_max_files": "The maximum number of files DownloadPulse will accept from a WebDAV folder. If the folder "
                         "contains more files than this limit, the entire folder is rejected rather than "
                         "partially added.",
-    "stats_snapshot_interval_minutes": "How often DebridPulse saves a record of download activity and statistics "
+    "stats_snapshot_interval_minutes": "How often DownloadPulse saves a record of download activity and statistics "
                                        "from the previous 24 hours to its internal database. These snapshots are "
                                        "not sent as reports.",
-    "stats_snapshot_keep_days": "How many days DebridPulse keeps its saved statistics snapshots before "
+    "stats_snapshot_keep_days": "How many days DownloadPulse keeps its saved statistics snapshots before "
                                 "automatically deleting older records. Snapshots are stored internally and are "
                                 "not currently viewable in the interface.",
 }
@@ -81,7 +81,7 @@ def test_the_superseded_hints_are_gone_without_a_shadow_copy():
         "How far below a WebDAV folder you add",
         "The most files one WebDAV folder may hold",
         "before sign-in is required again",
-        "Set how often DebridPulse records a statistics snapshot.",
+        "Set how often DownloadPulse records a statistics snapshot.",
         "Delete statistics snapshots older than the configured number of days.",
         "Space-separated scopes requested during sign-in.",
         "Claim containing group memberships",
@@ -106,7 +106,7 @@ def test_the_oidc_hints_keep_every_technical_term():
     assert '<small class="dp-settings-oidc-section-copy"${keyed(say(\'settings.oidc.access_copy\'))}>' in PAGE
     toggle = english("settings.oidc.access_copy")
     assert toggle.startswith("When enabled, anyone who successfully signs in through your identity provider "
-                             "can access DebridPulse.")
+                             "can access DownloadPulse.")
     assert "a user must match every list that is filled in" in toggle
 
 
@@ -357,7 +357,7 @@ def test_the_reporting_explanation_names_the_implemented_destination():
     assert reporting_destination(primary) == "https://d"
     reporting = HELP.split("'statistics-reporting': {", 1)[1].split("\n    },\n", 1)[0]
     assert "the Reporting Webhook, or the Primary Webhook from Webhook Notifications when no Reporting Webhook is set" in reporting
-    assert "It is not sent to DebridPulse users." in reporting
+    assert "It is not sent to DownloadPulse users." in reporting
     assert "not a Statistics Snapshot" in reporting
     own = HELP.split("'statistics-reporting-own': {", 1)[1].split("\n    },\n", 1)[0]
     assert "An Admin’s destinations are never used." in own
@@ -539,10 +539,10 @@ def test_the_nine_downloads_headers_are_the_hinted_header_grammar():
     assert "hint: say('settings.downloads.methods_hint')," in panel
     assert english("settings.downloads.methods_hint") == "Tune how each supported download method transfers files."
     assert says(panel, "Protect free disk space and recover failed or stalled downloads.")
-    for kept in ("Where DebridPulse saves downloads and how many it runs at once.",
+    for kept in ("Where DownloadPulse saves downloads and how many it runs at once.",
                  "View current download engine jobs and intervene when something is stuck.",
-                 "How DebridPulse handles downloads from direct network sources.",
-                 "How DebridPulse transfers files using rsync.", "Which files DebridPulse collects from WebDAV folders.",
+                 "How DownloadPulse handles downloads from direct network sources.",
+                 "How DownloadPulse transfers files using rsync.", "Which files DownloadPulse collects from WebDAV folders.",
                  "Global download behavior shared by all Usenet servers.",
                  "Downloads supported web-hosted media in its native form, without transcoding."):
         assert says(PAGE, kept), kept

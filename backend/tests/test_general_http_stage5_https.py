@@ -55,7 +55,7 @@ def _test_tls_context(tmp_path: Path, state: dict) -> tuple[ssl.SSLContext, Path
             "-days",
             "1",
             "-subj",
-            "/CN=DebridPulse Stage 5 Test CA",
+            "/CN=DownloadPulse Stage 5 Test CA",
             "-addext",
             "basicConstraints=critical,CA:TRUE",
             "-addext",

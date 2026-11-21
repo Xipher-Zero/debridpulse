@@ -24,7 +24,7 @@ async def test_startup_missing_download_storage_degrades_without_blocking_health
     app_dir = tmp_path / "app"
     app_dir.mkdir()
     missing = tmp_path / "missing-download"
-    capacity = DiskCapacity(missing, application_path=app_dir / "debridpulse.db")
+    capacity = DiskCapacity(missing, application_path=app_dir / "downloadpulse.db")
 
     # Composition performs this same canonical initial check. A bad Download
     # path must produce state, not an exception that aborts startup.
@@ -55,7 +55,7 @@ async def test_startup_authoritative_download_faults_degrade_without_abort(
     download_dir = tmp_path / "download"
     app_dir.mkdir()
     download_dir.mkdir()
-    capacity = DiskCapacity(download_dir, application_path=app_dir / "debridpulse.db")
+    capacity = DiskCapacity(download_dir, application_path=app_dir / "downloadpulse.db")
 
     def fail_probe(*_args, **_kwargs):
         raise OSError(code, "injected startup storage fault")
@@ -90,7 +90,7 @@ async def test_settings_non_directory_candidate_is_rejected_and_active_state_is_
     candidate = tmp_path / "not-a-directory"
     candidate.write_text("user data")
 
-    capacity = DiskCapacity(download_dir, application_path=app_dir / "debridpulse.db")
+    capacity = DiskCapacity(download_dir, application_path=app_dir / "downloadpulse.db")
     capacity.check()
     before = capacity.snapshot(StorageDomain.DOWNLOAD)
     service, repository, _engine = _service(capacity)

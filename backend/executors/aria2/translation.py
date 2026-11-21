@@ -173,7 +173,7 @@ def material_ranges(native) -> tuple[tuple[int, int], ...] | None:
     aria2 marks a piece complete only once its data left the daemon's write
     cache, so these ranges are already written to the file (core then makes
     them durable before committing anything). ``None`` when the job reports
-    no piece evidence yet. Evidence only: never DebridPulse-valid by itself."""
+    no piece evidence yet. Evidence only: never DownloadPulse-valid by itself."""
     bitfield = str(getattr(native, "bitfield", "") or "")
     piece = int(getattr(native, "piece_length", 0) or 0)
     pieces = int(getattr(native, "num_pieces", 0) or 0)

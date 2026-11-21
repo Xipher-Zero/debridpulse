@@ -18,7 +18,7 @@ from typing import Any, Dict, Optional
 from core.branding import APP_SHORT_NAME
 from core.localization import CodedValueError, CodedRuntimeError
 
-logger = logging.getLogger("debridpulse.stats")
+logger = logging.getLogger("downloadpulse.stats")
 
 
 def _cfg():

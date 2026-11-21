@@ -313,7 +313,7 @@ test('Target Resolution, one bordered Video Preferences group, and the subtitle 
   expect(await fragments.evaluate(node => node.closest('.dp-settings-field').className))
     .toBe(await subtitle(page).evaluate(node => node.closest('.dp-settings-field').className));
   expect(await fragments.evaluate(node => !!node.closest('.dp-settings-tuning-group'))).toBe(false);
-  await expect(group).toContainText('DebridPulse never re-encodes media');
+  await expect(group).toContainText('DownloadPulse never re-encodes media');
   await expect(mediaCard(page)).not.toContainText(/Embed Subtitles|Subtitle Acquisition|separate files/i);
   await expect(mediaCard(page).locator('input[type="checkbox"]')).toHaveCount(0);
 });

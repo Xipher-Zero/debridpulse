@@ -287,7 +287,7 @@ test('UISTATE-003-C status announcements cannot hide committed participation', a
   await accept(page, 'realdebrid');
   await expect.poll(() => ctl.pending.length).toBe(1);
   for (let n = 2; n <= 3; n += 1) {
-    await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:integration-status-changed')));
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:integration-status-changed')));
     await expect.poll(() => ctl.pending.length).toBe(n);
     await expect(provider(page, 'realdebrid')).toHaveCount(0);
     await expect(provider(page, 'alldebrid')).toHaveAttribute('data-provider-state', 'healthy');

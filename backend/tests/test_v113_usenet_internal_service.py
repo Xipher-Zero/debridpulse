@@ -1,7 +1,7 @@
 """1.0.13 Gate-9 rev-3: SAB is a DP-private internal service.
 
 The supported topology bundles the Usenet acquisition service inside the
-DebridPulse container. It binds loopback only, is never published, has no
+DownloadPulse container. It binds loopback only, is never published, has no
 operator-facing web UI, and its control-plane endpoint and credential are
 implementation-private runtime state -- never operator settings.
 """
@@ -138,9 +138,9 @@ def test_the_image_bundles_the_service_and_publishes_only_the_app_port():
 
 def test_no_reverse_proxy_of_the_service_web_ui():
     main = (REPO / "backend/main.py").read_text(encoding="utf-8").lower()
-    # The one SABnzbd-named code the application may route to is DebridPulse's
+    # The one SABnzbd-named code the application may route to is DownloadPulse's
     # own *arr compatibility dialect (``api.arr_sabnzbd``): the protocol
-    # answered over DebridPulse's native external contract, never the
+    # answered over DownloadPulse's native external contract, never the
     # internal service. Nothing else names the service or its port.
     routed = main.replace("from api.arr_sabnzbd import router as arr_sabnzbd_router", "")
     routed = routed.replace("app.include_router(arr_sabnzbd_router", "")
@@ -153,7 +153,7 @@ def test_no_reverse_proxy_of_the_service_web_ui():
 
 def test_the_image_provides_what_the_service_needs_to_acquire_and_repair():
     """The bundled service refuses to acquire at all unless an unrar binary is
-    present ("Essential modules are missing"), even though DebridPulse owns
+    present ("Essential modules are missing"), even though DownloadPulse owns
     archive extraction and submits every job repair-only. par2 performs the
     posting's verification and repair.
     """
@@ -174,7 +174,7 @@ def test_the_service_is_configured_never_to_unpack():
         assert disabled in source, disabled
 
 
-# --- the service's own saved configuration survives a DebridPulse start ---
+# --- the service's own saved configuration survives a DownloadPulse start ---
 
 # What the bundled service writes once it has saved its configuration
 # (characterized against SABnzbd 5.1.3: configobj, a version header above the
@@ -229,16 +229,16 @@ dir = movies
 
 
 def test_a_service_saved_configuration_survives_the_bootstrap(tmp_path, monkeypatch):
-    """The bootstrap rewrites only DebridPulse-owned [misc] values.
+    """The bootstrap rewrites only DownloadPulse-owned [misc] values.
 
     Everything else in the file is the service's own: its version header, news
-    servers and categories, and [misc] keys DebridPulse never seeds. The
+    servers and categories, and [misc] keys DownloadPulse never seeds. The
     installation's control-plane key is read back, never regenerated.
     """
     import configobj
     from executors.sabnzbd import runtime, topology
     monkeypatch.setattr(runtime, "CONFIG_ROOT", tmp_path)
-    monkeypatch.setattr(runtime, "_api_key", "")  # a fresh DebridPulse process
+    monkeypatch.setattr(runtime, "_api_key", "")  # a fresh DownloadPulse process
     ini = tmp_path / "sabnzbd.ini"
     ini.write_text(_SERVICE_SAVED_INI, encoding="utf-8")
     before = configobj.ConfigObj(str(ini), encoding="utf-8")
@@ -261,7 +261,7 @@ def test_a_service_saved_configuration_survives_the_bootstrap(tmp_path, monkeypa
     for key, value in before["misc"].items():
         if key not in owned:
             assert after["misc"][key] == value, key
-    # DebridPulse-owned values are (re)applied over whatever the service saved.
+    # DownloadPulse-owned values are (re)applied over whatever the service saved.
     assert after["misc"]["api_key"] == stored_key
     assert after["misc"]["host"] == runtime.SERVICE_HOST
     assert after["misc"]["port"] == str(runtime.SERVICE_PORT)

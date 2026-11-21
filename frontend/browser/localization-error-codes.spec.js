@@ -1,7 +1,7 @@
 // @ts-check
 const {test, expect} = require('@playwright/test');
 
-/* DebridPulse 1.0.14 localization, WS3e: a refusal the server names by code is
+/* DownloadPulse 1.0.14 localization, WS3e: a refusal the server names by code is
  * said in the reader's language (`error.<code>`, a coded cause inside it too,
  * a transfer refusal by its category), while an absent, unknown or
  * `unclassified` code keeps the server's English `detail` exactly. Every

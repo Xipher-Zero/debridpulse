@@ -1,13 +1,10 @@
-name: Fork Image
+name: Image
 
 on:
   push:
     branches:
       - main
-      - '1.0.11'
-      - '1.0.12'
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
     tags:
       - 'v*'
@@ -15,10 +12,7 @@ on:
   pull_request:
     branches:
       - main
-      - '1.0.11'
-      - '1.0.12'
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
   workflow_dispatch:
     inputs:
@@ -36,11 +30,11 @@ permissions:
 # push at one commit) are serialized and never cancelled mid-publication, so two
 # runs cannot race through the pre-publish existence check.
 concurrency:
-  group: fork-image-${{ github.sha }}
+  group: image-${{ github.sha }}
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse
+  IMAGE_NAME: ghcr.io/xipher-zero/downloadpulse
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Two event-exclusive paths, so every run has exactly one of them:
@@ -57,7 +51,7 @@ env:
 #                         never waits for a second runner after its smoke test.
 #
 # The two `if:` expressions are exact complements (the condition, and its
-# negation); test_fork_image_job_paths_contract.py holds them to that.
+# negation); test_image_job_paths_contract.py holds them to that.
 jobs:
   build-and-smoke-test:
     name: Build and smoke test
@@ -111,13 +105,13 @@ jobs:
         id: test_meta
         uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf
         with:
-          images: local/debridpulse
+          images: local/downloadpulse
           flavor: |
             latest=false
           tags: |
             type=raw,value=sha-${{ github.sha }}
           labels: |
-            org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
+            org.opencontainers.image.title=DownloadPulse: Universal Transfer Manager
             org.opencontainers.image.description=Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -132,7 +126,7 @@ jobs:
           platforms: linux/amd64
           load: true
           push: false
-          tags: local/debridpulse:${{ github.sha }}
+          tags: local/downloadpulse:${{ github.sha }}
           labels: ${{ steps.test_meta.outputs.labels }}
           build-args: |
             APP_VERSION=${{ steps.version.outputs.version }}
@@ -145,7 +139,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          container_name="debridpulse-smoke"
+          container_name="downloadpulse-smoke"
           trap 'docker rm -f "$container_name" >/dev/null 2>&1 || true' EXIT
 
           docker run --detach \
@@ -153,8 +147,8 @@ jobs:
             --env PUID=0 \
             --env PGID=0 \
             --env CONFIG_PATH=/app/config/config.json \
-            --env DB_PATH=/app/data/debridpulse.db \
-            "local/debridpulse:${GITHUB_SHA}"
+            --env DB_PATH=/app/data/downloadpulse.db \
+            "local/downloadpulse:${GITHUB_SHA}"
 
           healthy=0
           for _ in $(seq 1 30); do
@@ -181,8 +175,8 @@ jobs:
 
           expected_version="${{ steps.version.outputs.version }}"
           expected_revision="${GITHUB_SHA}"
-          expected_title="DebridPulse: Universal Transfer Manager"
-          image_ref="local/debridpulse:${GITHUB_SHA}"
+          expected_title="DownloadPulse: Universal Transfer Manager"
+          image_ref="local/downloadpulse:${GITHUB_SHA}"
 
           image_version="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.version" }}')"
           image_revision="$(docker image inspect "$image_ref" --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')"
@@ -227,7 +221,7 @@ jobs:
           # installed packages' exact version and compiled feature set -- no
           # BitTorrent and no BitTorrent option; HTTPS, SFTP and Metalink.
           echo "Checking the qualified aria2 feature set"
-          docker exec "$container_name" sh -c 'bash /usr/share/debridpulse/aria2/verify-features.sh "$(cat /usr/share/debridpulse/aria2/VERSION)"'
+          docker exec "$container_name" sh -c 'bash /usr/share/downloadpulse/aria2/verify-features.sh "$(cat /usr/share/downloadpulse/aria2/VERSION)"'
 
           echo "Checking 7zip-rar notices"
           docker exec "$container_name" test -f /usr/share/doc/7zip-rar/copyright
@@ -242,12 +236,12 @@ jobs:
           echo "Checking 7z create/extract round-trip"
           docker exec "$container_name" sh -c '
             set -eu
-            rm -rf /tmp/debridpulse-7z-smoke
-            mkdir -p /tmp/debridpulse-7z-smoke/input /tmp/debridpulse-7z-smoke/output
-            printf "debridpulse-7z-smoke\n" > /tmp/debridpulse-7z-smoke/input/payload.txt
-            (cd /tmp/debridpulse-7z-smoke/input && 7z a -bd -y ../archive.7z payload.txt)
-            7z x -bd -y /tmp/debridpulse-7z-smoke/archive.7z -o/tmp/debridpulse-7z-smoke/output
-            grep -q "debridpulse-7z-smoke" /tmp/debridpulse-7z-smoke/output/payload.txt
+            rm -rf /tmp/downloadpulse-7z-smoke
+            mkdir -p /tmp/downloadpulse-7z-smoke/input /tmp/downloadpulse-7z-smoke/output
+            printf "downloadpulse-7z-smoke\n" > /tmp/downloadpulse-7z-smoke/input/payload.txt
+            (cd /tmp/downloadpulse-7z-smoke/input && 7z a -bd -y ../archive.7z payload.txt)
+            7z x -bd -y /tmp/downloadpulse-7z-smoke/archive.7z -o/tmp/downloadpulse-7z-smoke/output
+            grep -q "downloadpulse-7z-smoke" /tmp/downloadpulse-7z-smoke/output/payload.txt
           '
 
           if [ "$health_version" != "$expected_version" ]; then
@@ -311,7 +305,7 @@ jobs:
           tags: |
             type=raw,value=sha-${{ github.sha }}
           labels: |
-            org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
+            org.opencontainers.image.title=DownloadPulse: Universal Transfer Manager
             org.opencontainers.image.description=Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -329,7 +323,7 @@ jobs:
 
           expected_version="${{ steps.version.outputs.version }}"
           expected_revision="${GITHUB_SHA}"
-          expected_title="DebridPulse: Universal Transfer Manager"
+          expected_title="DownloadPulse: Universal Transfer Manager"
           generated_version="$(jq -r '.labels["org.opencontainers.image.version"] // empty' <<< "$METADATA_JSON")"
           generated_revision="$(jq -r '.labels["org.opencontainers.image.revision"] // empty' <<< "$METADATA_JSON")"
           generated_title="$(jq -r '.labels["org.opencontainers.image.title"] // empty' <<< "$METADATA_JSON")"
@@ -448,7 +442,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           annotations: |
-            index:org.opencontainers.image.title=DebridPulse: Universal Transfer Manager
+            index:org.opencontainers.image.title=DownloadPulse: Universal Transfer Manager
             index:org.opencontainers.image.description=Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines
             index:org.opencontainers.image.version=${{ steps.version.outputs.version }}
             index:org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -503,7 +497,7 @@ jobs:
 
           expected_version="${{ steps.version.outputs.version }}"
           expected_revision="${GITHUB_SHA}"
-          expected_title="DebridPulse: Universal Transfer Manager"
+          expected_title="DownloadPulse: Universal Transfer Manager"
           expected_description="Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines"
           expected_source="https://github.com/${GITHUB_REPOSITORY}"
           digest="$PUBLISHED_DIGEST"
@@ -601,13 +595,13 @@ jobs:
           printf 'Candidate tags:\n%s\n' "$GENERATED_TAGS"
 
   # This commit's immutable image is published (a re-run included): move the
-  # rolling development alias 1.0.14-testing to it, if it is still the 1.0.14
-  # tip, one evaluation at a time. Its outcome is the "1.0.14-testing" commit
+  # rolling development alias 1.0.0-testing to it, if it is still the 1.0.0
+  # tip, one evaluation at a time. Its outcome is the "1.0.0-testing" commit
   # status, never this workflow's verdict.
   testing-alias:
     name: Testing alias
     needs: publish
-    if: github.event_name == 'push' && github.ref == 'refs/heads/1.0.14'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/1.0.0'
     permissions:
       contents: read
       packages: write

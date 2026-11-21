@@ -353,7 +353,7 @@ test.describe('on a touch screen', () => {
     const folder = page.locator('.dp-settings-backup-folder-field .form-label');
     await folder.scrollIntoViewIfNeeded();
     await folder.tap();
-    await expect(tooltip).toHaveText('Choose where DebridPulse stores database and configuration backups.');
+    await expect(tooltip).toHaveText('Choose where DownloadPulse stores database and configuration backups.');
     await expect(page.locator('[data-setting="backup_folder"]')).not.toBeFocused();
     // The Backups menu answers a tap.
     const trigger = page.locator('.dp-settings-backups-retention-card .dp-settings-header-test-trigger');

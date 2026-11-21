@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11.1 canonical Statistics page contract.
+/* DownloadPulse v1.0.11.1 canonical Statistics page contract.
  *
  * Statistics is a full-height analytical workspace using the same proven
  * composition as Downloads and Activity Log: shared master card -> feature
@@ -469,7 +469,7 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 }
 
 /* Folded canonical final Statistics presentation. */
-/* DebridPulse Statistics final presentation contract. */
+/* DownloadPulse Statistics final presentation contract. */
 
 /* Primary period KPI cards. */
 #view-stats #detail-stat-cards {

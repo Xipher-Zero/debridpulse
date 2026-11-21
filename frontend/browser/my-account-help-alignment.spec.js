@@ -12,7 +12,7 @@ const { test, expect } = require('@playwright/test');
  * (V06).
  *
  * WS2: the Field Manual and the contextual topics read the interface's own
- * context (auth.js debridPulseAuth.presentation.context): role, deployment
+ * context (auth.js downloadPulseAuth.presentation.context): role, deployment
  * type, Easy or Advanced. The context matrix below is driven through the
  * server's own bootstrap answers (the /app.js authority and presentation
  * prefixes and /api/auth/session), rewritten here for the role and
@@ -39,7 +39,7 @@ async function isolateFonts(page) {
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -55,10 +55,10 @@ async function asContext(page, {role = 'admin', deployment = 'server', mode = 'a
   await page.route(url => url.pathname === '/app.js', async route => {
     const response = await route.fetch();
     const body = (await response.text())
-      .replace(/^window\.debridPulseAuthority=Object\.freeze\((.*)\);$/m,
-        (_, json) => `window.debridPulseAuthority=Object.freeze(${JSON.stringify(shape(JSON.parse(json)))});`)
-      .replace(/^window\.debridPulsePresentation=Object\.freeze\((.*)\);$/m,
-        `window.debridPulsePresentation=Object.freeze(${JSON.stringify({owned: true, mode})});`);
+      .replace(/^window\.downloadPulseAuthority=Object\.freeze\((.*)\);$/m,
+        (_, json) => `window.downloadPulseAuthority=Object.freeze(${JSON.stringify(shape(JSON.parse(json)))});`)
+      .replace(/^window\.downloadPulsePresentation=Object\.freeze\((.*)\);$/m,
+        `window.downloadPulsePresentation=Object.freeze(${JSON.stringify({owned: true, mode})});`);
     return route.fulfill({response, body});
   });
   await page.route(url => url.pathname === '/api/auth/session', async route => {
@@ -356,7 +356,7 @@ test('V06: My Account Help explains what this account is offered: open Standalon
   await openAccount(page);
   await dialog(page).locator('.dp-account-header-end .dp-settings-help-chip').click();
   let text = await topicText(page);
-  for (const phrase of ['Sign-in is off, so DebridPulse is used as its built-in Administrator', 'Set Password gives the built-in Administrator its password',
+  for (const phrase of ['Sign-in is off, so DownloadPulse is used as its built-in Administrator', 'Set Password gives the built-in Administrator its password',
     'No password required to sign in: sign-in is off now', 'It is not a reading of whether a password is stored', 'Easy | Advanced chooses how much',
     'Advanced, the default, shows the full interface your role and this installation’s deployment type allow',
     'Choosing Advanced never adds anything your role or the deployment type does not allow', 'every browser of this installation shows the same choice']) {
@@ -427,7 +427,7 @@ const MATRIX = [
   {id: 'H08', role: 'readonly', deployment: 'server', mode: 'advanced', tabs: SECTIONS.filter(id => id !== 'settings'),
     has: ['See what is happening', 'Statistics shows completions', 'you cannot change downloads or settings',
       'changes nothing in downloads or settings; its own profile and presentation in My Account remain its own',
-      'Click a row to open its details', 'from someone who can operate the download', 'DebridPulse moves on after its retries'],
+      'Click a row to open its details', 'from someone who can operate the download', 'DownloadPulse moves on after its retries'],
     not: ['Settings reference', 'Your Notifications', 'Add your first download', 'How a service card works', 'Tuning aria2', 'press Connect Real-Debrid',
       'Quick Add refuses a link or file', 'Press Add (or Ctrl+Enter)', 'Untick what you do not want', 'Row actions:', 'Several at once:',
       'Open the download if no dialog is showing', 'choose another by clicking the service name', 'you can switch the remaining files',
@@ -511,11 +511,11 @@ test('H09/X02: contextual topics read the same context; an unread context is no 
   expect(text).not.toContain('shown when your presentation is Advanced, in My Account');
   // Without the presentation owner's context, a topic is read as no Admin's.
   const unread = await page.evaluate(() => {
-    const auth = window.debridPulseAuth;
-    Object.defineProperty(window, 'debridPulseAuth', {value: undefined, configurable: true});
+    const auth = window.downloadPulseAuth;
+    Object.defineProperty(window, 'downloadPulseAuth', {value: undefined, configurable: true});
     window.DPSettingsHelp.open('integration-accounts');
     const body = document.querySelector('.dp-settings-help-dialog .dp-modal-body').textContent;
-    Object.defineProperty(window, 'debridPulseAuth', {value: auth, configurable: true});
+    Object.defineProperty(window, 'downloadPulseAuth', {value: auth, configurable: true});
     return body;
   });
   expect(unread).toContain('Admin and User accounts do not');
@@ -600,7 +600,7 @@ test.describe('the password-auth runtime', () => {
     await dialog(page).locator('.dp-account-header-end .dp-settings-help-chip').click();
     const text = await topicText(page);
     for (const phrase of ['Password required to sign in: password sign-in is on now', 'Clear Password asks for your current password and then a confirmation',
-      'Anyone who can reach DebridPulse can then access this installation without a password, until you set a new one in My Account.',
+      'Anyone who can reach DownloadPulse can then access this installation without a password, until you set a new one in My Account.',
       'Change Password asks for your current password']) {
       expect(text).toContain(phrase);
     }

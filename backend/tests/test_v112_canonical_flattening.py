@@ -3,7 +3,7 @@
 Enforces semantic boundaries for the CANON-001 (Downloads has two active
 owners), CANON-001b (Provider Status is an accidental application bootstrap
 loader), and CANON-002 (file-selection affordance classified twice) findings,
-plus the CSS version-layer flattening. See TASK_DebridPulse_1.0.12_Canonical
+plus the CSS version-layer flattening. See TASK_DownloadPulse_1.0.12_Canonical
 _Flattening_Implementation_Prompt.md section 17.
 """
 from __future__ import annotations
@@ -32,7 +32,7 @@ def test_provider_status_has_no_presentation_loader() -> None:
     assert "PRESENTATION_OWNERS" not in provider
     assert "createElement('script')" not in provider
     assert 'createElement("script")' not in provider
-    assert "debridpulse:presentation-ready" not in provider
+    assert "downloadpulse:presentation-ready" not in provider
 
 
 def test_required_ui_scripts_are_explicit_defer_dependencies_not_injected() -> None:

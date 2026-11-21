@@ -1,7 +1,7 @@
 // @ts-check
 const {test, expect} = require('@playwright/test');
 
-/* DebridPulse 1.0.14 localization, WS4a: the Field Manual (the Help page), the
+/* DownloadPulse 1.0.14 localization, WS4a: the Field Manual (the Help page), the
  * License viewer's own words and the shared section navigator's tooltip are
  * said from the catalog. The reader's role, deployment type and Easy or
  * Advanced decide which passages exist; the language only words them. A
@@ -91,7 +91,7 @@ test('L14-WS4a: a language change re-says the open manual in place; section, acc
   const asked = [];
   page.on('request', request => asked.push(request.url()));
   let rendered = 0;
-  await page.evaluate(() => document.addEventListener('debridpulse:help-rendered', () => { window.__helpRendered = (window.__helpRendered || 0) + 1; }));
+  await page.evaluate(() => document.addEventListener('downloadpulse:help-rendered', () => { window.__helpRendered = (window.__helpRendered || 0) + 1; }));
 
   await setLocale(page, 'en-XA');
   const pseudo = await panel.innerText();
@@ -142,9 +142,9 @@ test('L14-WS4a: every reader\'s manual is said whole -- each role, deployment an
     for (const deployment of ['server', 'standalone']) {
       for (const mode of ['advanced', 'easy']) {
         const result = await page.evaluate(({given, EASY}) => {
-          const real = window.__realAuth || (window.__realAuth = window.debridPulseAuth);
+          const real = window.__realAuth || (window.__realAuth = window.downloadPulseAuth);
           const shows = part => !(given.mode === 'easy' && EASY.includes(part));
-          window.debridPulseAuth = Object.freeze({...real, presentation: Object.freeze({...real.presentation, context: () => Object.freeze({
+          window.downloadPulseAuth = Object.freeze({...real, presentation: Object.freeze({...real.presentation, context: () => Object.freeze({
             ...given, standalone: given.deployment === 'standalone', server: given.deployment !== 'standalone',
             easy: given.mode === 'easy', advanced: given.mode !== 'easy', shows, omits: part => !shows(part)})})});
           window.DPHelpPage.load();
@@ -158,12 +158,12 @@ test('L14-WS4a: every reader\'s manual is said whole -- each role, deployment an
   }
   // The section strips differ by reader (an Admin's Settings, a User's Notifications, none for ReadOnly).
   expect(new Set(seen).size).toBe(3);
-  await page.evaluate(() => { window.debridPulseAuth = window.__realAuth; window.DPHelpPage.load(); });
+  await page.evaluate(() => { window.downloadPulseAuth = window.__realAuth; window.DPHelpPage.load(); });
 });
 
 test('L16-WS4a: the language never changes which sections or passages a reader has (Advanced and Easy)', async ({page}) => {
   await boot(page);
-  const put = mode => page.evaluate(mode => window.debridPulseAuth.fetch('/api/account/presentation', {
+  const put = mode => page.evaluate(mode => window.downloadPulseAuth.fetch('/api/account/presentation', {
     method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({presentation_mode: mode})})
     .then(response => response.status), mode);
   try {
@@ -173,7 +173,7 @@ test('L16-WS4a: the language never changes which sections or passages a reader h
       await page.evaluate(() => window.DPI18n.ready);
       await page.locator('#sidebar .nav-item[data-view="help"]').evaluate(element => element.click());
       await expect(page.locator(live('.dp-help-tabs'))).toBeVisible();
-      expect(await page.evaluate(() => window.debridPulseAuth.presentation.context().mode)).toBe(mode);
+      expect(await page.evaluate(() => window.downloadPulseAuth.presentation.context().mode)).toBe(mode);
       const english = await passages(page);
       const tabs = await page.locator(live('.dp-help-tab')).evaluateAll(nodes => nodes.map(node => node.dataset.tab));
       await setLocale(page, 'en-XA');
@@ -182,7 +182,7 @@ test('L16-WS4a: the language never changes which sections or passages a reader h
       expect(await unsaid(page)).toEqual({left: [], empty: [], keys: [], notes: []});
       // Easy hides the Advanced-only Activity Log topic, in every language.
       const activity = 'help.using.activity_log_admin.title';
-      const context = await page.evaluate(() => window.debridPulseAuth.presentation.context());
+      const context = await page.evaluate(() => window.downloadPulseAuth.presentation.context());
       expect(english.using.includes(activity)).toBe(context.admin && mode === 'advanced');
       await setLocale(page, 'en');
     }
@@ -201,7 +201,7 @@ test('L17-WS4a: the License viewer\'s words follow the language; the bundled doc
   const documentText = await dialog.locator('.dp-help-legal-document').innerText();
   const title = await dialog.locator('#dp-help-legal-dialog-title').innerText();
   expect(documentText).toMatch(/GNU GENERAL PUBLIC LICENSE/);
-  await expect(dialog.locator('.dp-help-legal-latest')).toContainText('This is the copy bundled with DebridPulse');
+  await expect(dialog.locator('.dp-help-legal-latest')).toContainText('This is the copy bundled with DownloadPulse');
   const asked = [];
   page.on('request', request => asked.push(request.url()));
 

@@ -75,7 +75,7 @@ def supported(tmp_path, monkeypatch):
         manifest["locales"][tag]["status"] = "supported"
         key = "shell.nav.dashboard"
         (i18n / f"{tag}.json").write_text(json.dumps({
-            "schema": "debridpulse-catalog/1", "locale": tag, "messages": {key: f"[{tag}-test] Dashboard"},
+            "schema": "downloadpulse-catalog/1", "locale": tag, "messages": {key: f"[{tag}-test] Dashboard"},
             "sources": {key: localization.source_hash(english[key])}}), encoding="utf-8")
     (i18n / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.setenv("STATIC_DIR", str(tmp_path / "static"))
@@ -96,7 +96,7 @@ async def _store_raw(account_id: str, tag: str):
     async with database.get_db() as db:
         await db.execute("INSERT INTO account_appearance(account_id,mode,dark_palette,light_palette,locale,updated_at) "
                          "VALUES(?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET locale=excluded.locale",
-                         (str(account_id), "dark", "debridpulse-dark", "debridpulse-light", tag, "2026-11-09T00:00:00Z"))
+                         (str(account_id), "dark", "downloadpulse-dark", "downloadpulse-light", tag, "2026-11-09T00:00:00Z"))
         await db.commit()
 
 
@@ -108,8 +108,8 @@ def said(shown: str, preference: str | None, default: str = "en") -> dict:
 
 
 def _projection(script: str) -> dict:
-    line = next(line for line in script.splitlines() if line.startswith("window.debridPulseLocale="))
-    return json.loads(line[len("window.debridPulseLocale=Object.freeze("):-2])
+    line = next(line for line in script.splitlines() if line.startswith("window.downloadPulseLocale="))
+    return json.loads(line[len("window.downloadPulseLocale=Object.freeze("):-2])
 
 
 async def test_every_account_is_english_until_it_chooses_and_each_choice_is_its_own(live, supported):
@@ -139,7 +139,7 @@ async def test_a_language_choice_changes_the_language_only(live, supported):
     account_before = await localization_account(alice)
     assert (await client.put(OWN, headers=as_("alice"), json={"locale": "de"})).status_code == 200
     assert await _stored(alice) == ("de", "easy")
-    assert await account_appearance.load(alice) == {"mode": "light", "dark_palette": "debridpulse-dark",
+    assert await account_appearance.load(alice) == {"mode": "light", "dark_palette": "downloadpulse-dark",
                                                     "light_palette": "nord-light"}
     assert await localization_account(alice) == account_before
     # A theme or presentation write never touches the language.

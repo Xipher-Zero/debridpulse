@@ -5,11 +5,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-def test_default_database_path_uses_debridpulse_name_and_preserves_legacy_install():
+def test_default_database_path_uses_downloadpulse_name_and_preserves_legacy_install():
     from db.database import _default_sqlite_path
 
     with patch.dict(os.environ, {}, clear=True), patch.object(Path, "exists", return_value=False):
-        assert _default_sqlite_path() == Path("/app/data/debridpulse.db")
+        assert _default_sqlite_path() == Path("/app/data/downloadpulse.db")
 
     with patch.dict(os.environ, {}, clear=True), patch.object(
         Path, "exists", side_effect=[True, False]
@@ -47,8 +47,8 @@ BASELINE_SCHEMA = "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3d
 
 def _baseline_database(tmp_path) -> _Path:
     with _zipfile.ZipFile(BASELINE_BACKUP) as package:
-        package.extract("debridpulse.db", tmp_path)
-    return tmp_path / "debridpulse.db"
+        package.extract("downloadpulse.db", tmp_path)
+    return tmp_path / "downloadpulse.db"
 
 
 def _facts(path):

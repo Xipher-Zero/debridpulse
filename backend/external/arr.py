@@ -17,8 +17,8 @@ from external.service import ExternalClients, ExternalRefused
 
 # Each dialect answers at its protocol's own default path -- what Sonarr and
 # Radarr call with URL Base blank: SABnzbd's exact ``/api`` (never anything
-# beneath it, which is DebridPulse's native API) and qBittorrent's
-# ``/api/v2/…`` -- and at the DebridPulse-prefixed path earlier installations
+# beneath it, which is DownloadPulse's native API) and qBittorrent's
+# ``/api/v2/…`` -- and at the DownloadPulse-prefixed path earlier installations
 # configured as URL Base. Both are routes of the one adapter callable.
 SABNZBD_API_PATHS = ("/api", "/api/sabnzbd/api")
 QBITTORRENT_ADD_PATHS = ("/api/v2/torrents/add", "/api/qbittorrent/api/v2/torrents/add")
@@ -81,7 +81,7 @@ async def available(adapter: str) -> bool:
 # Why a failed job may be no fault of what was submitted -- the obstructions
 # an operator clears, after which the same job continues: the provider's or
 # executor's credentials, configuration, availability or account limits, and
-# DebridPulse's own storage. Every other acquisition failure -- a source that
+# DownloadPulse's own storage. Every other acquisition failure -- a source that
 # is gone or refused, content that failed (a download client's own failure,
 # integrity), a security refusal, retries exhausted on any of them, or no
 # recorded reason at all -- is the submission's, as it always was.
@@ -154,7 +154,7 @@ async def remove(external: ExternalClients, principal, job_id: str) -> str:
     (never by a dialect flag):
 
     * with a committed delivery -> acknowledge that generation (idempotent):
-      the client's interest is satisfied; DebridPulse's transfer and history
+      the client's interest is satisfied; DownloadPulse's transfer and history
       stay. This holds while an operator Retry has reopened the work, too: a
       client's removal never withdraws, and so never cancels, work the
       operator reopened;

@@ -1,10 +1,10 @@
-# DebridPulse v1.0.11 Typography and Geometry
+# Typography and Geometry
 
-This document defines the typography and global geometry targets for the v1.0.11 UI overhaul. The values are reconstructed from the approved dark/light mockups with the explicit goal of approximately 95% visual consistency at normal desktop sizes. They are expected to be tuned only after a real test build exposes a clear mismatch.
+This document defines the typography and global geometry targets for the UI. The values are reconstructed from the approved dark/light mockups with the explicit goal of approximately 95% visual consistency at normal desktop sizes. They are expected to be tuned only after a real test build exposes a clear mismatch.
 
 ## Typography
 
-DebridPulse keeps the existing type families:
+DownloadPulse keeps the existing type families:
 
 - **Outfit** for the application UI.
 - **JetBrains Mono** for hashes, IDs, versions, transfer metadata, speeds/sizes where fixed-width numerics improve scanability, and other technical strings.
@@ -130,7 +130,7 @@ Breakpoints should be encoded directly in media queries; CSS custom properties a
 
 - Preserve deliberate whitespace. Do not fill open dashboard areas simply because space exists.
 - Card density should come from compact typography and spacing, not tiny hit targets.
-- The Dashboard top metric row is expected to remain a single row on the approved desktop target, with historical/secondary metrics moved to Statistics as previously decided.
+- The Dashboard top metric row is expected to remain a single row on the approved desktop target, with historical/secondary metrics on Statistics.
 - White/light surfaces need enough separation to survive real displays, but do not exaggerate shadows beyond the design-token contract.
 - Avoid page-local geometry unless a mockup or functional requirement clearly demands it. Repeated components should consume these tokens.
 - Test-build comparison against the mockups is authoritative for small adjustments; these values are the initial implementation baseline, not claims about inaccessible original design-source measurements.
@@ -139,4 +139,4 @@ Breakpoints should be encoded directly in media queries; CSS custom properties a
 
 Canonical token definitions live in `frontend/static/ui-foundation.css`.
 
-The stylesheet intentionally defines both semantic tokens and a small set of type-role helpers. It is not globally activated against all legacy v1.0.10 markup yet; the v1.0.11 component/shell migration should load and consume it as those surfaces are rebuilt. Legacy aliases for `--font`, `--mono`, `--radius`, `--radius-sm`, `--sidebar`, and `--chrome-header-height` are included to ease that migration.
+The stylesheet intentionally defines both semantic tokens and a small set of type-role helpers. It is loaded through the canonical `style.css` import graph, and component and page owners consume its tokens. Legacy aliases for `--font`, `--mono`, `--radius`, `--radius-sm`, `--sidebar`, and `--chrome-header-height` remain for selectors that still consume them.

@@ -546,7 +546,7 @@ def staged_external_extract(
     dest.mkdir(parents=True, exist_ok=True)
     stage = Path(
         tempfile.mkdtemp(
-            prefix=".debridpulse-extract-",
+            prefix=".downloadpulse-extract-",
             dir=str(dest),
         )
     )

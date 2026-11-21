@@ -28,12 +28,12 @@ import os
 import socket
 from contextlib import suppress
 
-logger = logging.getLogger("debridpulse.desktop_listener")
+logger = logging.getLogger("downloadpulse.desktop_listener")
 
 HOST = "127.0.0.1"
 LOWEST, HIGHEST = 1024, 65535
 CHUNK = 64 * 1024
-INTERNAL_PORT_ENV = "DEBRIDPULSE_DESKTOP_PORT"
+INTERNAL_PORT_ENV = "DOWNLOADPULSE_DESKTOP_PORT"
 
 
 class PortInUse(OSError):
@@ -125,11 +125,11 @@ class LocalListener:
             try:
                 sock = bind(port)
             except PortInUse as exc:
-                logger.warning("Local Port %s is in use (%s): external clients cannot reach DebridPulse "
+                logger.warning("Local Port %s is in use (%s): external clients cannot reach DownloadPulse "
                                "until it is free or changed", port, exc)
                 return False
             self._server, self._port = await self._serve(sock), port
-            logger.info("external clients reach DebridPulse at http://%s:%s", HOST, port)
+            logger.info("external clients reach DownloadPulse at http://%s:%s", HOST, port)
             return True
 
     async def move(self, port: int, persist) -> None:
@@ -152,7 +152,7 @@ class LocalListener:
             old, self._server, self._port = self._server, server, port
             if old is not None:
                 old.close()                  # stops accepting; open connections finish on their own
-            logger.info("external clients now reach DebridPulse at http://%s:%s", HOST, port)
+            logger.info("external clients now reach DownloadPulse at http://%s:%s", HOST, port)
 
     async def stop(self) -> None:
         async with self._lock:

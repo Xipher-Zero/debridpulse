@@ -263,7 +263,7 @@ test('Dashboard Recent Items renders host artwork on cold load without navigatio
   current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'known'
  }));
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length,page:1,page_size:items.length})}));
- await page.addInitScript(()=>{window.__recentEvents=0;document.addEventListener('debridpulse:dashboard-recent-rendered',()=>{window.__recentEvents+=1;});});
+ await page.addInitScript(()=>{window.__recentEvents=0;document.addEventListener('downloadpulse:dashboard-recent-rendered',()=>{window.__recentEvents+=1;});});
  // Dashboard is the default surface; no nav() runs at startup. The bootstrap
  // loadRecent() fires before the lazy-loaded canonical owner registers, yet the
  // Recent Items table must still reconcile to host artwork once the owner is ready.
@@ -594,7 +594,7 @@ test('Details candidate switch remains available after comprehensive presentatio
  const panel=page.locator('tr[data-dp-candidate-owner="502"]');await expect(panel).toBeVisible();await expect(panel.locator('.dp-detail-candidate-switch')).toHaveCount(1);
  const before=await renderedRevision();expect(before).toBeGreaterThanOrEqual(1);
  gate=deferred();parked=deferred();
- await page.evaluate(()=>document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered')));
+ await page.evaluate(()=>document.dispatchEvent(new CustomEvent('downloadpulse:downloads-rendered')));
  // The owner's refresh read is now in flight: the panel must stay open and actionable meanwhile.
  await parked.promise;
  await expect(panel).toBeVisible();await expect(panel.locator('.dp-detail-candidate-switch')).toHaveCount(1);

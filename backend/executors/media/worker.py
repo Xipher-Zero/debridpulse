@@ -1,8 +1,8 @@
-"""One sandboxed Media Downloads acquisition worker: a DebridPulse-owned child.
+"""One sandboxed Media Downloads acquisition worker: a DownloadPulse-owned child.
 
 Started only by ``executors.media.sandbox`` as ``python -I -B worker.py`` in its
 own process group, with a minimal environment and an empty private home. It
-imports nothing of DebridPulse -- only the standard library and the pinned
+imports nothing of DownloadPulse -- only the standard library and the pinned
 ``yt_dlp`` -- and reads its whole instruction, the attempt-scoped egress route
 included, as ONE JSON document from standard input (never argv or the
 environment).
@@ -10,7 +10,7 @@ environment).
 Before ``yt_dlp`` is imported this process installs a Python audit hook that is
 its network and filesystem boundary for the rest of its life:
 
-* a socket may connect only to the DebridPulse egress guard's loopback
+* a socket may connect only to the DownloadPulse egress guard's loopback
   listener, and only the guard's numeric address may be resolved -- every
   destination, redirect and CDN host is reached through the guard, which
   resolves and judges it at that connection; unconnected datagrams and other
@@ -144,7 +144,7 @@ class SandboxRefusal(PermissionError):
     then does without) is never the cause of a later, unrelated failure."""
 
     def __init__(self, event: str):
-        super().__init__(f"DebridPulse sandbox refused {event}")
+        super().__init__(f"DownloadPulse sandbox refused {event}")
         self.event = event
 
 
@@ -422,7 +422,7 @@ def classify(exc, *, acquire: bool, phase: str = "") -> Failure:
             headers = getattr(getattr(item, "response", None), "headers", None) or {}
             if int(item.status) == 407:
                 return Failure("route_revoked", str(item))
-            if "debridpulse" in str(headers.get("Proxy-Status") or ""):
+            if "downloadpulse" in str(headers.get("Proxy-Status") or ""):
                 return Failure("egress_refused", str(item))
             if int(item.status) == 403 and phase in _MEDIA_FETCH_PHASES:
                 # The origin itself refused a planned component or subtitle

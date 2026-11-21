@@ -1,4 +1,4 @@
-"""One DebridPulse backup = one restore point, owned by services.backup.
+"""One DownloadPulse backup = one restore point, owned by services.backup.
 
 Covers the restore-point abstraction (list, create, add, save, remove), the
 validate-before-admission contract, the exact-match schema compatibility
@@ -57,7 +57,7 @@ async def installation(tmp_path, monkeypatch):
     conf = tmp_path / "config"
     data.mkdir()
     conf.mkdir()
-    monkeypatch.setattr(database, "DB_PATH", data / "debridpulse.db")
+    monkeypatch.setattr(database, "DB_PATH", data / "downloadpulse.db")
     monkeypatch.setattr(config, "CONFIG_PATH", conf / "config.json")
     # The run lock binds to the first event loop that waits on it; each test
     # runs its own loop, so each gets its own (one) run lock.
@@ -128,14 +128,14 @@ async def test_run_backup_is_listed_as_one_restore_point(installation):
     assert public["contents"] == "DP State"
     assert public["size_bytes"] > 0
     # The operator-facing unit never exposes implementation files.
-    assert "debridpulse.db" not in json.dumps(public) and "config.json" not in json.dumps(public)
+    assert "downloadpulse.db" not in json.dumps(public) and "config.json" not in json.dumps(public)
 
 
 async def test_restore_point_manifest_records_the_exact_schema_version(installation):
     point = await backup.create_restore_point()
-    manifest = json.loads((point.path / ".debridpulse-backup.json").read_text())
+    manifest = json.loads((point.path / ".downloadpulse-backup.json").read_text())
     assert manifest["schema_version"] == backup.schema_version(database.DB_PATH)
-    assert manifest["database"] == "debridpulse.db"
+    assert manifest["database"] == "downloadpulse.db"
     assert manifest["timestamp"] == point.id
 
 
@@ -154,14 +154,14 @@ async def test_looking_inside_a_backup_does_not_break_it(installation):
     operator inspecting a backup with sqlite3) leaves no sidecar behind that
     would turn the restore point into an unrecognisable one."""
     point = await backup.create_restore_point()
-    conn = sqlite3.connect(point.path / "debridpulse.db")
+    conn = sqlite3.connect(point.path / "downloadpulse.db")
     try:
         assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
         conn.execute("SELECT COUNT(*) FROM torrents").fetchone()
     finally:
         conn.close()
     assert sorted(entry.name for entry in point.path.iterdir()) == [
-        ".debridpulse-backup.json", "config.json", "debridpulse.db"]
+        ".downloadpulse-backup.json", "config.json", "downloadpulse.db"]
     await backup.validate_restore_point(point.id)
 
 
@@ -210,33 +210,33 @@ def _schema_drifted_database(package: Path, member: str) -> tuple[bytes, str]:
 async def test_invalid_candidate_is_rejected_before_admission(installation, damage):
     _point_id, saved = await _real_package(installation)
     bad = installation / f"{damage}.zip"
-    manifest = json.loads(zipfile.ZipFile(saved).read(".debridpulse-backup.json"))
+    manifest = json.loads(zipfile.ZipFile(saved).read(".downloadpulse-backup.json"))
     if damage == "not_a_zip":
-        bad.write_bytes(b"this is not a DebridPulse backup")
+        bad.write_bytes(b"this is not a DownloadPulse backup")
     elif damage == "traversal_member":
         _repack(saved, bad, extra={"../escape.txt": b"x"})
     elif damage == "missing_database":
-        _repack(saved, bad, drop={"debridpulse.db"})
+        _repack(saved, bad, drop={"downloadpulse.db"})
     elif damage == "missing_config":
         _repack(saved, bad, drop={"config.json"})
     elif damage == "unknown_member":
         _repack(saved, bad, extra={"notes.txt": b"x"})
     elif damage == "legacy_manifest_other_schema":
         # A pre-change manifest records no schema: the packaged database decides.
-        drifted, _recorded = _schema_drifted_database(saved, "debridpulse.db")
-        _repack(saved, bad, replace_members={"debridpulse.db": drifted,
-                                             ".debridpulse-backup.json": json.dumps(_legacy(manifest)).encode()})
+        drifted, _recorded = _schema_drifted_database(saved, "downloadpulse.db")
+        _repack(saved, bad, replace_members={"downloadpulse.db": drifted,
+                                             ".downloadpulse-backup.json": json.dumps(_legacy(manifest)).encode()})
     elif damage == "schema_mismatch":
-        drifted, recorded = _schema_drifted_database(saved, "debridpulse.db")
-        _repack(saved, bad, replace_members={"debridpulse.db": drifted, ".debridpulse-backup.json": json.dumps(
+        drifted, recorded = _schema_drifted_database(saved, "downloadpulse.db")
+        _repack(saved, bad, replace_members={"downloadpulse.db": drifted, ".downloadpulse-backup.json": json.dumps(
             {**manifest, "schema_version": recorded}).encode()})
     elif damage == "manifest_disagrees_with_database":
-        drifted, _recorded = _schema_drifted_database(saved, "debridpulse.db")
-        _repack(saved, bad, replace_members={"debridpulse.db": drifted})
+        drifted, _recorded = _schema_drifted_database(saved, "downloadpulse.db")
+        _repack(saved, bad, replace_members={"downloadpulse.db": drifted})
     elif damage == "corrupt_database":
-        _repack(saved, bad, replace_members={"debridpulse.db": b"SQLite format 3\x00" + b"\x00" * 4096})
+        _repack(saved, bad, replace_members={"downloadpulse.db": b"SQLite format 3\x00" + b"\x00" * 4096})
     elif damage == "manifest_errors":
-        _repack(saved, bad, replace_members={".debridpulse-backup.json": json.dumps(
+        _repack(saved, bad, replace_members={".downloadpulse-backup.json": json.dumps(
             {**manifest, "errors": ["database: failed"]}).encode()})
     elif damage == "unparseable_config":
         _repack(saved, bad, replace_members={"config.json": b"{not json"})
@@ -453,7 +453,7 @@ async def test_restore_drains_every_native_execution_before_the_swap(served, mon
     assert old.test_executor.jobs[attempt.attempt_id].state == ExecutionState.CANCELLED
     # ... and the safety backup holds the transfer as paused, never cancelled.
     safety = backup.restore_point(response.json()["safety_backup"]["id"])
-    with sqlite3.connect(safety.path / "debridpulse.db") as conn:
+    with sqlite3.connect(safety.path / "downloadpulse.db") as conn:
         status = conn.execute("SELECT status FROM torrents WHERE id=?", (transfer_id,)).fetchone()[0]
     assert status != "cancelled"
 
@@ -487,7 +487,7 @@ async def test_invalid_restore_point_leaves_everything_unchanged(served):
     app, client, _composed, calls = served
     kept = await _submit(app, client, "kept")
     point = backup.restore_point((await client.post("/api/admin/backup")).json()["restore_point"]["id"])
-    (point.path / "debridpulse.db").write_bytes(b"corrupted")
+    (point.path / "downloadpulse.db").write_bytes(b"corrupted")
     later = await _submit(app, client, "later")
     before = app.state.application
     calls.clear()
@@ -648,7 +648,7 @@ async def test_save_endpoint_returns_the_same_portable_unit_add_accepts(served):
     point = (await client.post("/api/admin/backup")).json()["restore_point"]["id"]
     saved = await client.get(f"/api/admin/backups/{point}/package")
     assert saved.status_code == 200
-    assert f"debridpulse-backup-{point}.zip" in saved.headers["content-disposition"]
+    assert f"downloadpulse-backup-{point}.zip" in saved.headers["content-disposition"]
     removed = await client.delete(f"/api/admin/backups/{point}")
     assert removed.status_code == 200
     added = await client.post("/api/admin/backups",
@@ -658,7 +658,7 @@ async def test_save_endpoint_returns_the_same_portable_unit_add_accepts(served):
     rejected = await client.post("/api/admin/backups", content=b"nope", headers={"Content-Type": "application/zip"})
     assert rejected.status_code == 400
     assert rejected.json()["detail"] == ("Backup could not be added. "
-                                         "The selected file is not a valid DebridPulse backup.")
+                                         "The selected file is not a valid DownloadPulse backup.")
 
 
 async def test_staging_abandoned_before_any_swap_is_dropped_at_startup(installation):
@@ -687,9 +687,9 @@ async def test_a_pre_change_backup_saves_removes_adds_and_restores(served):
     app, client, _composed, _calls = served
     kept = await _submit(app, client, "kept")
     point = backup.restore_point((await client.post("/api/admin/backup")).json()["restore_point"]["id"])
-    manifest_path = point.path / ".debridpulse-backup.json"
+    manifest_path = point.path / ".downloadpulse-backup.json"
     manifest_path.write_text(json.dumps(_legacy(json.loads(manifest_path.read_text()))))
-    conn = sqlite3.connect(point.path / "debridpulse.db")
+    conn = sqlite3.connect(point.path / "downloadpulse.db")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.close()
     later = await _submit(app, client, "later")
@@ -766,7 +766,7 @@ async def test_a_refusal_after_every_integration_stopped_restarts_each_once(serv
         last.stops += 1
         # The restore point breaks after pre-validation passed, so the refusal
         # comes at revalidation -- once every integration is already stopped.
-        (point.path / "debridpulse.db").write_bytes(b"corrupted")
+        (point.path / "downloadpulse.db").write_bytes(b"corrupted")
 
     last.stop = stop_then_damage
     calls.clear()
@@ -871,7 +871,7 @@ BASELINE_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-6b691ef7.z
 
 
 def _managed_database(point) -> Path:
-    return point.path / json.loads((point.path / ".debridpulse-backup.json").read_text())["database"]
+    return point.path / json.loads((point.path / ".downloadpulse-backup.json").read_text())["database"]
 
 
 def _digest(path: Path) -> str:
@@ -896,7 +896,7 @@ async def test_the_pinned_pre_change_backup_is_upgraded_on_a_private_copy_and_re
     restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
     assert restored.status_code == 200, restored.text
     assert _digest(managed) == before and sorted(entry.name for entry in point.path.iterdir()) == sorted(
-        [".debridpulse-backup.json", "config.json", managed.name])
+        [".downloadpulse-backup.json", "config.json", managed.name])
     assert backup.schema_version(database.DB_PATH) == live
     conn = sqlite3.connect(database.DB_PATH)
     try:
@@ -1030,7 +1030,7 @@ async def test_a_backup_that_would_leave_no_usable_admin_is_refused_before_anyth
     for key in ("auth_username", "auth_password_hash"):
         document.pop(key)
     document.update(auth_password_enabled=False, auth_oidc_enabled=True, oidc_issuer_url="https://id.example/",
-                    oidc_client_id="debridpulse", oidc_allow_all=True, public_base_url="https://pulse.example")
+                    oidc_client_id="downloadpulse", oidc_allow_all=True, public_base_url="https://pulse.example")
     package = _repack(PRE_ACCOUNT_BACKUP, tmp_path / "oidc-only.zip",
                       replace_members={"config.json": json.dumps(document)})
     added = await client.post("/api/admin/backups", content=package.read_bytes(),
@@ -1314,7 +1314,7 @@ async def test_the_released_1013_backup_restores_every_account_with_the_native_a
         assert conn.execute("SELECT count(*) FROM login_appearance").fetchone() == (0,)
     finally:
         conn.close()
-    assert await account_appearance.login() == {"mode": "dark", "palette": "debridpulse-dark"}
+    assert await account_appearance.login() == {"mode": "dark", "palette": "downloadpulse-dark"}
     operator, password_hash = await accounts.local_credential("operator")
     assert operator.role is accounts.Role.ADMIN and verify_password(password_hash, "pre-appearance-secret")
     reader_id = people["Reader"][2]
@@ -1323,7 +1323,7 @@ async def test_the_released_1013_backup_restores_every_account_with_the_native_a
         assert await account_appearance.load(account_id) == account_appearance.DEFAULT
     saved = await account_appearance.update(reader_id, account_appearance.AppearanceUpdate(
         mode="light", light_palette="nord-light"))
-    assert saved == {"mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "nord-light"}
+    assert saved == {"mode": "light", "dark_palette": "downloadpulse-dark", "light_palette": "nord-light"}
     assert await account_appearance.load(people["Viewer"][2]) == account_appearance.DEFAULT
 
 
@@ -1385,7 +1385,7 @@ PRE_LOGIN_APPEARANCE_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.1
 async def test_a_backup_from_before_the_login_appearance_restores_with_the_native_one(served):
     """Upgraded on the private staged copy only through the canonical
     bootstrap: the new ``login_appearance`` table arrives empty, so the sign-in
-    page is DebridPulse Dark -- no Admin's own appearance is read to choose
+    page is DownloadPulse Dark -- no Admin's own appearance is read to choose
     one -- and every account keeps its own appearance and password."""
     from auth import accounts
     from auth.passwords import verify_password
@@ -1412,10 +1412,10 @@ async def test_a_backup_from_before_the_login_appearance_restores_with_the_nativ
     assert backup.schema_version(database.DB_PATH) == live
     with closing(sqlite3.connect(database.DB_PATH)) as conn:
         assert conn.execute("SELECT count(*) FROM login_appearance").fetchone() == (0,)
-    assert await account_appearance.login() == {"mode": "dark", "palette": "debridpulse-dark"}
+    assert await account_appearance.login() == {"mode": "dark", "palette": "downloadpulse-dark"}
     people = {row["username"]: row["id"] for row in await accounts.list_accounts() if row["username"]}
     assert await account_appearance.load(people["ann"]) == {
-        "mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "catppuccin-latte"}
+        "mode": "light", "dark_palette": "downloadpulse-dark", "light_palette": "catppuccin-latte"}
     assert (await account_appearance.load(people["reader"]))["dark_palette"] == "dracula"
     operator, password_hash = await accounts.local_credential("operator")
     assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "pre-login-appearance-secret")
@@ -1451,11 +1451,11 @@ async def test_an_unregistered_neighbour_of_the_pinned_schema_is_refused_and_cha
     app, client, _composed, _calls = served
     kept = await _submit(app, client, "kept")
     live, live_digest = backup.schema_version(database.DB_PATH), _digest(database.DB_PATH)
-    drifted, recorded = _schema_drifted_database(PRE_SELF_EMAIL_BACKUP, "debridpulse.db")
+    drifted, recorded = _schema_drifted_database(PRE_SELF_EMAIL_BACKUP, "downloadpulse.db")
     assert recorded not in backup._UPGRADABLE_SCHEMAS and recorded != live
-    manifest = json.loads(zipfile.ZipFile(PRE_SELF_EMAIL_BACKUP).read(".debridpulse-backup.json"))
+    manifest = json.loads(zipfile.ZipFile(PRE_SELF_EMAIL_BACKUP).read(".downloadpulse-backup.json"))
     package = _repack(PRE_SELF_EMAIL_BACKUP, tmp_path / "neighbour.zip", replace_members={
-        "debridpulse.db": drifted, ".debridpulse-backup.json": json.dumps({**manifest, "schema_version": recorded})})
+        "downloadpulse.db": drifted, ".downloadpulse-backup.json": json.dumps({**manifest, "schema_version": recorded})})
 
     refused = await client.post("/api/admin/backups", content=package.read_bytes(),
                                 headers={"Content-Type": "application/zip"})
@@ -1544,7 +1544,7 @@ async def _seed(count: int, age_of) -> list[str]:
         point_id = f"{datetime.fromtimestamp(stamp, timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}"
         target = folder / point_id
         shutil.copytree(origin.path, target)
-        manifest = target / ".debridpulse-backup.json"
+        manifest = target / ".downloadpulse-backup.json"
         manifest.write_text(json.dumps({**json.loads(manifest.read_text()), "timestamp": point_id}))
         os.utime(target, (stamp, stamp))
         seeded.append((stamp, point_id))
@@ -1761,7 +1761,7 @@ async def test_the_record_is_no_restore_point_and_survives_restore_even_inside_t
     recorded = record_path.read_bytes()
     point = backup.list_restore_points()[0]
     assert ".dp-backup-schedule.json" not in point.public()["id"]
-    assert ".dp-backup-schedule.json" not in json.loads((point.path / ".debridpulse-backup.json").read_text())["files"]
+    assert ".dp-backup-schedule.json" not in json.loads((point.path / ".downloadpulse-backup.json").read_text())["files"]
     old = time.time() - 30 * 86400
     os.utime(record_path, (old, old))
     assert await backup.apply_retention() == (0, 0)  # never counted, never aged out
@@ -1877,7 +1877,7 @@ async def test_retention_never_touches_or_counts_anything_it_does_not_own(instal
         "20200101_000003": "file",
         ".dp-staging-" + "3" * 32: "dir",
         ".dp-package-" + "4" * 32 + ".zip": "file",
-        "debridpulse-backup-20200101_000004.zip": "file",
+        "downloadpulse-backup-20200101_000004.zip": "file",
         "notes.txt": "file",
     }
     for name, kind in strangers.items():
@@ -1887,7 +1887,7 @@ async def test_retention_never_touches_or_counts_anything_it_does_not_own(instal
             (entry / "keep.txt").write_text("keep")
         elif kind == "foreign-manifest":
             entry.mkdir()
-            (entry / ".debridpulse-backup.json").write_text(json.dumps({"kind": "someone-else"}))
+            (entry / ".downloadpulse-backup.json").write_text(json.dumps({"kind": "someone-else"}))
         elif kind == "symlink":
             entry.symlink_to(outside, target_is_directory=True)
         else:
@@ -1897,7 +1897,7 @@ async def test_retention_never_touches_or_counts_anything_it_does_not_own(instal
     assert await backup.apply_retention() == (0, 1)  # only the older of its own two
     assert _listed() == seeded[:1]
     assert {entry.name for entry in folder.iterdir()} == set(strangers) | {seeded[0]}
-    assert (outside / ".debridpulse-backup.json").exists()
+    assert (outside / ".downloadpulse-backup.json").exists()
 
 
 async def test_an_upgrade_prunes_thirty_daily_backups_to_the_newest_seven_at_its_first_start(
@@ -1911,7 +1911,7 @@ async def test_an_upgrade_prunes_thirty_daily_backups_to_the_newest_seven_at_its
     config.apply_settings(upgraded)
     seeded = await _seed(30, lambda index: index * 86400 + 3600)  # daily, all within 30 days
     clock = _clock(monkeypatch)
-    caplog.set_level("INFO", logger="debridpulse.backup")
+    caplog.set_level("INFO", logger="downloadpulse.backup")
     await _scheduler_lifetime(monkeypatch, clock)  # no confirmation, no new backup
     assert _listed() == seeded[:7]
     summaries = [record.getMessage() for record in caplog.records if "retention removed" in record.getMessage()]
@@ -2157,13 +2157,13 @@ async def test_the_october_31_schema_restores_on_the_installation_that_holds_its
     upgrade, the kept tables untouched."""
     _app, client, _composed, _calls = served
     with zipfile.ZipFile(PRE_INDEX_RETAINED_BACKUP) as package, closing(sqlite3.connect(":memory:")) as scratch:
-        scratch.deserialize(package.read("debridpulse.db"))
+        scratch.deserialize(package.read("downloadpulse.db"))
         kept = [row[0] for row in scratch.execute(
             "SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('adc_aria2_owned_gids',"
-            "'debridpulse_aria2_owned_gids','flexget_runs','saved_searches') ORDER BY name")]
+            "'downloadpulse_aria2_owned_gids','flexget_runs','saved_searches') ORDER BY name")]
         fingerprint = backup._fingerprint(scratch)
     assert len(kept) == 4
-    assert fingerprint == "sha256:fcb6f8e75a4f3a01093996722832bea1ad177b78c68a384316469a1a63a5688b"
+    assert fingerprint == "sha256:3039fea1b7b3d838b4b9f2784330b1dca7e6baae025abc100e9007fc15898cae"
     with closing(sqlite3.connect(database.DB_PATH)) as conn:   # the live installation holds them as well
         for ddl in kept:
             conn.execute(ddl)
@@ -2254,10 +2254,10 @@ async def test_a_backup_from_before_quota_holds_restores_through_the_staged_upgr
     _app, client, _composed, _calls = served
     if fixture is PRE_QUOTA_HOLD_RETAINED_BACKUP:
         with zipfile.ZipFile(fixture) as package, closing(sqlite3.connect(":memory:")) as scratch:
-            scratch.deserialize(package.read("debridpulse.db"))
+            scratch.deserialize(package.read("downloadpulse.db"))
             kept = [row[0] for row in scratch.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name IN ('adc_aria2_owned_gids',"
-                "'debridpulse_aria2_owned_gids','flexget_runs','saved_searches') ORDER BY name")]
+                "'downloadpulse_aria2_owned_gids','flexget_runs','saved_searches') ORDER BY name")]
         with closing(sqlite3.connect(database.DB_PATH)) as conn:   # the live installation holds them as well
             for ddl in kept:
                 conn.execute(ddl)
@@ -2324,7 +2324,7 @@ PRE_PRESENTATION_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.14-57
 # definitions of the 4180f015 retained-legacy-tables fixture).
 PRE_PRESENTATION_RETAINED_BACKUP = (Path(__file__).parent / "fixtures"
                                     / "backup-1.0.14-574bef2d-retained-legacy-tables.zip")
-RETAINED_LEGACY_TABLES = ("adc_aria2_owned_gids", "debridpulse_aria2_owned_gids", "flexget_runs", "saved_searches")
+RETAINED_LEGACY_TABLES = ("adc_aria2_owned_gids", "downloadpulse_aria2_owned_gids", "flexget_runs", "saved_searches")
 
 
 def _presentation_rows(path) -> list[tuple]:
@@ -2360,7 +2360,7 @@ async def test_a_backup_from_before_the_presentation_restores_advanced_with_ever
     _app, client, _composed, _calls = served
     if fixture is PRE_PRESENTATION_RETAINED_BACKUP:
         with zipfile.ZipFile(fixture) as package, closing(sqlite3.connect(":memory:")) as scratch:
-            scratch.deserialize(package.read("debridpulse.db"))
+            scratch.deserialize(package.read("downloadpulse.db"))
             kept = [row[0] for row in scratch.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name IN (?,?,?,?) ORDER BY name",
                 RETAINED_LEGACY_TABLES)]
@@ -2392,7 +2392,7 @@ async def test_a_backup_from_before_the_presentation_restores_advanced_with_ever
     for account_id in (people["ann"], people["una"], accounts.DEFAULT_ADMIN_ID):
         assert await account_appearance.load_presentation(account_id) == "advanced"
     assert await account_appearance.load(people["ann"]) == {
-        "mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "catppuccin-latte"}
+        "mode": "light", "dark_palette": "downloadpulse-dark", "light_palette": "catppuccin-latte"}
     assert (await account_appearance.load(people["una"]))["dark_palette"] == "dracula"
     notifications = await account_notifications.load(people["una"])
     assert notifications.discord_notifications_enabled is True
@@ -2475,7 +2475,7 @@ async def test_a_backup_from_before_the_locale_restores_english_with_every_accou
     _app, client, _composed, _calls = served
     if fixture is PRE_LOCALE_RETAINED_BACKUP:
         with zipfile.ZipFile(fixture) as package, closing(sqlite3.connect(":memory:")) as scratch:
-            scratch.deserialize(package.read("debridpulse.db"))
+            scratch.deserialize(package.read("downloadpulse.db"))
             kept = [row[0] for row in scratch.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name IN (?,?,?,?) ORDER BY name",
                 RETAINED_LEGACY_TABLES)]
@@ -2628,7 +2628,7 @@ async def test_a_backup_from_before_the_setup_wizard_restores_as_a_finished_setu
     _app, client, _composed, _calls = served
     if fixture is PRE_SETUP_RETAINED_BACKUP:
         with zipfile.ZipFile(fixture) as package, closing(sqlite3.connect(":memory:")) as scratch:
-            scratch.deserialize(package.read("debridpulse.db"))
+            scratch.deserialize(package.read("downloadpulse.db"))
             kept = [row[0] for row in scratch.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name IN (?,?,?,?) ORDER BY name",
                 RETAINED_LEGACY_TABLES)]

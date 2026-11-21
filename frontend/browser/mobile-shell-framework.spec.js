@@ -515,7 +515,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       await page.evaluate(([light, palette]) => {
         window.DPTheme.setMode(light);
         if (palette) window.DPTheme.choose(palette);
-        document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light}}));
+        document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed', {detail: {light}}));
       }, [light, palette]);
       const facts = await page.evaluate(() => {
         const probe = document.createElement('div');
@@ -552,7 +552,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
     for (const width of [320, 390, 600, 779]) {
       await page.setViewportSize({width, height: 700});
       for (const light of [false, true]) {
-        await page.evaluate(light => { window.DPTheme.setMode(light); document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light}})); }, light);
+        await page.evaluate(light => { window.DPTheme.setMode(light); document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed', {detail: {light}})); }, light);
         for (const menu of ['theme', 'cap', 'more']) {
           const label = `${width}px ${light ? 'light' : 'dark'} ${menu}`;
           await sample(page, menu);
@@ -648,7 +648,7 @@ test.describe('handheld shell, open runtime (every capability)', () => {
       await page.evaluate(([light, palette]) => {
         window.DPTheme.setMode(light);
         if (palette) window.DPTheme.choose(palette);
-        document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light}}));
+        document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed', {detail: {light}}));
       }, [light, palette]);
       const art = await page.locator('#shell-dock').evaluate(dock => {
         // The field is the artwork drawn inline (<dp-signal-field>), the dock's
@@ -871,7 +871,7 @@ async function signIn(browser, {username, password}, viewport = {width: 390, hei
   const shared = username === ADMIN.username;
   const reuse = shared && adminSession.get() !== null;
   const context = await browser.newContext({baseURL: AUTH, viewport, ...(reuse ? {storageState: adminSession.get()} : {})});
-  await context.addInitScript(() => document.addEventListener('debridpulse:pulse-connected', () => { window.__dpPulseConnected = true; }));
+  await context.addInitScript(() => document.addEventListener('downloadpulse:pulse-connected', () => { window.__dpPulseConnected = true; }));
   const page = await context.newPage();
   await noFonts(page);
   if (reuse) {
@@ -889,7 +889,7 @@ async function signIn(browser, {username, password}, viewport = {width: 390, hei
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -976,7 +976,7 @@ test('roles: Admin, User and ReadOnly each get exactly their authorized dock and
   await expect.poll(async () => (await api(signed.page, 'GET', '/account/appearance')).body?.dark_palette).toBe('dracula');
   await signed.page.reload();
   await expect(signed.page.locator('body')).toHaveAttribute('data-dp-palette', 'dracula');
-  expect((await api(signed.page, 'GET', '/account/appearance')).body.light_palette).toBe('debridpulse-light');
+  expect((await api(signed.page, 'GET', '/account/appearance')).body.light_palette).toBe('downloadpulse-light');
 
   // ── ReadOnly: four destinations, Dashboard still the middle of five, the fifth inert and empty.
   const readonly = await signIn(browser, reader);

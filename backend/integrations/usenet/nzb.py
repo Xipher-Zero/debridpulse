@@ -13,7 +13,7 @@ external entities.
 It also owns the NZB naming facts a remotely acquired posting needs to be
 named as native Usenet names it (``useful_name``, ``dominant_member``,
 ``is_probably_obfuscated``): the narrow subset of SABnzbd 5.1.3's
-deobfuscation -- the version DebridPulse bundles -- that decides when one
+deobfuscation -- the version DownloadPulse bundles -- that decides when one
 dominant, obfuscated payload takes the posting's useful name.
 
 Parsing is bounded. A real posting's manifest is routinely tens or hundreds of

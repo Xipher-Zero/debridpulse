@@ -257,7 +257,7 @@ class TransferEngine(_RecoveryTransferEngine):
                         # Full, and not (yet) freed by confirmed cleanup: no
                         # productive call above the provider's effective
                         # maximum. The constrained resource is the provider's
-                        # capacity, but DebridPulse made this decision -- the
+                        # capacity, but DownloadPulse made this decision -- the
                         # provider was never asked -- so its origin is core;
                         # routing and backoff read it exactly as a refusal.
                         raise TransferError(NormalizedError(
@@ -373,13 +373,13 @@ class TransferEngine(_RecoveryTransferEngine):
         return "unsettled", None
 
     async def _settle_unowned_creations(self) -> None:
-        """Reconcile every creation DebridPulse may have caused that no route
+        """Reconcile every creation DownloadPulse may have caused that no route
         or backup pass owns any more: a primary attempt whose route ended
         before settling it, or whose transfer was deleted or finished, and a
         backup claim left ``creating`` on such a transfer. Through THE
         creation reconciliation, before the one cleanup cadence drains:
 
-        * found: bound to its transfer as DebridPulse's resource with the
+        * found: bound to its transfer as DownloadPulse's resource with the
           cleanup intent its transfer's state calls for
           (``_unowned_cleanup``), so the one cleanup cadence removes it;
         * absent: settled -- nothing was created;
@@ -431,8 +431,8 @@ class TransferEngine(_RecoveryTransferEngine):
         that transfer's end authorizes (``terminal_cleanup_authority``): a
         deleted transfer's by what its Delete recorded -- the operator's
         "remove from the provider", or a retirement by the final external
-        demand (what DebridPulse owns) -- and of a transfer whose route ended
-        or that finished, it is surplus DebridPulse owns."""
+        demand (what DownloadPulse owns) -- and of a transfer whose route ended
+        or that finished, it is surplus DownloadPulse owns."""
         return terminal_cleanup_authority(item["status"], item["delete_remote"])
 
     async def _settle_uncertain_resolution(self, record, attempt, error: NormalizedError) -> None:
@@ -844,13 +844,13 @@ class TransferEngine(_RecoveryTransferEngine):
     async def _make_primary_room(self, record, provider) -> bool:
         """Whether a root's productive creation may go ahead at ``provider``.
 
-        Primary work outranks DebridPulse's own backups, never the provider's
+        Primary work outranks DownloadPulse's own backups, never the provider's
         effective maximum (the account's, lowered by the operator's ceiling):
         when that capacity is full, exactly the backups needed to free one
         slot are given back, and the creation goes ahead only once their
         cleanup has CONFIRMED the slots free. ``False`` -- no productive call
         -- while the capacity is full and not confirmed freed (too few
-        backups of DebridPulse's to give back, or their cleanup still
+        backups of DownloadPulse's to give back, or their cleanup still
         pending). An unknown maximum or occupancy, or a member request,
         always goes ahead: the provider's own answer is then final."""
         if record.parent_id is not None:
@@ -869,7 +869,7 @@ class TransferEngine(_RecoveryTransferEngine):
     async def _primary_resolution(self, record, provider, cached: bool) -> ResolutionResult | None:
         """The root's productive resolution. A refusal that says the
         provider's concurrent active capacity is exhausted -- on a request
-        that has such capacity there -- while DebridPulse holds a backup on
+        that has such capacity there -- while DownloadPulse holds a backup on
         that provider reclaims ONE backup and retries ONCE; anything else,
         or a second refusal, is the ordinary refusal."""
         def call():
@@ -908,7 +908,7 @@ class TransferEngine(_RecoveryTransferEngine):
         as one -- is given back through the one reclamation (``_reclaim``:
         the existing OWNED cleanup authority), never left holding a slot
         nobody wants. Only what primary work could also take back
-        (``reclaimable_standbys``: DebridPulse's own, nothing already
+        (``reclaimable_standbys``: DownloadPulse's own, nothing already
         cleaning it up, not known gone) of an enabled provider; a disabled
         provider's backup is parked, exactly as its observation is. The
         released claim prepares nothing again while the provider says no."""
@@ -953,7 +953,7 @@ class TransferEngine(_RecoveryTransferEngine):
         the provider reports gone, which is recorded as such): ordinary
         resolution proceeds. Promotion never chooses a provider.
 
-        The backup's identity is already DebridPulse's (its binding), so an
+        The backup's identity is already DownloadPulse's (its binding), so an
         observation that merely fails -- a timeout, a transient or unmapped
         provider error -- is no proof it is gone and no failure of the route:
         it is taken over unready (``UNKNOWN``, the error kept as the
@@ -1033,7 +1033,7 @@ class TransferEngine(_RecoveryTransferEngine):
         a failure: no retry budget, no exhaustion; the replaced resource is
         kept as its provider's backup when that provider's Prepare Backup
         Torrents allows it (``_retains_replaced_route``), exactly as an
-        operator switch keeps it, and otherwise given back where DebridPulse
+        operator switch keeps it, and otherwise given back where DownloadPulse
         owns it.
 
         Decided outside any resolution unit (``_readiness_promotions``), so
@@ -1326,7 +1326,7 @@ class TransferEngine(_RecoveryTransferEngine):
                         and observation.state in {ResourceState.PREPARING, ResourceState.AVAILABLE}):
                     break
                 # A provider that executes only what is selected on its own
-                # resource waits for DebridPulse's decision, never past it:
+                # resource waits for DownloadPulse's decision, never past it:
                 # the one gate settles the decision (the operator's choice,
                 # Close/X, the decision timeout or a single file) while the
                 # resource is still preparing, and a decision still open is
@@ -1409,7 +1409,7 @@ class TransferEngine(_RecoveryTransferEngine):
                         raise
                     # The resource is AVAILABLE: a provider that then cannot
                     # state its executable members has failed its own route,
-                    # not left DebridPulse waiting on the resource. Its route
+                    # not left DownloadPulse waiting on the resource. Its route
                     # failure goes to the one provider-failure owner (exhaustion,
                     # re-entry, the next claimant), never the resource wait.
                     await self._request_failure(record, exc.error)

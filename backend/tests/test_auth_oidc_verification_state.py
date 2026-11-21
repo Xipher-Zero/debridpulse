@@ -23,8 +23,8 @@ def _settings(**updates):
         "auth_password_enabled": True,
         "auth_oidc_enabled": True,
         "oidc_provider_name": "OpenID Connect",
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
-        "oidc_client_id": "debridpulse-client",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
+        "oidc_client_id": "downloadpulse-client",
         "oidc_client_secret": "secret",
         "oidc_scopes": ["openid", "profile", "email"],
         "oidc_allow_all": True,
@@ -145,7 +145,7 @@ async def test_verified_pending_commit_records_proof_before_configuration_persis
     committed = await commit_verified_pending_oidc(
         "pending-state",
         expected_configuration_version=version,
-        issuer="https://id.example/application/o/debridpulse",
+        issuer="https://id.example/application/o/downloadpulse",
         subject="user-1",
     )
     assert committed is not None and committed.id == DEFAULT_ADMIN_ID

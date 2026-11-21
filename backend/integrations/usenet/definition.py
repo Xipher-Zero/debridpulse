@@ -56,7 +56,7 @@ def usable_servers(options: dict) -> int:
     return sum(1 for item in ((options or {}).get("servers") or []) if server_usable(item))
 
 
-# SABnzbd 5.1.3 `config.py ConfigServer` allows 0..500. DebridPulse's floor is
+# SABnzbd 5.1.3 `config.py ConfigServer` allows 0..500. DownloadPulse's floor is
 # 1, deliberately narrower: 0 is how SAB switches a server off, and DP already
 # has an explicit per-server Enable control for that. A DP server left at 0
 # would read as enabled while the native side cannot open a single connection
@@ -67,7 +67,7 @@ MIN_PRIORITY, MAX_PRIORITY = 0, 99
 PRIORITY_HELP = "Lower values have priority."
 
 # Acquisition tuning bounds, each characterized against the bundled SABnzbd
-# 5.1.3 (source tree plus live probes). DebridPulse's range is never WIDER than
+# 5.1.3 (source tree plus live probes). DownloadPulse's range is never WIDER than
 # the native one, so a persisted canonical value can never be silently rewritten
 # by the service into something the operator did not choose.
 #
@@ -131,12 +131,12 @@ class UsenetOptions(BaseModel):
     """Everything an operator configures for Usenet.
 
     Deliberately absent: any endpoint or credential for the acquisition
-    service itself. That service is bundled, DebridPulse-private and
-    DebridPulse-owned; its endpoint and control-plane key are runtime state,
+    service itself. That service is bundled, DownloadPulse-private and
+    DownloadPulse-owned; its endpoint and control-plane key are runtime state,
     never settings, so there is nothing here for an operator to point at.
     """
-    # --- DebridPulse -> acquisition-service communication ---
-    # How long DebridPulse waits for its own download service to answer. This is
+    # --- DownloadPulse -> acquisition-service communication ---
+    # How long DownloadPulse waits for its own download service to answer. This is
     # a service-communication timeout, never a news-server timeout.
     operation_timeout_seconds: int = Field(default=30, ge=5, le=300)
     # --- executor-wide acquisition tuning ---
@@ -144,7 +144,7 @@ class UsenetOptions(BaseModel):
                                          le=MAX_ARTICLE_CACHE_MB)
     direct_write: bool = True
     # Native news-server acquisition retry per article. Emphatically NOT the
-    # DebridPulse transfer retry count, core recovery attempts, or a provider
+    # DownloadPulse transfer retry count, core recovery attempts, or a provider
     # retry count -- those are universal transfer policy and live elsewhere.
     max_acquisition_retries: int = Field(default=3, ge=MIN_ACQUISITION_RETRIES,
                                          le=MAX_ACQUISITION_RETRIES)
@@ -202,7 +202,7 @@ def build(options: UsenetOptions, environment):
     """Build BOTH halves of the pairing from one canonical configuration.
 
     The acquisition service is internal: its endpoint and credential come from
-    the DebridPulse-owned runtime, never from ``options``.
+    the DownloadPulse-owned runtime, never from ``options``.
     """
     from executors.sabnzbd.admin import SabnzbdAdministration
     from executors.sabnzbd.client import SabEndpoint, SabnzbdClient

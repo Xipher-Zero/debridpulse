@@ -83,7 +83,7 @@ test('an ordinary settings field commits at its OWN boundary, not on every keyst
  * shared backend's participation never changes. */
 async function answerDebridLink(page, {refuse = false} = {}) {
   const current = await page.evaluate(async () =>
-    (await window.debridPulseAuth.fetch('/api/integrations/debridlink/configuration')).json());
+    (await window.downloadPulseAuth.fetch('/api/integrations/debridlink/configuration')).json());
   const held = [];
   await page.route(url => url.pathname === '/api/integrations/debridlink/configuration', async route => {
     if (route.request().method() !== 'PATCH') return route.fallback();

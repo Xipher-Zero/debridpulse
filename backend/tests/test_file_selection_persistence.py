@@ -407,7 +407,7 @@ async def test_commit_marker_then_crash_before_fanout_is_recoverable(repo):
     # commit_selected_manifest sets manifest_committed_at (authorization commit).
     authorized = await repo.commit_selected_manifest(seed.record, full, now=clock())
     assert [e.relative_path for e in authorized] == ["s/a", "s/c"]
-    # TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+    # TASK_DownloadPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
     # Section 11: the engine needs to distinguish the transfer's FIRST canonical
     # manifest commitment from an idempotent replay using ONLY truth already
     # known inside this same transaction -- exposed here as `.first_commitment`

@@ -1,4 +1,4 @@
-"""Lightweight process-local performance instrumentation for DebridPulse.
+"""Lightweight process-local performance instrumentation for DownloadPulse.
 
 This intentionally avoids a new dependency. Counters are diagnostic only and
 are not used to make correctness decisions. They reset with the process.

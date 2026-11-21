@@ -62,7 +62,7 @@ _ERRORS = {
     "fileNotFound": (Category.SOURCE_NOT_FOUND, Retryability.NEVER),
     "fileNotAvailable": (Category.SOURCE_TEMPORARILY_UNAVAILABLE, Retryability.BACKOFF),
     "badFileUrl": (Category.INVALID_REQUEST, Retryability.NEVER),
-    # The link needs a password. DebridPulse has no password-only input, so
+    # The link needs a password. DownloadPulse has no password-only input, so
     # it never supplies one: the source is unusable as submitted.
     "badFilePassword": (Category.SOURCE_UNAVAILABLE, Retryability.NEVER),
     # Per-hoster and per-account limits are temporary capacity, never a fact

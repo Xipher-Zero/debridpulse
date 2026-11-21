@@ -144,7 +144,7 @@ async def test_reconstruction_activity_alone_is_published_and_never_moves_comple
 
 
 # --------------------------------------------------------------------------- #
-# TASK_DebridPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
+# TASK_DownloadPulse_1.0.12_File_Selection_Projection_and_NOW_Control_Corrections
 # Section 10.3/14.2 -- ApplicationService.resolve_pending() must reuse the
 # existing semantic _publish() for exactly the transfer ids the engine
 # reports as having crossed the canonical manifest-commit boundary this

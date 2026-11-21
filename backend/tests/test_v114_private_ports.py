@@ -1,10 +1,10 @@
 """A taken port never stops an executor (core.ports).
 
-DebridPulse's private loopback listeners -- the downloader egress guard, the
+DownloadPulse's private loopback listeners -- the downloader egress guard, the
 aria2 daemon's RPC and the bundled Usenet service -- each prefer their usual
 port (6811, 6800, 8090), but another program on the same computer may already
 listen there: a desktop application shares the computer's network, and a
-person's own aria2 on 6800 stopped DebridPulse's (2026-11-17). Each now takes
+person's own aria2 on 6800 stopped DownloadPulse's (2026-11-17). Each now takes
 its usual port when free and otherwise one the operating system chooses, in
 every deployment; whoever connects asks its owner for the address in use.
 aria2's handles are identified by the daemon, never its address, so a handle

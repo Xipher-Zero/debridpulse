@@ -160,7 +160,7 @@ def creation_error(exc: Exception, *, secrets: tuple[str, ...] = ()) -> Normaliz
 
 # -- resource identity -------------------------------------------------------------
 #
-# Two kinds of resource: a cloud TRANSFER Premiumize created for DebridPulse
+# Two kinds of resource: a cloud TRANSFER Premiumize created for DownloadPulse
 # (its transfer id is the durable identity), and an IMMEDIATE result -- a
 # frozen record of the members ``directdl`` stated for a source, which owns
 # nothing on Premiumize and is never cleaned up.

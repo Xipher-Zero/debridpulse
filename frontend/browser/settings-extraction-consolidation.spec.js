@@ -124,7 +124,7 @@ test('the two extraction behaviour controls are ONE centred, content-bounded isl
     expect(geometry.numericWidth).toBeLessThanOrEqual(110);
 
     await expect(group.locator('.dp-settings-extraction-concurrency-field .form-hint'))
-      .toHaveText('Maximum extraction jobs DebridPulse runs at once.');
+      .toHaveText('Maximum extraction jobs DownloadPulse runs at once.');
   });
 
 test('the Archive Passwords guidance lives inside the editor and intercepts nothing',
@@ -645,7 +645,7 @@ test('Download Behavior & Limits puts both settings on one line in the inline gr
     expect(measured.danglingHelp).toBe(0);
 
     await expect(page.locator('.dp-settings-download-limit-field .form-hint'))
-      .toHaveText('Maximum downloads DebridPulse runs at once.');
+      .toHaveText('Maximum downloads DownloadPulse runs at once.');
   });
 
 /* The one-line promise has to survive TEXT, not just this machine's text.

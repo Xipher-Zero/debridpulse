@@ -1,4 +1,4 @@
-"""Structural contract for DebridPulse custom UI SVG assets."""
+"""Structural contract for DownloadPulse custom UI SVG assets."""
 
 from __future__ import annotations
 

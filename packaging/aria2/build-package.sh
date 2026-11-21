@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# THE one build of DebridPulse's aria2 (docs/SUPPLY_CHAIN_POLICY.md section 4a).
+# THE one build of DownloadPulse's aria2 (docs/SUPPLY_CHAIN_POLICY.md section 4a).
 #
 # Debian's own aria2 source package, fetched from the configured (signed)
 # deb-src repository, rebuilt with exactly the repo-owned changes in this
@@ -15,7 +15,7 @@
 #   ARIA2_SOURCE_VERSION  exact source version to fetch (default: the
 #                         distribution's own candidate)
 # Produces <out-dir>/packages/{aria2,libaria2-0}_<version>_<arch>.deb,
-# <out-dir>/source/ (Debian source package + both DebridPulse patches) and
+# <out-dir>/source/ (Debian source package + both DownloadPulse patches) and
 # <out-dir>/VERSION. Needs deb-src enabled and the build dependencies of the
 # aria2 source package installed.
 set -euo pipefail
@@ -47,10 +47,10 @@ grep -qx $'\t\t--disable-bittorrent' debian/rules
 
 {
   printf 'aria2 (%s) %s; urgency=medium\n\n' "$version" "$(dpkg-parsechangelog -SDistribution)"
-  printf '  * DebridPulse: read a CONNECT response no further than its header\n'
+  printf '  * DownloadPulse: read a CONNECT response no further than its header\n'
   printf '    (debian/patches/connect-tunnel-exact-read.patch).\n'
-  printf '  * DebridPulse: build without BitTorrent (--disable-bittorrent).\n\n'
-  printf ' -- DebridPulse <noreply@github.com>  %s\n\n' "$(date -R -u -d @0)"
+  printf '  * DownloadPulse: build without BitTorrent (--disable-bittorrent).\n\n'
+  printf ' -- DownloadPulse <noreply@github.com>  %s\n\n' "$(date -R -u -d @0)"
   cat debian/changelog
 } > debian/changelog.new
 mv debian/changelog.new debian/changelog
@@ -60,7 +60,7 @@ DEB_BUILD_OPTIONS="nocheck parallel=$(nproc)" dpkg-buildpackage -b -uc -us
 cp "../aria2_${version}_"*.deb "../libaria2-0_${version}_"*.deb "$out/packages/"
 test "$(find "$out/packages" -name '*.deb' | wc -l)" -eq 2
 # The exact corresponding source of the shipped binaries (GPL-2.0-or-later):
-# Debian's signed source package as fetched, plus the two DebridPulse changes.
+# Debian's signed source package as fetched, plus the two DownloadPulse changes.
 find "$work" -maxdepth 1 -type f \( -name 'aria2_*.dsc' -o -name 'aria2_*.tar.*' \) -exec cp {} "$out/source/" \;
 cp "$here/connect-tunnel-exact-read.patch" "$here/disable-bittorrent.rules.patch" "$out/source/"
 printf '%s\n' "$version" > "$out/VERSION"

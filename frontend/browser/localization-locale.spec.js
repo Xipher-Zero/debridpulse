@@ -3,7 +3,7 @@ const {test, expect} = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
 
-/* DebridPulse 1.0.14 localization, WS5: the locale probe a language candidate
+/* DownloadPulse 1.0.14 localization, WS5: the locale probe a language candidate
  * is qualified with. One locale (DP_LOCALE; the test-only pseudo locale en-XA
  * unless given) is shown on the instance's own reader -- its role and
  * deployment type -- across the shell pages, every Settings tab it may open,
@@ -134,7 +134,7 @@ const inspect = (page, root) => page.evaluate(({root, englishText, critical, con
 /* Which things exist: navigation, Settings tabs, the manual's passages. */
 const existing = page => page.evaluate(() => ({
   nav: [...document.querySelectorAll('#sidebar .nav-item[data-view]')].filter(e => e.getClientRects().length).map(e => e.dataset.view),
-  context: (({role, deployment, mode}) => ({role, deployment, mode}))(window.debridPulseAuth.presentation.context() || {}),
+  context: (({role, deployment, mode}) => ({role, deployment, mode}))(window.downloadPulseAuth.presentation.context() || {}),
 }));
 
 test(`L18-L21 locale probe (${LOCALE}): every surface the reader has is said in the locale, and the language changes nothing that exists`, async ({page}) => {
@@ -218,9 +218,9 @@ test(`L14-L16 locale probe (${LOCALE}): every Settings Help topic, for every rea
   test.setTimeout(240_000);
   await boot(page, 1440);
   const read = (given, locale) => page.evaluate(async ({given, EASY}) => {
-    const real = window.__realAuth || (window.__realAuth = window.debridPulseAuth);
+    const real = window.__realAuth || (window.__realAuth = window.downloadPulseAuth);
     const shows = part => !(given.mode === 'easy' && EASY.includes(part));
-    window.debridPulseAuth = Object.freeze({...real, presentation: Object.freeze({...real.presentation, context: () => Object.freeze({
+    window.downloadPulseAuth = Object.freeze({...real, presentation: Object.freeze({...real.presentation, context: () => Object.freeze({
       ...given, standalone: given.deployment === 'standalone', server: given.deployment !== 'standalone',
       easy: given.mode === 'easy', advanced: given.mode !== 'easy', shows, omits: part => !shows(part)})})});
     const found = {};
@@ -235,7 +235,7 @@ test(`L14-L16 locale probe (${LOCALE}): every Settings Help topic, for every rea
       handle.close();
       await new Promise(resolve => setTimeout(resolve, 0));
     }
-    window.debridPulseAuth = real;
+    window.downloadPulseAuth = real;
     return found;
   }, {given, EASY});
   const failures = {};

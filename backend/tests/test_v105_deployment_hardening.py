@@ -20,7 +20,7 @@ def test_install_surfaces_preserve_published_image_and_public_health_endpoint():
         r"^## \[(\d+(?:\.\d+)+)\](.*)$", (root / "CHANGELOG.md").read_text(), re.M
     )
     released = next(v for v, title in headings if "development" not in title.casefold())
-    expected_image = f"ghcr.io/xipher-zero/debridpulse:v{released}"
+    expected_image = f"ghcr.io/xipher-zero/downloadpulse:v{released}"
     compose = (root / "docker-compose.yml").read_text()
     readme = (root / "README.md").read_text()
     project_page = (root / "index.html").read_text()
@@ -29,7 +29,7 @@ def test_install_surfaces_preserve_published_image_and_public_health_endpoint():
     assert expected_image in project_page
     development = (root / "VERSION").read_text().strip()
     if development != released:
-        unreleased = f"ghcr.io/xipher-zero/debridpulse:v{development}"
+        unreleased = f"ghcr.io/xipher-zero/downloadpulse:v{development}"
         for surface in (compose, readme, project_page):
             assert unreleased not in surface
     assert "http://localhost:8095/api/health" in compose

@@ -1,4 +1,4 @@
-"""DebridPulse access control: the ONE authorization policy.
+"""DownloadPulse access control: the ONE authorization policy.
 
 Four fixed roles each hold a fixed set of capabilities (``ROLE_CAPABILITIES``).
 Every registered HTTP action is classified exactly once, by the endpoint that

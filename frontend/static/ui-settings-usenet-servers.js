@@ -369,7 +369,7 @@
     const integration = result?.integration;
     const identity = String(result?.integration_id || '');
     if (integration && identity) {
-      document.dispatchEvent(new CustomEvent('debridpulse:integration-accepted',
+      document.dispatchEvent(new CustomEvent('downloadpulse:integration-accepted',
         {detail: {integration_id: identity, integration}}));
     }
     return result;
@@ -1027,7 +1027,7 @@
   document.addEventListener('click', onClick);
   document.addEventListener('input', onInput);
   document.addEventListener('change', onChange);
-  document.addEventListener('debridpulse:settings-rendered', bind);
+  document.addEventListener('downloadpulse:settings-rendered', bind);
   document.addEventListener('DOMContentLoaded', bind, {once: true});
   bind();
 

@@ -87,7 +87,7 @@ async function boot(page) {
 
 async function openViaEvent(page) {
   await page.evaluate(() => document.dispatchEvent(
-    new CustomEvent('debridpulse:file-selection-available', {detail: {transfer_id: 7}})));
+    new CustomEvent('downloadpulse:file-selection-available', {detail: {transfer_id: 7}})));
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
   await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toBeVisible();
 }
@@ -206,7 +206,7 @@ test('after Confirm the settled state never recreates a countdown or re-opens th
 
   // A late/duplicate SSE offer for the same transfer must be a no-op now.
   await page.evaluate(() => document.dispatchEvent(
-    new CustomEvent('debridpulse:file-selection-available', {detail: {transfer_id: 7}})));
+    new CustomEvent('downloadpulse:file-selection-available', {detail: {transfer_id: 7}})));
   await page.waitForTimeout(400);
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
   await expect(page.locator('#modal-footer .dp-fs-foot-countdown')).toHaveCount(0);
@@ -301,7 +301,7 @@ test('a single-file resource never opens the selector', async ({page}) => {
   await stub(page, state);
   await boot(page);
   await page.evaluate(() => document.dispatchEvent(
-    new CustomEvent('debridpulse:file-selection-available', {detail: {transfer_id: 7}})));
+    new CustomEvent('downloadpulse:file-selection-available', {detail: {transfer_id: 7}})));
   await page.waitForTimeout(400);
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
 });
@@ -315,7 +315,7 @@ test('the browser never auto-opens the selector when the core reports auto_offer
   await stub(page, state);
   await boot(page);
   await page.evaluate(() => document.dispatchEvent(
-    new CustomEvent('debridpulse:file-selection-available', {detail: {transfer_id: 7}})));
+    new CustomEvent('downloadpulse:file-selection-available', {detail: {transfer_id: 7}})));
   await page.waitForTimeout(400);
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
 });

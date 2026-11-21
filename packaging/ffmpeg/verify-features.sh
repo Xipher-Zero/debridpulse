@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# THE one capability invariant of DebridPulse's FFmpeg, checked against the
+# THE one capability invariant of DownloadPulse's FFmpeg, checked against the
 # INSTALLED binaries (FFmpeg reports its own components), so the build command
 # is never merely trusted:
 #   - the package is exactly the expected version of Debian's `ffmpeg` source;

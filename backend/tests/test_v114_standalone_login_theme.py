@@ -55,7 +55,7 @@ asyncio.run(main())
 def _run(tmp_path: Path, deployment: str) -> dict:
     (tmp_path / "config.json").write_text(json.dumps({"deployment_type": deployment}), encoding="utf-8")
     env = {**os.environ, "DB_PATH": str(tmp_path / "dp.sqlite"), "CONFIG_PATH": str(tmp_path / "config.json")}
-    env.pop("DEBRIDPULSE_DESKTOP", None)
+    env.pop("DOWNLOADPULSE_DESKTOP", None)
     done = subprocess.run([sys.executable, "-c", SCENARIO], cwd=BACKEND, env=env, capture_output=True, text=True,
                           timeout=120)
     assert done.returncode == 0, done.stderr[-3000:]
@@ -78,7 +78,7 @@ def test_a_standalone_installations_sign_in_page_follows_its_one_persons_theme(t
 def test_a_server_installation_keeps_the_theme_in_the_browser_and_the_sign_in_page_published(tmp_path):
     found = _run(tmp_path, "server")
     assert found["owner"] is None and found["before"] == {"authority": "browser"}
-    assert found["login"] == {"mode": "dark", "palette": "debridpulse-dark"}  # an account's change never sets it
+    assert found["login"] == {"mode": "dark", "palette": "downloadpulse-dark"}  # an account's change never sets it
 
 
 def test_the_theme_menu_offers_no_login_theme_where_the_sign_in_page_follows_and_a_held_theme_moves_once():

@@ -1,7 +1,7 @@
 """Attempt-owned process groups on every host (1.0.14 desktop WS2).
 
 ``executors.process_ownership`` keeps one contract -- one group per attempt,
-identified before it runs, liveness that survives a DebridPulse restart,
+identified before it runs, liveness that survives a DownloadPulse restart,
 termination proven for every descendant, secrets only in one-shot pipes -- on
 POSIX (``flock``, sessions, ``killpg``) and on Windows (a share-locked marker,
 a per-attempt Job Object, ``TerminateJobObject``). The cases here drive the
@@ -12,7 +12,7 @@ and breakaway) is generated only there. Nothing here is ever skipped.
 Also here: the macOS pipe guard (C3: no ``F_GETPIPE_SZ`` off Linux), and the
 graceful application stop of rsync and Media Downloads (C2): every live group
 ends through ``terminate``, nothing durable changes, and a restarted
-DebridPulse finds the attempt without a group.
+DownloadPulse finds the attempt without a group.
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from executors.process_ownership import ProcessGroupAlive, ProcessOwnership
 WINDOWS = os.name == "nt"
 BACKEND = Path(__file__).resolve().parents[1]
 # A real interpreter, never a virtual environment's launcher (on Windows that
-# is a separate parent process, so "DebridPulse dies" would kill only it).
+# is a separate parent process, so "DownloadPulse dies" would kill only it).
 if WINDOWS and sys.prefix != sys.base_prefix and os.path.isfile(os.path.join(sys.base_exec_prefix, "python.exe")):
     INTERPRETER = os.path.join(sys.base_exec_prefix, "python.exe")
 else:
@@ -129,7 +129,7 @@ async def test_a_program_that_finishes_leaves_no_live_group(tmp_path):
 
 @pytest.mark.only_on(os.name == "nt", reason="Windows exit codes are DWORDs relayed by the gate; POSIX execs the program")
 @pytest.mark.asyncio
-async def test_an_exit_code_above_two_to_the_31_reaches_debridpulse_unchanged(tmp_path):
+async def test_an_exit_code_above_two_to_the_31_reaches_downloadpulse_unchanged(tmp_path):
     # A crashed program's NTSTATUS (STATUS_STACK_BUFFER_OVERRUN), and a
     # terminated one's 0xFFFFFFFF: the gate relays them, never an OverflowError.
     owner = ProcessOwnership(tmp_path / "rt")
@@ -142,7 +142,7 @@ async def test_an_exit_code_above_two_to_the_31_reaches_debridpulse_unchanged(tm
         owner.forget("a")
 
 
-# ── a DebridPulse restart: liveness and termination survive it ────────────────
+# ── a DownloadPulse restart: liveness and termination survive it ────────────────
 
 _CRASH = """
     import asyncio, os, sys
@@ -154,13 +154,13 @@ _CRASH = """
         while not os.path.exists({pids!r}):
             await asyncio.sleep(0.05)
         print(owned.group, flush=True)
-        os._exit(9)              # DebridPulse dies: no cleanup of any kind runs
+        os._exit(9)              # DownloadPulse dies: no cleanup of any kind runs
     asyncio.run(main())
 """
 
 
 @pytest.mark.asyncio
-async def test_a_group_outlives_a_debridpulse_crash_and_is_found_and_ended_after_restart(tmp_path):
+async def test_a_group_outlives_a_downloadpulse_crash_and_is_found_and_ended_after_restart(tmp_path):
     runtime, pids = tmp_path / "rt", tmp_path / "pids"
     crashed = await asyncio.to_thread(subprocess.run, [INTERPRETER, "-c", textwrap.dedent(_CRASH.format(
         backend=str(BACKEND), runtime=str(runtime), interpreter=INTERPRETER, family=FAMILY, pids=str(pids)))],
@@ -195,14 +195,14 @@ def _gate(gate_read: int, program_argv: list[str], *, job=None, handles=()) -> s
                             pass_fds=(gate_read,), close_fds=True)
 
 
-def test_a_gate_debridpulse_never_opens_runs_nothing(tmp_path):
-    """DebridPulse dying before it records the group closes its end of the
+def test_a_gate_downloadpulse_never_opens_runs_nothing(tmp_path):
+    """DownloadPulse dying before it records the group closes its end of the
     gate: the gate reads end-of-file and the program never runs."""
     ran = tmp_path / "ran"
     read, write = os.pipe()
     gate = _gate(read, [INTERPRETER, "-c", f"open({str(ran)!r}, 'w').close()"])
     os.close(read)
-    os.close(write)                                       # what DebridPulse's death does
+    os.close(write)                                       # what DownloadPulse's death does
     assert gate.wait(timeout=60) == 125
     time.sleep(0.3)
     assert not ran.exists()
@@ -242,7 +242,7 @@ async def test_secrets_reach_the_program_only_through_one_shot_pipes_and_nothing
     assert all(secret not in value for value in seen["argv"])
     assert all(secret not in value for value in seen["env"].values())
     assert seen["env"]["DP_HARMLESS"] == "1"
-    assert not {"CONFIG_PATH", "DB_PATH", "DEBRIDPULSE_SETUP_PREVIEW"} & set(seen["env"])
+    assert not {"CONFIG_PATH", "DB_PATH", "DOWNLOADPULSE_SETUP_PREVIEW"} & set(seen["env"])
     assert seen["env"].get("HOME") == str(owner.home)
     if WINDOWS:
         assert all(seen["env"].get(key) == str(owner.home) for key in ("USERPROFILE", "APPDATA", "LOCALAPPDATA",
@@ -251,7 +251,7 @@ async def test_secrets_reach_the_program_only_through_one_shot_pipes_and_nothing
 
 @pytest.mark.asyncio
 async def test_repeated_spawns_leave_no_descriptor_or_handle_behind(tmp_path):
-    """Every pipe, marker and job copy DebridPulse makes for a spawn is closed
+    """Every pipe, marker and job copy DownloadPulse makes for a spawn is closed
     again: twenty attempts with secrets and input grow nothing."""
     import gc
     owner = ProcessOwnership(tmp_path / "rt")

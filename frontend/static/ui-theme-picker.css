@@ -1,4 +1,4 @@
-/* DebridPulse theme picker (ui-theme-picker.js): a chevron in the strip to
+/* DownloadPulse theme picker (ui-theme-picker.js): a chevron in the strip to
    the right of the mode toggle and the menu of the active mode's palettes.
    The chevron is out of flow, so the toggle and every topbar control keep
    their own boxes. Below 780px (the handheld shell) the chevron is the

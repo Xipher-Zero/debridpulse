@@ -1,7 +1,7 @@
 """The ONE neutral Executor Work projection and action surface.
 
 Executor Work exists to answer a single operational question: what is an
-executor actually doing with the work DebridPulse gave it, and what may the
+executor actually doing with the work DownloadPulse gave it, and what may the
 operator legally do about it right now. It is a diagnostic surface for work
 that is not converging -- Downloads remains the authoritative transfer record.
 
@@ -22,7 +22,7 @@ correlation and no secret. A browser that learned any of them would be
 normalizing an executor's schema, which is exactly what this owner exists to
 make unnecessary.
 
-OWNERSHIP. Only work DebridPulse can establish as its OWN durable execution
+OWNERSHIP. Only work DownloadPulse can establish as its OWN durable execution
 work appears. The rows start from the durable execution attempts of live
 transfers and every one of them is re-checked against the canonical
 authorization fence before it is shown or acted on, so an arbitrary daemon job
@@ -33,7 +33,7 @@ no "show all jobs" and no way to ask for one.
 ACTIONS. The public identity is the DURABLE DP attempt id; current ownership is
 resolved server-side, the observation is re-taken, and the action is verified
 legal against that fresh observation before anything is dispatched. Dispatch
-itself is always the existing canonical command -- DebridPulse pause, resume
+itself is always the existing canonical command -- DownloadPulse pause, resume
 and artifact cancellation -- never a native remove or delete. A stale or
 not-owned attempt is refused.
 """
@@ -47,14 +47,14 @@ from core.localization import DisplayError
 router = APIRouter()
 
 
-# The generic operator actions. Each one names an existing canonical DebridPulse
+# The generic operator actions. Each one names an existing canonical DownloadPulse
 # command; none of them names an executor or a native operation.
 PAUSE, RESUME, CANCEL = "pause", "resume", "cancel"
 ACTIONS = frozenset({PAUSE, RESUME, CANCEL})
 
 # Neutral execution states the operator-facing filters group. The mapping is
 # from ``ExecutionState`` only -- never from a native status string -- so an
-# executor that reports a state DebridPulse already understands is filterable
+# executor that reports a state DownloadPulse already understands is filterable
 # the day it is registered.
 FILTER_GROUPS = {
     ExecutionState.QUEUED: "waiting",
@@ -84,7 +84,7 @@ async def _owned_attempts(application: ApplicationService):
 
 
 async def _display_names(application: ApplicationService, attempts) -> dict[int, str]:
-    """The DebridPulse-owned name of each attempt's artifact.
+    """The DownloadPulse-owned name of each attempt's artifact.
 
     Read once per transfer, from canonical state. Never a native job name.
     """
@@ -100,7 +100,7 @@ def _controls(observation, *, cancellable: bool) -> list[str]:
 
     Pause and Resume are the executor's own neutral answer about its current
     state (``ExecutionObservation.controls``), never an inference from a status
-    name. Cancel is offered only where DebridPulse owns a canonical legal
+    name. Cancel is offered only where DownloadPulse owns a canonical legal
     cancellation path for this exact attempt, which the caller has already
     asked the authorization fence.
     """
@@ -115,7 +115,7 @@ def _controls(observation, *, cancellable: bool) -> list[str]:
 
 
 def _row(attempt, observation, executor, name: str, *, cancellable: bool, rate: int) -> dict:
-    """One neutral row. Everything in it is a DebridPulse fact."""
+    """One neutral row. Everything in it is a DownloadPulse fact."""
     progress = observation.progress
     total = int(progress.total_bytes or 0)
     completed = max(0, int(progress.completed_bytes or 0))
@@ -124,7 +124,7 @@ def _row(attempt, observation, executor, name: str, *, cancellable: bool, rate: 
     # about how much work is left.
     remaining = max(0, total - completed) if total > 0 else None
     return {
-        # The durable DebridPulse identity this row is addressed by.
+        # The durable DownloadPulse identity this row is addressed by.
         "attempt_id": attempt.handle.attempt_id,
         "transfer_id": attempt.transfer_id,
         "artifact_id": attempt.artifact_id,
@@ -147,7 +147,7 @@ def _row(attempt, observation, executor, name: str, *, cancellable: bool, rate: 
 
 
 def _unobservable_row(attempt, name: str) -> dict:
-    """A DebridPulse-owned attempt whose executor is not currently registered.
+    """A DownloadPulse-owned attempt whose executor is not currently registered.
 
     It is still our work, so it is still reported -- as unknown, with no
     controls. Hiding it would claim the work does not exist, and offering
@@ -175,7 +175,7 @@ def _unobservable_row(attempt, name: str) -> dict:
 
 @router.get("/executor-work")
 async def list_executor_work(application: ApplicationService = Depends(get_application)):
-    """Every execution DebridPulse currently owns, as neutral rows."""
+    """Every execution DownloadPulse currently owns, as neutral rows."""
     engine = application.engine
     attempts = await _owned_attempts(application)
     names = await _display_names(application, attempts)
@@ -224,7 +224,7 @@ async def list_executor_work(application: ApplicationService = Depends(get_appli
 @router.post("/executor-work/{attempt_id}/{action}")
 async def control_executor_work(attempt_id: str, action: str,
                                 application: ApplicationService = Depends(get_application)):
-    """Perform one generic action on one durable DebridPulse attempt.
+    """Perform one generic action on one durable DownloadPulse attempt.
 
     The attempt id is resolved to CURRENT ownership here, the observation is
     re-taken here, and legality is decided here -- from the same neutral facts

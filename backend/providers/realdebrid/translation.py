@@ -490,7 +490,7 @@ def malformed_links_evidence(native: dict, native_id: str) -> dict:
 
 
 # -- upstream file selection ---------------------------------------------------
-# DebridPulse decides which members a transfer wants; Real-Debrid is told
+# DownloadPulse decides which members a transfer wants; Real-Debrid is told
 # exactly those, by its own file ids, and its resource is judged by whether it
 # reflects them. Nothing here chooses a member.
 _SELECTION_OPERATION = "torrent_file_selection"
@@ -508,7 +508,7 @@ def native_file_ids(native: dict, members: tuple[NativeMember, ...], wanted) -> 
 
     Every native file -- selected or not, authorized or not -- must carry its
     own positive integer id, distinct from every other file's: an id two
-    files share would select a file DebridPulse never authorized, and a
+    files share would select a file DownloadPulse never authorized, and a
     comparison by id would accept that overbroad selection. Otherwise
     ``NativeFileIdsAmbiguous``. ``ValueError`` when any wanted member is not
     exactly one native file of that path and size. Never by name, extension,
@@ -537,7 +537,7 @@ def native_file_ids(native: dict, members: tuple[NativeMember, ...], wanted) -> 
 def selection_evidence(native: dict, native_id: str, members: tuple[NativeMember, ...], *, wanted: int,
                        requested: tuple[str, ...] = (), outcome: str) -> dict:
     """What a file-selection decision judged: the torrent's native status,
-    the counts of its files, of the files DebridPulse authorized, of the
+    the counts of its files, of the files DownloadPulse authorized, of the
     native ids it asked for and of the files Real-Debrid reports selected,
     the selected flags it disagrees with as a bounded native-order prefix,
     and the ``outcome`` decided -- never a link."""
@@ -558,7 +558,7 @@ def selection_evidence(native: dict, native_id: str, members: tuple[NativeMember
 
 def selection_error(stage: Stage, diagnostic: str, evidence: dict, *,
                     category: Category = Category.RESOURCE_STATE_CONFLICT) -> NormalizedError:
-    """This resource cannot reflect DebridPulse's selection, decided from
+    """This resource cannot reflect DownloadPulse's selection, decided from
     Real-Debrid's own answer: a fact about this torrent on this provider --
     never the request's, never transient, never Real-Debrid's health. Judged
     from the torrent's structured state, never from a native error code; a

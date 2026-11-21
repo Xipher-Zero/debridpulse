@@ -1,7 +1,7 @@
 """
-DebridPulse backups: the ONE owner of restore points.
+DownloadPulse backups: the ONE owner of restore points.
 
-A restore point is one DebridPulse backup -- the operator never manages its
+A restore point is one DownloadPulse backup -- the operator never manages its
 member files. On disk it is a directory in the configured Backup Folder,
 named by its identity (``YYYYmmdd_HHMMSS_<uuid32>``), holding an ownership
 manifest, ``config.json``, the SQLite database and an optional avatar. Only
@@ -54,14 +54,14 @@ from urllib.parse import quote
 
 from core.localization import Coded
 
-logger = logging.getLogger("debridpulse.backup")
+logger = logging.getLogger("downloadpulse.backup")
 
 _BACKUP_DIR_RE = re.compile(r"^\d{8}_\d{6}(?:_[0-9a-f]{8}|_[0-9a-f]{32})?$")
 # DB_PATH is configurable, so the database member is any safe bare file name.
 _DATABASE_MEMBER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,254}$")
 _BACKUP_RUN_LOCK = asyncio.Lock()
-_MANIFEST_NAME = ".debridpulse-backup.json"
-_MANIFEST_KIND = "debridpulse-backup"
+_MANIFEST_NAME = ".downloadpulse-backup.json"
+_MANIFEST_KIND = "downloadpulse-backup"
 _CONFIG_MEMBER = "config.json"
 _AVATAR_EXTENSIONS = ("png", "jpg", "gif", "webp")
 _AVATAR_MEMBERS = frozenset(f"avatar.{ext}" for ext in _AVATAR_EXTENSIONS)
@@ -82,7 +82,7 @@ _MAX_SCHEDULE_BYTES = 4096
 _SCHEDULE_RETRY_SECONDS = 3600
 _COPY_CHUNK = 1024 * 1024
 # Schemas the canonical bootstrap (``db.database.init_db``) upgrades to the
-# running one, each exactly as a pinned DebridPulse build recorded it:
+# running one, each exactly as a pinned DownloadPulse build recorded it:
 # * the v1.0.13 schema before transfer-owned file-selection intent (6b691ef7),
 #   which that bootstrap extends with the intent tables and the event journal;
 # * the v1.0.13 schema immediately before the event journal (8b009d04), which
@@ -119,14 +119,14 @@ _COPY_CHUNK = 1024 * 1024
 #   passwords (``auth.accounts._initialize_usernames``);
 # * the 1.0.14 schema immediately before the installation's login appearance
 #   (be62e8d2), which it extends with the one ``login_appearance`` table,
-#   empty: the sign-in page is DebridPulse Dark until an Admin publishes a
+#   empty: the sign-in page is DownloadPulse Dark until an Admin publishes a
 #   login theme, and no account's appearance is read to choose one;
 # * the 1.0.14 schema immediately before the transfer-scoped recovery-audit
 #   index (523d3c7b), which it extends with that index and its version
 #   (``db.database.TRANSFER_AUDIT_INDEX_STEP``) -- no row is added, changed or
 #   removed -- both as a fresh installation holds it and as an installation
 #   migrated from before 1.0.12 holds it, with the four tables that migration
-#   keeps (adc_aria2_owned_gids, debridpulse_aria2_owned_gids, flexget_runs,
+#   keeps (adc_aria2_owned_gids, downloadpulse_aria2_owned_gids, flexget_runs,
 #   saved_searches), which the bootstrap keeps as they are;
 # * the 1.0.14 schema immediately before temporary provider quota holds
 #   (4180f015), which it extends with the one ``provider_quota_holds`` table,
@@ -161,15 +161,15 @@ _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:c51de6ae14c6185ac650bd1f5f02d93c88ac21b676799494e7418a8022d26239",
     "sha256:fc440366772ce843ce91851b8be5894e1c6b3aff63fb75e873fcfbfee64697a4",
     "sha256:6941fac3b88a35fdaa4d2f2f1f5436b0227c2ef99d4ef22e7567a889231e70b8",
-    "sha256:fcb6f8e75a4f3a01093996722832bea1ad177b78c68a384316469a1a63a5688b",
+    "sha256:3039fea1b7b3d838b4b9f2784330b1dca7e6baae025abc100e9007fc15898cae",
     "sha256:299d4d4574a6a14a1eeb6efdbc4458d1603ae3b0070c03d03ce9e5f69547f498",
-    "sha256:d97c20d09d9dcaa49386cbe1c3376985624491905477c0cb3a2628bb99e9d40d",
+    "sha256:fbee2a0491580d627ba4c8fd18c893d1e6702fcc1677bb385b7a5626b0ec3ca6",
     "sha256:50025f774b496b03d43448bc7f971a7827c0de461624c0ca171ae283cbc6ffdc",
-    "sha256:db806f7160ec8c47623d14f0dcb39696a7b7fe7047ff059e8bbe0787b59c0b1b",
+    "sha256:3583a0011b7569c5f4d378a1e6e091ded767b602119d3f2b1e705330bb2bbf93",
     "sha256:d902d0864a8096448f0a750c40c1582c6d45c121c674456c597497bb88ce31a8",
-    "sha256:9eed55b2232d8cb01aece7a22d99d06d26088daed5db74deffffa5e4a0736382",
+    "sha256:1ac4feef1e70c047d148a7d74d8e44cad0ce107625f99b4118fa0de2007ca9d6",
     "sha256:fbc82a9d04158ac5807eb13ab779000e23a4160dd8273decaad17edc68277a98",
-    "sha256:8d8a254ec9ea1d464aeda25a1744abbd62174e5581694733499fc4cdc05bd8cd",
+    "sha256:c4d356a4890a2596040d5bfb256c1e7275c547686aa1c1582af60ae9292ce9b4",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"
@@ -181,7 +181,7 @@ _HEADLINES = {
     "restore": "Backup could not be restored.",
     "remove": "Backup could not be removed.",
 }
-INVALID = "The selected file is not a valid DebridPulse backup."
+INVALID = "The selected file is not a valid DownloadPulse backup."
 UNSUPPORTED = "This backup was created by an unsupported version."
 MISSING = "The selected backup no longer exists."
 
@@ -211,7 +211,7 @@ class BackupRejected(Coded, Exception):
 
 
 def _invalid(action: str) -> BackupRejected:
-    return BackupRejected(action, INVALID if action == "add" else "The backup is not a valid DebridPulse backup.",
+    return BackupRejected(action, INVALID if action == "add" else "The backup is not a valid DownloadPulse backup.",
                           detail_code="invalid_file" if action == "add" else "invalid")
 
 
@@ -225,7 +225,7 @@ def _unsupported(action: str) -> BackupRejected:
 
 
 NO_USABLE_ADMIN = ("It holds no enabled Admin account that could sign in with its authentication settings, "
-                   "so restoring it would lock DebridPulse.")
+                   "so restoring it would lock DownloadPulse.")
 
 
 def _check_usable_admin(database: Path, config: Path, action: str) -> None:
@@ -297,7 +297,7 @@ def _folder() -> Path:
 # ── schema identity ─────────────────────────────────────────────────────────
 
 def _fingerprint(conn: sqlite3.Connection) -> str:
-    """Schema identity: every (table, column) pair plus the DebridPulse schema
+    """Schema identity: every (table, column) pair plus the DownloadPulse schema
     markers, so two databases match only when the running installation would
     start on either without any migration."""
     tables = [row[0] for row in conn.execute(
@@ -490,7 +490,7 @@ def _restore_point(path: Path) -> RestorePoint:
 
 
 def list_restore_points() -> list[RestorePoint]:
-    """Every DebridPulse restore point in the Backup Folder, newest first."""
+    """Every DownloadPulse restore point in the Backup Folder, newest first."""
     folder = _folder()
     if not folder.is_dir():
         return []
@@ -564,7 +564,7 @@ def _copy_private(source: Path, target: Path) -> None:
 
 
 async def create_restore_point() -> RestorePoint:
-    """THE creation of a restore point from current DebridPulse state.
+    """THE creation of a restore point from current DownloadPulse state.
 
     Run Backup, the scheduler, and the mandatory pre-restore and pre-reset
     safety backups all come here. The restore point is assembled privately,
@@ -859,7 +859,7 @@ def _managed_entries(folder: Path) -> list[Path]:
 
 
 def _rotate_backups(backup_folder: Path, keep_days: int, max_retained: int) -> tuple[int, int]:
-    """Remove managed DebridPulse restore points older than ``keep_days`` OR
+    """Remove managed DownloadPulse restore points older than ``keep_days`` OR
     outside the newest ``max_retained`` -- two independent authorities over
     one inventory, newest first by creation/admission time (identity breaks a
     tie). A held point is never removed; it still occupies its rank. Returns
@@ -893,7 +893,7 @@ def _rotate_backups(backup_folder: Path, keep_days: int, max_retained: int) -> t
 # ── the portable unit: Save Backup / Add Backup ─────────────────────────────
 
 def package_name(point_id: str) -> str:
-    return f"debridpulse-backup-{point_id}.zip"
+    return f"downloadpulse-backup-{point_id}.zip"
 
 
 def package_restore_point(point_id: str) -> Path:
@@ -1122,7 +1122,7 @@ class StagedRestore:
         if journal.exists():
             # An earlier restore is unresolved: its journal is the only record
             # of where the original state is. Nothing is moved, nothing replaced.
-            raise BackupRejected("restore", "An earlier restore has not been reversed yet; restart DebridPulse first.",
+            raise BackupRejected("restore", "An earlier restore has not been reversed yet; restart DownloadPulse first.",
                                  reason="unresolved", detail_code="unresolved")
         _retire_wal(DB_PATH)
         self.moves = self._plan()

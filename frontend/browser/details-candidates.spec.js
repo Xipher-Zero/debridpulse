@@ -124,8 +124,8 @@ test('candidate disclosure survives the modal-coordinator ownership refactor', a
   await page.goto('/');
   await page.evaluate(() => {
     window.__dpDetailEvents = [];
-    document.addEventListener('debridpulse:detail-rendered', e => window.__dpDetailEvents.push(['rendered', e.detail && e.detail.transferId]));
-    document.addEventListener('debridpulse:detail-closed', () => window.__dpDetailEvents.push(['closed']));
+    document.addEventListener('downloadpulse:detail-rendered', e => window.__dpDetailEvents.push(['rendered', e.detail && e.detail.transferId]));
+    document.addEventListener('downloadpulse:detail-closed', () => window.__dpDetailEvents.push(['closed']));
   });
 
   await page.evaluate(() => showDetail(990));
@@ -162,7 +162,7 @@ test('in-flight suppression prevents duplicate candidate POSTs', async ({page}) 
 // A held live pulse: the stream is answered only when the test sends the
 // events, so they arrive at a moment the test chose, through the app's real
 // transport (app.js turns a semantic torrent_updated into
-// debridpulse:transfer-updated).
+// downloadpulse:transfer-updated).
 async function heldPulse(page) {
   let send;
   const body = new Promise(resolve => { send = resolve; });

@@ -11,7 +11,7 @@ Source of truth (bundled SABnzbd 5.1.3, read in the packaged image):
   ``"<displayname>=<to_units(bytes)>B"`` per server that delivered, ", "
   joined, rounded to binary units -- the only per-job form any API exposes.
 
-DebridPulse's keyword for a server is ``dp-<canonical id>``; the report names
+DownloadPulse's keyword for a server is ``dp-<canonical id>``; the report names
 it by display name, so the executor attributes a line through the service's
 own current ``(keyword, displayname)`` map, and only when exactly one managed
 server carries that name. Recorded once per execution attempt
@@ -108,7 +108,7 @@ async def test_anything_unreadable_is_unknown_never_guessed(variant):
         slot = {"stage_log": [{"name": "Servers", "actions": []}]}
     found = native_contributors(slot, servers)
     if variant == "unmanaged_only":
-        # A name only a server DebridPulse does not manage carries is no DP server.
+        # A name only a server DownloadPulse does not manage carries is no DP server.
         assert [(item.identity, item.label) for item in found] == [("", "Primary"), (B, "Backup")]
     else:
         assert found is None
@@ -150,7 +150,7 @@ async def test_a_completed_jobs_servers_are_recorded_once_and_outlive_the_servic
     recorded = codec.load(attempt["contributors"])
     assert [(item["identity"], item["label"], item["reported"]) for item in recorded] == [
         (A, "Primary", "1.2 GB"), (B, "Backup", "5.0 MB")]
-    # The service forgets the job; DebridPulse's record stays, as does a
+    # The service forgets the job; DownloadPulse's record stays, as does a
     # restarted repository's view of it.
     mixed.sab.history.clear()
     await mixed.engine.reconcile_executions()

@@ -118,7 +118,7 @@ def test_the_card_and_the_commit_scope_are_the_canonical_ones():
     page = _read("ui-settings-page.js")
     assert ("executorTuningCard('webdav', 'WebDAV',\n        say('settings.tuning.webdav_copy'), "
             "webdavTuning(s), 'general_webdav', 'tuning-webdav')") in page
-    assert english("settings.tuning.webdav_copy") == "Which files DebridPulse collects from WebDAV folders."
+    assert english("settings.tuning.webdav_copy") == "Which files DownloadPulse collects from WebDAV folders."
     assert "webdav_directory_depth: {scope: 'integration:general_webdav', option: 'directory_depth'}," in page
     assert "webdav_max_files: {scope: 'integration:general_webdav', option: 'max_files'}," in page
     assert ("webdav_collection_scan_timeout_seconds: {scope: 'integration:general_webdav',\n"

@@ -1,6 +1,6 @@
 """Database Wipe owns its own quiescence and preserves the operator's pause intent.
 
-The operator confirms the destructive intent (typed WIPE); DebridPulse
+The operator confirms the destructive intent (typed WIPE); DownloadPulse
 establishes what the wipe needs itself. Inside the maintenance admission the
 wipe drains every native execution through the ONE generic drain
 (``ApplicationService.drain_executions``) -- the same one a restore uses -- so
@@ -164,7 +164,7 @@ async def _running(core, payload):
 def _backed_up_pause_intent(point_id):
     """The pause intent a restore point carries: (global flag, {transfer: paused})."""
     point = backup.restore_point(point_id)
-    member = json.loads((point.path / ".debridpulse-backup.json").read_text(encoding="utf-8"))["database"]
+    member = json.loads((point.path / ".downloadpulse-backup.json").read_text(encoding="utf-8"))["database"]
     with closing(sqlite3.connect(point.path / member)) as conn:
         row = conn.execute("SELECT value FROM transfer_controls WHERE key='paused'").fetchone()
         intents = dict(conn.execute("SELECT torrent_id, paused FROM transfer_pause_intents").fetchall())

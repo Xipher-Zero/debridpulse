@@ -1,6 +1,6 @@
-"""SQLite persistence layer for DebridPulse.
+"""SQLite persistence layer for DownloadPulse.
 
-DebridPulse is a single-process appliance. SQLite/WAL is the authoritative and
+DownloadPulse is a single-process appliance. SQLite/WAL is the authoritative and
 only runtime datastore; server-database failover and dialect translation were
 removed in v1.0.5 because they added failure states without product benefit.
 """
@@ -17,14 +17,14 @@ from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
 
 import aiosqlite
 
-logger = logging.getLogger("debridpulse.db")
+logger = logging.getLogger("downloadpulse.db")
 
 
 def _default_sqlite_path() -> Path:
     configured = os.getenv("DB_PATH", "").strip()
     if configured:
         return Path(configured)
-    current = Path("/app/data/debridpulse.db")
+    current = Path("/app/data/downloadpulse.db")
     legacy = Path("/app/data/alldebrid.db")
     if legacy.exists() and not current.exists():
         logger.warning("Using legacy SQLite path %s; set DB_PATH=%s to migrate explicitly", legacy, current)
@@ -1047,7 +1047,7 @@ READINESS_EVIDENCE_TRIGGERS = (
 TRANSFER_REPOSITORY_COLUMNS = {
     # Pause intent ownership (``TransferRepository.set_pause_and_fence``):
     # every write advances ``generation``; ``holder`` is NULL for an
-    # operator's or DebridPulse's own control, or the one advisory hold an
+    # operator's or DownloadPulse's own control, or the one advisory hold an
     # external client was granted. Existing intents are the operator's.
     'transfer_pause_intents': {'generation': 'INTEGER NOT NULL DEFAULT 0', 'holder': 'TEXT'},
     # Additive for databases created before backup promotion existed.
@@ -1208,7 +1208,7 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # Additive and nullable: NULL is "not reported" (unknown).
         'contributors': 'TEXT',
         # The ONE durable material-ownership authority of an attempt: the id
-        # of the attempt that established DebridPulse ownership of the
+        # of the attempt that established DownloadPulse ownership of the
         # artifact's material boundary (itself, when the boundary and every
         # declared transient path were absent at its admission; otherwise the
         # owner inherited from this artifact's immediately preceding attempt).

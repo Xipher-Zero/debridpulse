@@ -5,7 +5,7 @@ the Dockerfile) before any of this was written:
 
 * ``nzbname`` becomes ``NzbObject.final_name``; the queue publishes it as slot
   ``filename`` and the history as ``name``. The queue publishes NO other
-  DebridPulse-settable string -- no ``name`` key, no ``nzb_name``, no custom
+  DownloadPulse-settable string -- no ``name`` key, no ``nzb_name``, no custom
   metadata -- and queue search matches ``final_name`` alone.
 * Post-processing calls ``deobfuscate(nzo, files, nzo.final_name)``, which
   renames an obfuscated dominant member (and its lookalikes) to that job name.
@@ -313,7 +313,7 @@ async def test_a_rename_is_not_reissued_once_the_job_already_carries_it(lab):
 # The submission fence.
 #
 # Separating the names in time is not enough on its own. Between submission and
-# the moment DebridPulse learns the native id, the job exists and is named with
+# the moment DownloadPulse learns the native id, the job exists and is named with
 # the correlation token -- and if it is allowed to run in that window, a small
 # posting can finish and be post-processed under that name. Deobfuscation would
 # then stamp the token onto the payload, the job would land in history, and no
@@ -324,7 +324,7 @@ async def test_a_rename_is_not_reissued_once_the_job_already_carries_it(lab):
 # machinery exists to survive, so the invariant is absolute:
 #
 #     No native job may acquire or post-process while its name is the
-#     DebridPulse correlation token.
+#     DownloadPulse correlation token.
 #
 # It is enforced by creating every job paused and withholding the RESUME
 # control until the job is bound AND provably carries its release name. Core
@@ -344,7 +344,7 @@ async def test_fence_a_lost_acknowledgement_cannot_acquire_under_the_token(lab):
     """The rejected design's race, run deliberately.
 
     The submission lands, the answer is lost, and the native worker is then
-    allowed to do everything it can -- before DebridPulse reconciles anything.
+    allowed to do everything it can -- before DownloadPulse reconciles anything.
     """
     request = _request(lab)
     handle = lab.executor.prepare(request)
@@ -447,7 +447,7 @@ async def test_fence_a_canonically_paused_execution_is_not_auto_resumed(lab):
 
 @pytest.mark.asyncio
 async def test_fence_a_restart_before_naming_completes_converges(lab, tmp_path):
-    """Scenario 4: DebridPulse stops between binding and naming."""
+    """Scenario 4: DownloadPulse stops between binding and naming."""
     from transfers.models import ExecutionControl
     request = _request(lab)
     handle = lab.executor.prepare(request)

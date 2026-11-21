@@ -1,6 +1,6 @@
-/* DebridPulse alternative palettes.
+/* DownloadPulse alternative palettes.
  *
- * DebridPulse Dark and Light are the native palettes (design-tokens.css,
+ * DownloadPulse Dark and Light are the native palettes (design-tokens.css,
  * ui-language-tokens.css) and are never restated here: with neither selected
  * the body carries no data-dp-palette and every token keeps its original
  * value. An alternative palette is chosen per mode (ui-theme-bootstrap.js)

@@ -49,7 +49,7 @@ def test_wrong_but_writable_small_filesystem_has_truthful_browser_and_active_cap
     capacity = DiskCapacity(
         download,
         1,
-        application_path=app / "debridpulse.db",
+        application_path=app / "downloadpulse.db",
     )
 
     def fake_usage(path):

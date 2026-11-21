@@ -5,7 +5,7 @@ carries out, before core commits the final file's name:
 
 * which explicit installed yt-dlp extractor recognizes an address (in
   yt-dlp's own dispatch order; ``GenericIE`` is never a claimant);
-* the native selection DebridPulse asks yt-dlp for -- its own format selector
+* the native selection DownloadPulse asks yt-dlp for -- its own format selector
   and sorter express the Target Resolution rule exactly (``res:<target>``
   prefers the largest resolution at or below the target, and only when there
   is none the smallest above it), limited to HTTP(S)-carried transports;

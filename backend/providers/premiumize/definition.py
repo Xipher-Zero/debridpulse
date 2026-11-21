@@ -19,7 +19,7 @@ class PremiumizeOptions(BaseModel):
     # from it. On by default; a saved choice (on or off) is kept. A backup uses
     # the account's resources.
     prepare_backup_torrents: bool = True
-    # Operational allowances, never retry policy -- the same DebridPulse
+    # Operational allowances, never retry policy -- the same DownloadPulse
     # conventions every premium provider uses: one ordinary exchange, one
     # torrent or NZB upload, and how often the service catalogue becomes due
     # for refresh. Premiumize publishes no request-rate ceiling and no

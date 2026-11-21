@@ -518,7 +518,7 @@ async def test_pause_arriving_between_prepare_and_start_is_ordered_after_the_con
     assert len(starts) == 1  # exactly one native execution
     artifact = (await repository.artifacts(incoming.id))[0]
     assert (await repository.get(incoming.id)).paused
-    # DebridPulse pause fenced the writer the consuming start produced.
+    # DownloadPulse pause fenced the writer the consuming start produced.
     assert artifact.execution is None and artifact.state == "paused"
     await engine.resume(incoming.id)
     for _ in range(3):

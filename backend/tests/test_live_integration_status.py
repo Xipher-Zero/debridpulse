@@ -141,10 +141,10 @@ def test_the_live_signal_reaches_the_provider_status_owner_without_a_timer():
     app = (ROOT / "frontend" / "static" / "app.js").read_text()
     status = (ROOT / "frontend" / "static" / "ui-provider-status.js").read_text()
     forward = app.split("'integration_status_changed'", 1)[1].split("es.addEventListener", 1)[0]
-    assert "new CustomEvent('debridpulse:integration-status-changed')" in forward
+    assert "new CustomEvent('downloadpulse:integration-status-changed')" in forward
     assert "JSON.parse" not in forward  # nothing in the event is read
-    assert "document.addEventListener('debridpulse:integration-status-changed', reobserve)" in status
-    assert "document.addEventListener('debridpulse:pulse-connected', reobserve)" in status
+    assert "document.addEventListener('downloadpulse:integration-status-changed', reobserve)" in status
+    assert "document.addEventListener('downloadpulse:pulse-connected', reobserve)" in status
     assert "const reobserve = () => refresh()" in status
     for timer in ("setInterval", "setTimeout"):
         assert timer not in status

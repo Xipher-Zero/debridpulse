@@ -1,4 +1,4 @@
-# Browser client: pairing, browser tokens and downloads (`debridpulse.browser/1`)
+# Browser client: pairing, browser tokens and downloads (`downloadpulse.browser/1`)
 
 A person connects a browser extension to their own account: the extension
 asks, the person approves on this server, and the extension receives its own
@@ -64,7 +64,7 @@ A device-authorization flow, after RFC 8628.
 - **Provenance.** A browser token is its own client (`client_id` = its own id),
   attributed to its person and its name.
 - **The first route.** `GET /api/browser/v1/session` →
-  `{protocol: "debridpulse.browser/1", token: {id, label}, account: {display_name}}`.
+  `{protocol: "downloadpulse.browser/1", token: {id, label}, account: {display_name}}`.
   It is how the extension verifies its pairing and the server's protocol, and it
   names what this server offers a browser: `capabilities: {sources, controls,
   withdraw, estimate}`.
@@ -96,7 +96,7 @@ withdrawal, advisory pause/resume and the per-client limits.
 | `POST /api/browser/v1/jobs/{id}/controls` `{kind: pause\|resume, request_key}` | The protocol's advisory controls. Honoured only while this browser's request is the only one the download serves, otherwise declined with its reason (`shared_interest`, `globally_paused`, `paused_independently`, …). |
 
 - **Sources.** `links` (1–100), `magnet`, `nzb_link`, `nzb`, `torrent`,
-  `metalink` (a `.meta4` file, as DebridPulse's own upload takes it).
+  `metalink` (a `.meta4` file, as DownloadPulse's own upload takes it).
   - A media page is a link: core's routing decides, as for Quick Add.
   - A link that needs an item-or-collection answer is refused
     (`acquisition_scope_required`).

@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "id",
  "register": "Indonesian (Bahasa Indonesia, standard EYD spelling, KBBI vocabulary). The reader is addressed with the formal 'Anda' (always capitalized) or impersonal forms; never 'kamu' or 'kau'. Buttons and menu commands use the base-form imperative standard in Indonesian software (Simpan, Batal, Hapus, Coba lagi); headings and labels use nouns. Correct affixation (me-/di-/-kan/-i); passive di- forms where Indonesian prefers them. Sentence case for titles and buttons. Indonesian typography (“…” quotes). Established IT loan words only where Indonesian usage is settled (token, webhook, server, log); prefer the standard Indonesian term otherwise (unduh, unggah, pengaturan, kata sandi).",
  "terms": {

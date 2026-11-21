@@ -168,7 +168,7 @@ def test_the_list_and_event_stream_presentation_carry_no_disclosure():
 # -- the reporting integration's own words for a failure ------------------------------
 # Details' REASON (``error_reason``): declared by the integration for one native
 # code (``IntegrationPresentation.error_reasons``), for the error Details shows or
-# the failure DebridPulse is still recovering from, with only a real schedule.
+# the failure DownloadPulse is still recovering from, with only a real schedule.
 
 def _challenge(stage=Stage.RESOLUTION, detail="Sign in to confirm you're not a bot. Use --cookies-from-browser "
                "or --cookies. See https://example.test/wiki?token=sekrit-value&sig=abcdef0123456789"):

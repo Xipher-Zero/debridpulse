@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
-  <title id="title">DebridPulse</title>
+  <title id="title">DownloadPulse</title>
   <desc id="desc">A violet and blue download arrow above a horizontal baseline carrying a sinus-style EKG pulse. The deep negative spike is centered under the arrow tip; both the long downstroke and the rebound up match the 45° angles of the arrowhead edges.</desc>
   <defs>
     <linearGradient id="dp-outline" x1="18" y1="18" x2="110" y2="110" gradientUnits="userSpaceOnUse">

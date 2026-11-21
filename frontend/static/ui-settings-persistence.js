@@ -2,7 +2,7 @@
  *
  * A Settings control's commit boundary is decided by the semantics and risk of
  * that setting, never by the arbitrary fact that several controls share a page.
- * DebridPulse recognises three classes:
+ * DownloadPulse recognises three classes:
  *
  *   immediate        the mutation IS the intended action -- a participation
  *                    toggle, or an ordinary reversible boolean whose only

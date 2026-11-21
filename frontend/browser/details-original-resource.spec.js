@@ -246,7 +246,7 @@ test('selection change, refresh, closing and navigation retire the menu and what
   await expect(menu(page)).toHaveCount(0);
   await open(page, 10);
   await value(page).click({button: 'right'});
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:navigation')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:navigation')));
   await expect(menu(page)).toHaveCount(0);
   expect(await page.evaluate(() => window.__copied)).toEqual([other]);
 });

@@ -417,7 +417,7 @@ def info(status="downloaded", files=None, links=None, **extra):
 
 @pytest.mark.asyncio
 async def test_magnet_and_torrent_creation_select_nothing_upstream_and_report_unknown_cache():
-    """Which files Real-Debrid fetches is DebridPulse's decision, synchronized
+    """Which files Real-Debrid fetches is DownloadPulse's decision, synchronized
     once made: creating the torrent selects nothing."""
     for request, method in ((TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40, fingerprint="a" * 40),
                              "add_magnet"),
@@ -600,7 +600,7 @@ async def test_proven_links_keep_native_file_order_and_paths_match_the_early_man
         ("A/same.bin", 100, LINKS[0]), ("B/same.bin", 200, LINKS[1]),
         ("unique-b.bin", 400, LINKS[2]), ("unique-a.bin", 300, LINKS[3])]
     assert {entry.request.preferred_provider for entry in entries} == {"realdebrid"}
-    # DebridPulse's own selection reconciles against the same coordinates and
+    # DownloadPulse's own selection reconciles against the same coordinates and
     # never changes which link a member gets.
     chosen = [(normalize_relative_path("B/same.bin"), 200)]
     (selected,) = reconcile_executable_subset(chosen, entries)
@@ -748,7 +748,7 @@ WHALE_LINK = "https://real-debrid.com/d/WHALE538"
 AS_MOVIE = {"filename": MOVIE, "filesize": 22_576_859_233, "download": "https://cdn.example/whale/movie"}
 
 
-# What Real-Debrid holds once DebridPulse synchronized a movie-only selection.
+# What Real-Debrid holds once DownloadPulse synchronized a movie-only selection.
 WHALE_MOVIE_ONLY = [{**record, "selected": int(record["id"] == 3)} for record in WHALE_FILES]
 
 

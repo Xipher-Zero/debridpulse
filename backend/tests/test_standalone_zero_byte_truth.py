@@ -269,7 +269,7 @@ async def test_standalone_unknown_size_positive_http_still_completes(tmp_path, m
     """
     runtime = await _build_runtime(tmp_path, monkeypatch)
     real_path = "/" + MIRROR_FILENAME
-    payload = b"debridpulse-func-001-unknown-size-positive" * 512
+    payload = b"downloadpulse-func-001-unknown-size-positive" * 512
     runtime.server.route(real_path, payload, behavior="normal")
     try:
         request = TransferRequest("http", runtime.server.url(1, real_path))

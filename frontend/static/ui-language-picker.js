@@ -1,4 +1,4 @@
-/* DebridPulse's one language list (window.DPLanguagePicker): the languages
+/* DownloadPulse's one language list (window.DPLanguagePicker): the languages
  * an account or the installation may choose, and how each is shown -- its
  * flag and its own (native) name -- for both places that choose one: My
  * Account (auth.js, the account's own language, saved at once) and Users &

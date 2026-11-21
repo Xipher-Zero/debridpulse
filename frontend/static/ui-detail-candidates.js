@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.12 Details candidate disclosure + manual failover runtime.
+/* DownloadPulse v1.0.12 Details candidate disclosure + manual failover runtime.
  * Candidate presentation is backend-authored. Disclosure activation mutates only
  * its adjacent row; authoritative refresh owns source-state changes after switch.
  */
@@ -359,7 +359,7 @@
   }
 
   function renderNow(detail) {
-    switchAllowed = Boolean(detail && window.debridPulseAuth?.mayDestroy(detail));
+    switchAllowed = Boolean(detail && window.downloadPulseAuth?.mayDestroy(detail));
     if (!hasDisplayRows(detail)) return;
     const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
     if (!tbody) return;
@@ -451,7 +451,7 @@
 
   // app.js is the sole owner of the shared detail-modal globals and the
   // #overlay shell. Candidate presentation attaches to the stable lifecycle
-  // events it emits (debridpulse:detail-rendered / debridpulse:detail-closed)
+  // events it emits (downloadpulse:detail-rendered / downloadpulse:detail-closed)
   // and never wraps or reassigns a coordinator global.
   function onDetailRendered(event) {
     const transferId = Number(event && event.detail && event.detail.transferId);
@@ -461,7 +461,7 @@
     activeTransferId = transferId;
     deferredDetail = null;
     const transfer = event.detail.transfer;
-    switchAllowed = Boolean(transfer && window.debridPulseAuth?.mayDestroy(transfer));
+    switchAllowed = Boolean(transfer && window.downloadPulseAuth?.mayDestroy(transfer));
     latestDetail = hasDisplayRows(transfer) ? transfer : null;
     // The rows were rendered by rowsMarkup() from this same payload; only bind them.
     if (latestDetail) bindDisclosures(displayRows(latestDetail));
@@ -475,8 +475,8 @@
     if (installed) return;
     installed = true;
 
-    document.addEventListener('debridpulse:detail-rendered', onDetailRendered);
-    document.addEventListener('debridpulse:detail-closed', onDetailClosed);
+    document.addEventListener('downloadpulse:detail-rendered', onDetailRendered);
+    document.addEventListener('downloadpulse:detail-closed', onDetailClosed);
 
     const modalBody = document.getElementById('modal-body');
     if (modalBody && modalBody.dataset.dpCandidatePointerGuard !== '1') {
@@ -496,17 +496,17 @@
     // no news about the open transfer: Details re-says itself, without a read.
     // (Window capture: set before any page owner repaints for the change.)
     let relabeling = false;
-    window.addEventListener('debridpulse:locale-changed', function () {
+    window.addEventListener('downloadpulse:locale-changed', function () {
       relabeling = true;
       window.setTimeout(function () { relabeling = false; }, 0);
     }, true);
     const onSurfaceRendered = function () { if (!relabeling) queueRefresh(); };
-    document.addEventListener('debridpulse:downloads-rendered', onSurfaceRendered);
-    document.addEventListener('debridpulse:dashboard-recent-rendered', onSurfaceRendered);
+    document.addEventListener('downloadpulse:downloads-rendered', onSurfaceRendered);
+    document.addEventListener('downloadpulse:dashboard-recent-rendered', onSurfaceRendered);
     // A semantic change the server published for the open transfer (e.g. a
     // newly committed candidate) re-reads it through the same coalesced,
     // generation-guarded refresh -- whichever page Details was opened from.
-    document.addEventListener('debridpulse:transfer-updated', function (event) {
+    document.addEventListener('downloadpulse:transfer-updated', function (event) {
       const transferId = Number(event && event.detail && event.detail.transferId);
       if (Number.isFinite(transferId) && transferId === activeTransferId) queueRefresh();
     });

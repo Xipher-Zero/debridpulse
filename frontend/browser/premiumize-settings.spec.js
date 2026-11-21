@@ -109,7 +109,7 @@ test('a healthy premium Premiumize joins the crown and a free or unhealthy one a
   await page.goto('/');
   await page.waitForFunction(() => !!window.DPPremiumAccount);
   const compose = entries => page.evaluate(next => {
-    document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: next}}));
+    document.dispatchEvent(new CustomEvent('downloadpulse:provider-status', {detail: {entries: next}}));
     return [...document.querySelectorAll('#lbl-premium .dp-provider-premium-account')].map(block => block.textContent);
   }, entries);
   const entry = (state, status) => ({id: 'premiumize', name: 'Premiumize', state, status});

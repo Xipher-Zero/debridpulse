@@ -43,7 +43,7 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     assert "'Download Behavior & Limits':" not in source(SETTINGS_PAGE_JS)
     assert "headerCenter:" in downloads
     assert "dp-settings-download-engine-header-copy" in downloads
-    assert says(downloads, "Where DebridPulse saves downloads and how many it runs at once.")
+    assert says(downloads, "Where DownloadPulse saves downloads and how many it runs at once.")
     assert "dp-settings-download-engine-copy" not in downloads
     # One engine: the header carries no selector action.
     assert "action:" not in downloads
@@ -74,8 +74,8 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
 
     assert "directoryField('download_folder', say('settings.downloads.folder')" in downloads
     assert english("settings.downloads.folder") == "Download Folder"
-    for words in ("Browse server directories for Download Folder", "Where DebridPulse saves downloads.",
-                  "Maximum downloads DebridPulse runs at once."):
+    for words in ("Browse server directories for Download Folder", "Where DownloadPulse saves downloads.",
+                  "Maximum downloads DownloadPulse runs at once."):
         assert says(downloads, words), words
     # No topology control exists, visible or hidden, in the global card.
     # (Collapsed Transfer Method Settings child cards legitimately use `hidden`,

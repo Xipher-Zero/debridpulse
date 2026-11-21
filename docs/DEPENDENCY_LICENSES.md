@@ -89,23 +89,23 @@ the lock file and `licenses/python-runtime.json`.
 | yt-dlp-ejs | 0.8.0 | Unlicense AND MIT AND ISC |
 | zc-lockfile | 4.0 | ZPL-2.1 |
 
-The 1.0.6 native-authentication work directly depends on `argon2-cffi` for
+Native authentication directly depends on `argon2-cffi` for
 Argon2id local-password verification, `authlib` for OpenID Connect/JWT protocol
 handling, and `httpx` for bounded outbound OIDC discovery/token/JWKS requests.
-The v1.0.12 provider-runtime hardening directly depends on `google-re2` so
+Provider-runtime hardening directly depends on `google-re2` so
 externally supplied AllDebrid applicability expressions execute with RE2's
 linear-time matching semantics instead of Python backtracking regex behavior.
-The 1.0.13 universal evidence acquisition work directly depends on `asyncssh`
+Universal evidence acquisition directly depends on `asyncssh`
 for bounded SFTP evidence reads (host identity confirmed before authentication,
 offset reads only) over connections the downloader egress guard authorizes.
 Its only dependencies, `cryptography` and `typing-extensions`, were already
-locked. `asyncssh` is dual-licensed EPL-2.0 OR GPL-2.0-or-later; DebridPulse,
+locked. `asyncssh` is dual-licensed EPL-2.0 OR GPL-2.0-or-later; DownloadPulse,
 itself GPL-2.0-or-later, uses it under GPL-2.0-or-later. This is the one
 reviewed copyleft runtime dependency named in `backend/tests/test_license_policy.py`.
 `bcrypt` (Apache-2.0, no Python dependencies) is `asyncssh`'s own backend for
 passphrase-encrypted OpenSSH-format private keys -- the default format of
 `ssh-keygen` -- which the generalized `username_private_key` sign-in accepts.
-The 1.0.13 Media Downloads integration directly depends on `yt-dlp` (Unlicense,
+The Media Downloads integration directly depends on `yt-dlp` (Unlicense,
 installed without extras: its HTTP dependencies were already locked) for the
 explicit extractor registry and native HTTP(S)/HLS/DASH downloaders it runs in
 its sandboxed worker, on `yt-dlp-ejs` (Unlicense AND MIT AND ISC) for the
@@ -233,9 +233,9 @@ licence text the component itself ships.
 |---|---|---|---|---|---|
 | CPython 3.12.14 runtime (python-build-standalone 20260901) and the libraries built into it (OpenSSL, libffi, SQLite, XZ, bzip2, zlib, mpdecimal, expat, Tcl/Tk, ncurses, libedit, libuuid, Berkeley DB) | all | PSF-2.0; Apache-2.0, MIT, BSD, public domain, TCL, X11 | reproduce the notices | `runtime/python/lib/python3.12/LICENSE.txt`, `licenses/desktop/python-build-standalone/` | not copyleft; upstream release |
 | Neutralino 6.10.0 shell and the libraries built into it | all | MIT; Boost (asio), MIT (several), WTFPL (portable-file-dialogs), Apache-2.0 (mbedtls), BSD-3-Clause (websocketpp), Microsoft BSD-style (WebView2 loader, Windows) | reproduce the notices; the bundled base64 header states no licence (an earlier form of an MIT project: provenance inferred) | `licenses/desktop/neutralino/` | not copyleft; upstream tag |
-| aria2 1.37.0 (Debian's source, DebridPulse's patch, no BitTorrent) | all | GPL-2.0-or-later with the OpenSSL exception | provide the corresponding source | `tools/copyright/aria2` | sources tar |
+| aria2 1.37.0 (Debian's source, DownloadPulse's patch, no BitTorrent) | all | GPL-2.0-or-later with the OpenSSL exception | provide the corresponding source | `tools/copyright/aria2` | sources tar |
 | OpenSSL 3.5.7 libcrypto, libssh2 1.11.1, c-ares 1.34.9 (built into aria2; zlib and expat too on Windows) | all | Apache-2.0, BSD-3-Clause, MIT, zlib, MIT | reproduce the notices | `tools/copyright/{openssl,libssh2,c-ares}` (+ `zlib`, `expat` on Windows) | sources tar |
-| FFmpeg/ffprobe 7.1.5 (DebridPulse's capability set, no GPL parts) | all | LGPL-2.1-or-later | provide the corresponding source | `tools/copyright/ffmpeg` | sources tar |
+| FFmpeg/ffprobe 7.1.5 (DownloadPulse's capability set, no GPL parts) | all | LGPL-2.1-or-later | provide the corresponding source | `tools/copyright/ffmpeg` | sources tar |
 | par2cmdline 0.8.1 (par2cmdline-turbo on Windows) | all | GPL-2.0-or-later | provide the corresponding source | `tools/copyright/par2` | sources tar |
 | zstd 1.5.7 | all | BSD-3-Clause OR GPL-2.0 (used under BSD) | reproduce the notice | `tools/copyright/zstd` | sources tar |
 | rsync 3.5.2 | all | GPL-3.0-or-later | provide the corresponding source | `tools/copyright/rsync`; Windows `tools/rsync/licenses/rsync/` | sources tar |
@@ -243,10 +243,10 @@ licence text the component itself ships.
 | MSYS2 libraries beside it: libiconv, libintl (gettext), libidn2, libunistring, liblz4, libxxhash, libzstd, popt, libopenssl | Windows | LGPL-2.1+/LGPL-3+/GPL-2+ (libiconv, libintl, libidn2, libunistring), BSD-2-Clause (lz4, xxhash), BSD (zstd), MIT-style (popt), Apache-2.0 (OpenSSL) | provide the source of the LGPL ones; reproduce every notice | `tools/rsync/licenses/<package>/` (packaged and upstream texts) | each MSYS2 source package, sources tar |
 | 7-Zip 25.01 (`7z.exe`, `7z.dll`, `7za.exe`; `7zz`), official releases, unmodified | all | LGPL-2.1-or-later, parts with the unRAR licence restriction, BSD-3-Clause and BSD-2-Clause parts | "Redistributions in binary form must reproduce related license information from this file" (its `License.txt`); provide the LGPL source | `tools/copyright/7-zip` | `7z2501-src.tar.xz`, sources tar |
 | UnRAR 7.23 (`UnRAR.exe`; macOS/Linux `unrar` from RARLAB's RAR package), official releases, unmodified | all | RARLAB freeware licence (Windows `UnRAR.exe`); the RAR package's licence (macOS, Linux) | the RAR licence lets "the UnRAR components" be distributed separately (3a); no RAR or UnRAR code may be used to re-create the RAR compression algorithm. Not open source: Flathub publication remains an open question | `tools/copyright/unrar` (+ `unrar-acknowledgments`, macOS/Linux) | none owed (freeware) |
-| sabctools 9.6.3 (on Windows built with DebridPulse's patch; elsewhere PyPI's wheel) | all | GPL-2.0-or-later | provide the corresponding source | its installed licence file | sdist (+ the Windows patch), sources tar |
+| sabctools 9.6.3 (on Windows built with DownloadPulse's patch; elsewhere PyPI's wheel) | all | GPL-2.0-or-later | provide the corresponding source | its installed licence file | sdist (+ the Windows patch), sources tar |
 | SABnzbd 5.1.3 (the Usenet service; patched on macOS) | all | GPL-2.0-or-later | provide the corresponding source (shipped as source; `tests/` omitted) | `backend/usenet/LICENSE.txt` | release tarball, sources tar |
 | NSIS 3.11 installer stub (upstream's NSIS 3.11 for Windows, pinned; LZMA compressor) | Windows | zlib/libpng; its LZMA module CPL-1.0 with NSIS's special exception | [D] NSIS's licence page covers NSIS and its compression modules, not the installers built with it; CPL-1.0 object-code distribution states where the source is: upstream's `nsis-3.11-src.tar.bz2` | `licenses/desktop/nsis/copyright` | sources tar (`windows-tools/nsis/`) |
-| Microsoft Visual C++ x64 Redistributable 14.51 or newer (`vc_redist.x64.exe`, inside the Windows installer, run only when missing) | Windows | Microsoft Software License Terms (its own, shown by its installer) | **Bundled, unmodified, as Distributable Code.** [D] "Distribution of the Visual C++ Runtime Redistributable package ... is limited to licensed Visual Studio users" (learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files, 2026-04-13): the maintainer is a licensed Visual Studio (Community) user, and `vc_redist.x64.exe` is on Visual Studio's redistributable list. The build takes Microsoft's own file (`https://aka.ms/vc14/vc_redist.x64.exe`), refuses it unless Microsoft's valid Authenticode signature is on it, and carries it byte for byte (its version and SHA-256 in `PREREQUISITES.txt`). An interactive install runs it with its own interface, so the person reads and accepts Microsoft's licence terms themselves; a silent install does not run it. It is a separate program under Microsoft's terms, not covered by DebridPulse's GPL, and nothing in DebridPulse names Microsoft as its source or endorser | -- | proprietary; distributed unmodified under Microsoft's terms |
+| Microsoft Visual C++ x64 Redistributable 14.51 or newer (`vc_redist.x64.exe`, inside the Windows installer, run only when missing) | Windows | Microsoft Software License Terms (its own, shown by its installer) | **Bundled, unmodified, as Distributable Code.** [D] "Distribution of the Visual C++ Runtime Redistributable package ... is limited to licensed Visual Studio users" (learn.microsoft.com/cpp/windows/redistributing-visual-cpp-files, 2026-04-13): the maintainer is a licensed Visual Studio (Community) user, and `vc_redist.x64.exe` is on Visual Studio's redistributable list. The build takes Microsoft's own file (`https://aka.ms/vc14/vc_redist.x64.exe`), refuses it unless Microsoft's valid Authenticode signature is on it, and carries it byte for byte (its version and SHA-256 in `PREREQUISITES.txt`). An interactive install runs it with its own interface, so the person reads and accepts Microsoft's licence terms themselves; a silent install does not run it. It is a separate program under Microsoft's terms, not covered by DownloadPulse's GPL, and nothing in DownloadPulse names Microsoft as its source or endorser | -- | proprietary; distributed unmodified under Microsoft's terms |
 | Microsoft Edge WebView2 Evergreen Bootstrapper (`MicrosoftEdgeWebview2Setup.exe`, inside the Windows installer, run only when missing) | Windows | Microsoft | [D] packaging the bootstrapper with an app is a documented distribution option: "download the bootstrapper and package it with your WebView2 app" (learn.microsoft.com/microsoft-edge/webview2/concepts/distribution, updated 2026-10-02) | -- | proprietary |
 
 The Flatpak's runtime (GNOME 49 from Flathub) is not in the bundle: Flatpak
@@ -255,10 +255,10 @@ open item recorded above.
 
 ## Copyleft review — the facts and the recorded disposition
 
-DebridPulse 1.0.13 bundles the Usenet acquisition service (SABnzbd 5.1.3,
+DownloadPulse bundles the Usenet acquisition service (SABnzbd 5.1.3,
 GPL-2.0-or-later) inside the image, so that service's Python runtime closure is
 part of the shipped runtime and appears in the table above. Three of those
-packages are copyleft. **DebridPulse imports none of them; it reaches the
+packages are copyleft. **DownloadPulse imports none of them; it reaches the
 service over a private loopback HTTP API.**
 
 | Package | Licence | Why it ships | Obligation |
@@ -273,7 +273,7 @@ Established by engineering characterization:
 
 - exactly which copyleft packages ship, at which versions, under which declared
   licence expressions (the table above and `licenses/python-runtime.json`);
-- that DebridPulse's own code links to none of them;
+- that DownloadPulse's own code links to none of them;
 - that `hachoir` and `guessit` are load-bearing for the bundled service rather
   than optional extras;
 - that the same closure is what upstream SABnzbd already distributes, so
@@ -281,7 +281,7 @@ Established by engineering characterization:
 
 ### Separate programs: SABnzbd and rsync
 
-The image bundles two programs that DebridPulse runs but does not combine with
+The image bundles two programs that DownloadPulse runs but does not combine with
 its own code.
 
 - **SABnzbd 5.1.3** (GPL-2.0-or-later, (c) The SABnzbd-Team).
@@ -290,41 +290,41 @@ its own code.
     `12a01e30ce166297a375ffc3a761f98bf7d93260e040391497f643f8a3525fed`),
     unpacked unchanged to `/app/usenet` with its own `LICENSE.txt`,
     `COPYRIGHT.txt`, `GPL2.txt`, `GPL3.txt` and `licenses/`.
-  - DebridPulse starts it as a separate process and talks to it only through
-    its HTTP API on the loopback interface. DebridPulse's application code
+  - DownloadPulse starts it as a separate process and talks to it only through
+    its HTTP API on the loopback interface. DownloadPulse's application code
     imports no SABnzbd code.
     - One test-evidence generator, `backend/tests/fixtures/sab_server_report/gen.py`,
       imports SABnzbd modules when someone runs it by hand inside the image. It
       is not part of the running application.
   - Its Python dependencies are the packages its own `requirements.txt` names,
-    at the versions DebridPulse's lock pins, installed with their licence
+    at the versions DownloadPulse's lock pins, installed with their licence
     files.
   - `hachoir` (GNU GPL v2) and `guessit` (LGPL-3.0-or-later) are used by
     SABnzbd itself (`sabnzbd/misc.py`, `sabnzbd/sorting.py`,
     `sabnzbd/interface.py`), exactly as in upstream's own releases, and by no
-    DebridPulse code.
+    DownloadPulse code.
 - **rsync** (GPL-3.0-or-later, Debian package `rsync`; see Container
   components below). It runs as a separate program over its command line.
-  DebridPulse links none of its code.
+  DownloadPulse links none of its code.
 
-Shipping these programs in the same container image as DebridPulse places them
-side by side; it does not make them, or DebridPulse, a derivative of one
+Shipping these programs in the same container image as DownloadPulse places them
+side by side; it does not make them, or DownloadPulse, a derivative of one
 another.
 
-### Recorded disposition (1.0.13)
+### Recorded disposition
 
-The project's licensing review of the 1.0.13 release candidate (2026-10-21)
+The project's licensing review (2026-10-21)
 characterized this architecture from the source and the qualified image. It
-found no demonstrated DebridPulse-level copyleft incompatibility arising from
-bundling these separate programs: DebridPulse's application code
+found no demonstrated DownloadPulse-level copyleft incompatibility arising from
+bundling these separate programs: DownloadPulse's application code
 (GPL-2.0-or-later) imports none of SABnzbd, `hachoir`, `guessit` or
 `sabctools`, and links nothing of rsync.
-The operator has accepted that finding and closed the DebridPulse-level
+The operator has accepted that finding and closed the DownloadPulse-level
 copyleft-combination question on this separate-program evidence.
 
-The remaining question belongs to upstream SABnzbd, not to DebridPulse: how
+The remaining question belongs to upstream SABnzbd, not to DownloadPulse: how
 GPL-2.0-**only** `hachoir` and LGPL-3.0-or-later `guessit` combine within
-SABnzbd's own program. DebridPulse ships that program as upstream distributes
+SABnzbd's own program. DownloadPulse ships that program as upstream distributes
 it, keeps upstream's notices and the dependencies' own licence files, and does
 not rewrite or replace its dependencies.
 
@@ -338,14 +338,14 @@ on the combined work: `orjson` (MPL-2.0 AND (Apache-2.0 OR MIT)) and `certifi`
 Deliberately excluded from the shipped closure, and therefore absent from the
 table above: the service's own test tooling (pytest, selenium, black, tavern,
 flask, lxml and friends), its win32/darwin-only packages, and `notify2` — the
-bundled service is headless and private, DebridPulse owns notifications, and
+bundled service is headless and private, DownloadPulse owns notifications, and
 `notify2` publishes no licence expression.
 
 ## Container components
 
 The official image is built from `python:3.12.14-slim-trixie`. The base image
 contains Python under the Python Software Foundation License and Debian system
-components under their package-specific terms. DebridPulse directly installs the
+components under their package-specific terms. DownloadPulse directly installs the
 following Debian packages; resolved binary versions and transitive packages are
 recorded in the image's SBOM attestation.
 
@@ -360,20 +360,20 @@ recorded in the image's SBOM attestation.
 | unrar | Debian non-free (source package `unrar-nonfree`); UnRAR freeware terms |
 | 7zip | LGPL-2.1-or-later and package-specific component terms |
 | 7zip-rar | Debian non-free RAR codec; UnRAR restricted freeware terms |
-| ffmpeg | LGPL-2.1-or-later (DebridPulse's `+dp1` build; no GPL component enabled) |
+| ffmpeg | LGPL-2.1-or-later (DownloadPulse's `+dp1` build; no GPL component enabled) |
 
 Package copyright files and common license texts remain installed in the
 image. `SOURCE_OFFER.md` explains how to request corresponding source for
 copyleft-covered binaries.
 
-`zstd` is installed as the exact outer decoder for `.tar.zst`/`.tzst`; the resulting TAR stream is validated by DebridPulse before extraction.
+`zstd` is installed as the exact outer decoder for `.tar.zst`/`.tzst`; the resulting TAR stream is validated by DownloadPulse before extraction.
 
 `rsync` (the Debian trixie package, taken at its current stable update when the
 image is built -- `3.5.0+ds1-0+deb13u1` as of 2026-09-28, previously
 `3.4.1+ds1-5+deb13u4` -- licensed GPL-3.0-or-later per its Debian copyright
 file, which stays installed in the image) is the rsync executor's native
-client. DebridPulse runs it only as a separate program, over argv, and links
-none of its code; its rsync-over-SSH transport is DebridPulse's own SSH
+client. DownloadPulse runs it only as a separate program, over argv, and links
+none of its code; its rsync-over-SSH transport is DownloadPulse's own SSH
 channel on the already-shipped `asyncssh`, so no OpenSSH client is added. That
 a GPL-3.0-or-later program now ships beside this GPL-2.0-or-later project is
 recorded here as a fact. It is a separate program, covered by the disposition
@@ -381,7 +381,7 @@ recorded in the copyleft section above. Its corresponding source is located in
 `SOURCE_OFFER.md`.
 
 `ffmpeg` (`ffmpeg` and `ffprobe`, package `7:7.1.5-0+deb13u1+dp1`) is the
-Media Downloads executor's one local finalizer: DebridPulse runs it only as a
+Media Downloads executor's one local finalizer: DownloadPulse runs it only as a
 separate program, over argv, on files already inside an attempt's private
 workspace, and only to copy native streams into the planned container (`-c
 copy`, Matroska included) -- never to re-encode, and never with a network
@@ -394,14 +394,14 @@ plus the build script; `docs/SUPPLY_CHAIN_POLICY.md` section 4b).
 
 `par2` (`0.8.1-3` in the qualified image) performs the bundled Usenet
 service's verification and repair of a posting. It is a separate program the
-service runs; DebridPulse links none of its code. Its Debian copyright file
+service runs; DownloadPulse links none of its code. Its Debian copyright file
 (`License: GPL-2+`) stays installed at `/usr/share/doc/par2/copyright`, and
 `SOURCE_OFFER.md` applies to it as to every copyleft-covered binary in the image.
 
 `unrar` (`1:7.1.8-1`, Debian `non-free`) is present only because the bundled
-Usenet service refuses to start acquiring without it; DebridPulse submits every
+Usenet service refuses to start acquiring without it; DownloadPulse submits every
 posting repair-only, with the service's own unpackers disabled, so it is never
-invoked for DebridPulse work -- DebridPulse owns archive extraction, through
+invoked for DownloadPulse work -- DownloadPulse owns archive extraction, through
 `7z` and `7zip-rar`. It is not free software: its Debian copyright file states
 the UnRAR freeware licence (the utility "may be freely distributed" and "inside
 of other software packages"; its source "cannot be used to develop RAR
@@ -420,7 +420,7 @@ image.
 
 Python packages retain their installed `.dist-info` license and notice files.
 `bencode2` 0.3.33 is the exception: its wheel omits the upstream MIT text, so
-DebridPulse explicitly packages that tagged notice at
+DownloadPulse explicitly packages that tagged notice at
 `licenses/bencode2-MIT.txt`.
 
 `argon2-cffi-bindings` includes the upstream Argon2 implementation and BLAKE2
@@ -451,24 +451,23 @@ A dependency update is incomplete until all of the following agree:
 |---|---|---|
 | Chart.js | 4.5.1, vendored at `frontend/static/vendor/chart.umd.min.js` | MIT ([bundled notice](../licenses/Chart.js-MIT.txt)) |
 | FormatJS `intl-messageformat` | 12.1.4, vendored byte-for-byte (the package's self-contained `intl-messageformat.iife.js` ES-module build; npm `sha512-JUkmv3cAEyijN3oiRiV3ctel7yVMuUCgfh7Pu8pj1/z6L1DSEPRyhuMaLjVw3pGmGJ5RDH54WVFxfMHZWTwyHw==`) at `frontend/static/vendor/intl-messageformat.esm.js`; it inlines `@formatjs/fast-memoize` 3.1.7, `@formatjs/icu-messageformat-parser` 3.5.22 and `@formatjs/icu-skeleton-parser` 2.1.12 | BSD-3-Clause (intl-messageformat); MIT (the three inlined FormatJS parts) ([bundled notices](../licenses/FormatJS-intl-messageformat-BSD-3-Clause-MIT.txt)) |
-| Lucide Icons UI subset | Source geometry pinned to `lucide-icons/lucide` commit `23f9abc4ed0146cffededd3d7f94c1018bfdf693`; only the shell/navigation glyphs required by DebridPulse are embedded locally in `frontend/static/operator-title.js` | ISC; Feather-derived icons retain MIT terms ([bundled notice](../licenses/Lucide-ISC-MIT.txt)) |
+| Lucide Icons UI subset | Source geometry pinned to `lucide-icons/lucide` commit `23f9abc4ed0146cffededd3d7f94c1018bfdf693`; only the shell/navigation glyphs required by DownloadPulse are embedded locally in `frontend/static/operator-title.js` | ISC; Feather-derived icons retain MIT terms ([bundled notice](../licenses/Lucide-ISC-MIT.txt)) |
 
-The Lucide subset is intentionally local: DebridPulse does not load Lucide from
+The Lucide subset is intentionally local: DownloadPulse does not load Lucide from
 a runtime CDN. The bundled subset covers the application shell, the individual
 icon files under `frontend/static/icons/lucide/`, and the login page's
 ShieldUser mark, which is drawn from one of those files (its own header names
-the upstream commit above). It may be extended with additional upstream glyph geometry as later v1.0.11 pages
+the upstream commit above). It may be extended with additional upstream glyph geometry as further pages
 are migrated. Any added Lucide glyph remains subject to the same bundled
 upstream notices.
 
 ## Third-party artwork
 
 The provider marks and host icons in the web interface are third-party
-artwork. They are not covered by DebridPulse's GPL grant and are not licensed
-by DebridPulse to anyone; see the `NOTICE` section "Third-party trademarks and
+artwork. They are not covered by DownloadPulse's GPL grant and are not licensed
+by DownloadPulse to anyone; see the `NOTICE` section "Third-party trademarks and
 artwork". Their rights, provenance and modification questions are recorded per
-file in the repository's `docs/THIRD_PARTY_ARTWORK.md`, and remain deferred to
-1.0.14 as an accepted risk for 1.0.13.
+file in the repository's `docs/THIRD_PARTY_ARTWORK.md`.
 
 Two of those files are copies from openly licensed icon collections. Their
 collections' licences require the following attribution:
@@ -501,8 +500,8 @@ emoji flag is not (Windows shows its two letters).
 ## Colour palettes
 
 The alternative interface palettes (`frontend/static/ui-theme-palettes.css`;
-catalog in `backend/services/account_appearance.py`) are DebridPulse's own
-mappings of colour values published by the projects below onto DebridPulse's
+catalog in `backend/services/account_appearance.py`) are DownloadPulse's own
+mappings of colour values published by the projects below onto DownloadPulse's
 design tokens. Only colour values are used, several adapted for legibility
 (each marked in the stylesheet); no theme file, code, artwork, logo or font of
 these projects is copied into the repository or the image. They are credited

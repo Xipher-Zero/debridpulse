@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 16" fill="none" role="img" aria-label="DebridPulse waveform">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 16" fill="none" role="img" aria-label="DownloadPulse waveform">
   <defs>
     <!-- One EKG beat on a long baseline that fades in from the start and out
          toward the end, drawn as a calligraphic brush stroke, and the bright
@@ -25,7 +25,7 @@
     </g>
     <!-- The waveform's halo alone, for the application, which colours the
          waveform through this file as a mask (ui-shell.css #page-title::after)
-         and lays the halo under it: opened as #glow (DebridPulse Dark's soft
+         and lays the halo under it: opened as #glow (DownloadPulse Dark's soft
          glow) or #glow-light (Light's shade and glow), the drawing shows only
          the glow at 105 x 19. Opened without a fragment the file is drawn as
          itself. -->

@@ -64,7 +64,7 @@ def own_sign_in_budget():
 
 
 def _paths(tmp_path, monkeypatch):
-    monkeypatch.setattr(database, "DB_PATH", tmp_path / "data" / "debridpulse.db")
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "data" / "downloadpulse.db")
     monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config" / "config.json")
     monkeypatch.setattr(config, "_settings", config.AppSettings())
 
@@ -585,7 +585,7 @@ async def test_the_setup_state_says_whether_this_is_a_development_build(live, mo
 
 async def test_the_preview_is_offered_only_to_a_development_build_that_opts_in(live, monkeypatch):
     # Test First-Run Wizard: hidden by default even in development; shown only
-    # where a development build runs with DEBRIDPULSE_SETUP_PREVIEW=1; never
+    # where a development build runs with DOWNLOADPULSE_SETUP_PREVIEW=1; never
     # in a released build, whatever its environment.
     import api.setup_routes as routes
 

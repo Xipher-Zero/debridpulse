@@ -1,4 +1,4 @@
-"""Single authoritative DebridPulse version source and release ordering."""
+"""Single authoritative DownloadPulse version source and release ordering."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -41,7 +41,7 @@ def normalize_version_tag(value: str) -> str:
 
 
 def parse_version(value: str) -> ParsedVersion | None:
-    """Parse the release forms DebridPulse publishes, including RC tags.
+    """Parse the release forms DownloadPulse publishes, including RC tags.
 
     Unknown/non-release text intentionally returns ``None`` so callers fail
     closed instead of treating malformed input as version zero.
@@ -141,9 +141,9 @@ def is_development_build() -> bool:
 
 
 # Packaging records the exact source revision an image was built from here
-# (``Dockerfile``: ``ENV DEBRIDPULSE_BUILD_REVISION=${VCS_REF}``). A source or
+# (``Dockerfile``: ``ENV DOWNLOADPULSE_BUILD_REVISION=${VCS_REF}``). A source or
 # development run has none, and neither does an image built without VCS_REF.
-BUILD_REVISION_ENV = "DEBRIDPULSE_BUILD_REVISION"
+BUILD_REVISION_ENV = "DOWNLOADPULSE_BUILD_REVISION"
 _BUILD_REVISION_RE = re.compile(r"[0-9a-f]{7,64}")
 
 # This module is imported while the process starts (``main`` imports it before

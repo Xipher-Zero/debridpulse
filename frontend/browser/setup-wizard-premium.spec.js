@@ -25,7 +25,7 @@ async function load(page, {width = 1280, height = 900} = {}) {
 }
 
 const wizard = page => page.locator('.dp-modal-dialog.dp-setup-dialog');
-const call = (page, method, path, body) => page.evaluate(([method, path, body]) => window.debridPulseAuth.fetch(path, {
+const call = (page, method, path, body) => page.evaluate(([method, path, body]) => window.downloadPulseAuth.fetch(path, {
   method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined,
 }).then(async response => ({status: response.status, body: await response.json().catch(() => null)})), [method, path, body]);
 const integration = async (page, id) => (await call(page, 'GET', '/api/settings')).body.integrations[id] || {};
@@ -38,7 +38,7 @@ async function premium(page) {
   else await page.locator('#sidebar-auth-row .dp-sidebar-profile').click();
   await page.locator('.dp-account-dialog [data-account-setup-rerun]').click();
   await expect(wizard(page)).toBeVisible();
-  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+  const deployment = await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type);
   // Each Next once the page it leaves has settled (aria-busy while it turns):
   // a click mid-turn reaches no page.
   for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) {
@@ -335,7 +335,7 @@ async function emulateAuthorization(page, id, {connect = false} = {}) {
     if (path === '/authorization/poll') {
       seen.push('poll');
       if (!connect) return route.fulfill(json({state: 'pending', user_code: 'SYNTH-CODE', verification_url: 'https://synthetic.invalid/device', interval: 5}));
-      const settings = await page.evaluate(() => window.debridPulseAuth.fetch('/api/settings').then(response => response.json()));
+      const settings = await page.evaluate(() => window.downloadPulseAuth.fetch('/api/settings').then(response => response.json()));
       const integration = {...settings.integrations[id], configured: true, verified: true};
       integration.options = {...integration.options, api_token_configured: true, client_id_configured: true};
       return route.fulfill(json({state: 'connected', integration_id: id, integration, email: 'synthetic@example.invalid', username: 'synthetic'}));
@@ -343,7 +343,7 @@ async function emulateAuthorization(page, id, {connect = false} = {}) {
     if (path === '/authorization' && method === 'DELETE') { seen.push('cancel'); return route.fulfill(json({ok: true})); }
     if (path === '/disconnect') {
       seen.push('disconnect');
-      const settings = await page.evaluate(() => window.debridPulseAuth.fetch('/api/settings').then(response => response.json()));
+      const settings = await page.evaluate(() => window.downloadPulseAuth.fetch('/api/settings').then(response => response.json()));
       return route.fulfill(json({ok: true, integration_id: id, integration: settings.integrations[id]}));
     }
     return route.continue();

@@ -1,7 +1,7 @@
 // @ts-check
 const {test, expect} = require('@playwright/test');
 
-/* DebridPulse 1.0.14 localization, WS4b: Settings Help (ui-settings-help.js)
+/* DownloadPulse 1.0.14 localization, WS4b: Settings Help (ui-settings-help.js)
  * -- every topic's title, headings, paragraphs and list items and the role
  * comparison table -- is said from the catalog. The reader's role, deployment
  * type and Easy or Advanced decide which parts a topic has; the language only
@@ -48,7 +48,7 @@ test('L15-WS4b: an open Settings Help topic is re-said in place; the dialog, its
   const server = await page.request.get('/api/health');
   expect(server.ok()).toBe(true);
   await openSettings(page);
-  const context = await page.evaluate(() => window.debridPulseAuth.presentation.context());
+  const context = await page.evaluate(() => window.downloadPulseAuth.presentation.context());
   // User Accounts on a Server, its Standalone counterpart (Access & Integrations) otherwise.
   const topic = context.standalone ? 'integration-accounts' : 'user-accounts';
   await chooseTab(page, 'users');
@@ -100,9 +100,9 @@ test('L14/L16-WS4b: every topic, for every reader, is said whole in en-XA with t
    * which parts each topic has, and their words, are the page's own. */
   const read = (given, locale) => page.evaluate(async ({given, EASY, locale}) => {
     await window.DPI18n.setLocale(locale);
-    const real = window.__realAuth || (window.__realAuth = window.debridPulseAuth);
+    const real = window.__realAuth || (window.__realAuth = window.downloadPulseAuth);
     const shows = part => !(given.mode === 'easy' && EASY.includes(part));
-    window.debridPulseAuth = Object.freeze({...real, presentation: Object.freeze({...real.presentation, context: () => Object.freeze({
+    window.downloadPulseAuth = Object.freeze({...real, presentation: Object.freeze({...real.presentation, context: () => Object.freeze({
       ...given, standalone: given.deployment === 'standalone', server: given.deployment !== 'standalone',
       easy: given.mode === 'easy', advanced: given.mode !== 'easy', shows, omits: part => !shows(part)})})});
     const found = {};
@@ -122,7 +122,7 @@ test('L14/L16-WS4b: every topic, for every reader, is said whole in en-XA with t
       handle.close();
       await new Promise(resolve => setTimeout(resolve, 0));
     }
-    window.debridPulseAuth = real;
+    window.downloadPulseAuth = real;
     return found;
   }, {given, EASY, locale});
   let topics = 0;
@@ -155,7 +155,7 @@ test('L11-WS4b: the deployment switch warning keeps its whole consequence in eve
   await open();
   const warning = 'help.topic.deployment_type.what_switching_changes.afterwards_no_sign';
   const english = await dialog(page).locator(`[data-i18n="${warning}"]`).innerText();
-  expect(english).toContain('anyone who can reach DebridPulse');
+  expect(english).toContain('anyone who can reach DownloadPulse');
   expect(english).toContain('it does not expire');
   const englishParts = await parts(page);
   await setLocale(page, 'en-XA');

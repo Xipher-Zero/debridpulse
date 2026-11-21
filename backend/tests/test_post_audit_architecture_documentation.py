@@ -33,7 +33,7 @@ def test_core_docs_record_cancellation_and_migration_ownership() -> None:
 
 def test_frontend_docs_describe_live_bounded_owners() -> None:
     doc = read("docs/UI_FRONTEND_ARCHITECTURE.md")
-    assert doc.startswith("# DebridPulse Frontend Architecture")
+    assert doc.startswith("# DownloadPulse Frontend Architecture")
     assert "six reachable navigation surfaces" in doc
     assert "`ui-presentation-loader.js` is physically absent" in doc
     assert "bounded presentation owners" in doc
@@ -101,7 +101,7 @@ def test_frontend_docs_state_the_single_owner_invariants_with_no_recorded_deviat
         "`ui-topbar-concurrency.js` is retired and absent",
         "No owner reassigns another owner's global",
         "Canonical settings fields are consumed directly",
-        "`window.debridPulseAuth.fetch`",
+        "`window.downloadPulseAuth.fetch`",
         "Settings markup has one owner",
         "`processingPaused` projection",
     ):

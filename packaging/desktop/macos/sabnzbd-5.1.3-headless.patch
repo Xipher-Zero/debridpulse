@@ -26,7 +26,7 @@
 -        sabnzbd.MACOSTRAY.awakeFromNib()
 -        # Run the main eventloop
 -        AppHelper.runEventLoop()
-+    # Modified by DebridPulse (2026-11-15), for its macOS desktop bundle only:
++    # Modified by DownloadPulse (2026-11-15), for its macOS desktop bundle only:
 +    # the macOS menu-bar runner is removed, so SABnzbd runs headless in the
-+    # foreground through main(), as on every other system. DebridPulse
++    # foreground through main(), as on every other system. DownloadPulse
 +    # supervises it as a background service; it has no menu of its own.

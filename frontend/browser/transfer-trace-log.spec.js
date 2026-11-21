@@ -11,7 +11,7 @@ const detail = {
   active_provider_id: 'parcel', active_provider_name: 'Parcel',
 };
 const tracePath = `/api/torrents/${detail.id}/trace`;
-const filename = `debridpulse-transfer-${detail.id}-trace-20260926T120000Z.json`;
+const filename = `downloadpulse-transfer-${detail.id}-trace-20260926T120000Z.json`;
 
 async function openDetail(page, traceReply) {
   const requested = [];

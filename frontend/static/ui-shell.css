@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 application shell.
+/* DownloadPulse v1.0.11 application shell.
    Desktop visual target: approved dark/light mockups. */
 
 html, body {
@@ -280,7 +280,7 @@ body.light :is(.dot.check, .dot.warn) { color: var(--yellow); }
 }
 /* The title's waveform: icons/dp/shell-pulse.svg is its shape, fade and
    halo, as a mask -- the file itself (sharp) over its #glow state (the halo
-   alone; DebridPulse Light's is #glow-light, ui-shell-structural.css) -- and
+   alone; DownloadPulse Light's is #glow-light, ui-shell-structural.css) -- and
    the palette in force is its colour (--dp-chrome-pulse-*: the file's own
    purple to blue natively). An image cannot take the page's colours, and a
    drop-shadow would be masked away, so the halo is the file's. The stops sit

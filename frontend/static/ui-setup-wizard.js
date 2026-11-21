@@ -1,4 +1,4 @@
-/* DebridPulse's setup wizard (window.DPSetupWizard): the ONE owner of the
+/* DownloadPulse's setup wizard (window.DPSetupWizard): the ONE owner of the
  * wizard's presentation -- which pages the installation's initial setup or
  * an Admin's rerun shows, in which order, and how the operator moves through
  * them -- inside one dialog of the canonical dialog owner (ui-settings-modal.js).
@@ -43,7 +43,7 @@
   // The pages after a Server installation's Administrator exists.
   const AFTER_ADMINISTRATOR = new Set(['premium_services', 'getting_started']);
   // Each page's heading: its mark and the reading beneath its title (the
-  // dialog owner's title icon and hint). Welcome's mark is DebridPulse's own
+  // dialog owner's title icon and hint). Welcome's mark is DownloadPulse's own
   // logo, drawn inline in the theme in force (<dp-logo>, ui-logo.css). The
   // reading is the page's short tagline -- personality, never instruction:
   // the body says what the page asks. Administrator says what it is now.
@@ -63,7 +63,7 @@
 
   let active = null;
 
-  const auth = () => window.debridPulseAuth;
+  const auth = () => window.downloadPulseAuth;
   const deploymentType = () => (auth()?.authority?.deployment_type === 'standalone' ? 'standalone' : 'server');
   const signedIn = () => auth()?.authority?.authenticated === true;
   const request = (method, path, body, timeout = 15000) => window.api(method, path, body, timeout);
@@ -102,7 +102,7 @@
       // TEMPORARY, development only (WS3b): a preview of the first-run setup
       // from an Admin's rerun, for refining its pages -- offered only where the
       // server offers it (``setup_preview``: a development build started with
-      // DEBRIDPULSE_SETUP_PREVIEW=1; never a released build). Hidden by default.
+      // DOWNLOADPULSE_SETUP_PREVIEW=1; never a released build). Hidden by default.
       if (wizard.mode === 'rerun' && !wizard.preview && wizard.data.previewOffered === true) {
         const entry = element(`
           <div class="dp-setup-preview-entry">
@@ -955,11 +955,11 @@
       const list = !wizard.provider && wizard.body?.querySelector('.dp-setup-premium');
       if (list) void refreshServices(wizard, list);
     };
-    document.addEventListener('debridpulse:locale-changed', relabel);
-    document.addEventListener('debridpulse:integration-accepted', accepted);
+    document.addEventListener('downloadpulse:locale-changed', relabel);
+    document.addEventListener('downloadpulse:integration-accepted', accepted);
     void dialog.closed.then(() => {
-      document.removeEventListener('debridpulse:locale-changed', relabel);
-      document.removeEventListener('debridpulse:integration-accepted', accepted);
+      document.removeEventListener('downloadpulse:locale-changed', relabel);
+      document.removeEventListener('downloadpulse:integration-accepted', accepted);
       if (active === wizard) active = null;
       // A previewed language that Next never saved is withdrawn.
       if (preview || pages[wizard.index] === 'welcome') void wizard.showOwnLanguage();

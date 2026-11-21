@@ -14,7 +14,7 @@ through ``ensure_schema``), wiped child-first by ``services.db_maintenance``.
 * ``external_deliveries`` -- a job's committed delivery generations, each an
   immutable record of one material set; acknowledgment is per generation.
 * ``external_controls`` -- the job's advisory pause/resume requests and the
-  decision DebridPulse made on each; an applied pause records the hold the
+  decision DownloadPulse made on each; an applied pause records the hold the
   pause owner granted (``pause_holder``, ``pause_generation`` of
   ``transfer_pause_intents``), never a copy of the pause itself. A control
   that applies a core transition is written ``pending`` -- with the holder it

@@ -21,7 +21,7 @@ from transfers.settings import TransferSettings
 from core.localization import CodedValueError
 
 CONFIG_PATH = Path(os.getenv("CONFIG_PATH", "/app/config/config.json"))
-logger = logging.getLogger("debridpulse.config")
+logger = logging.getLogger("downloadpulse.config")
 
 # Narrow serialized config-mutation authority (DP 1.0.12 canonical
 # architecture correction, Workstream C, specification sections 9.5, 13.8):
@@ -245,7 +245,7 @@ class AppSettings(BaseModel):
     @model_validator(mode="after")
     def _standalone_without_oidc(self):
         # A stored Standalone configuration with OpenID Connect enabled is not
-        # a mode DebridPulse runs in: it is refused at load and restore, never
+        # a mode DownloadPulse runs in: it is refused at load and restore, never
         # read as open or as multi-user.
         if self.deployment_type == "standalone" and self.auth_oidc_enabled:
             raise CodedValueError("A Standalone installation cannot enable OpenID Connect", code="oidc.standalone_validator")
@@ -260,10 +260,10 @@ class AppSettings(BaseModel):
 def desktop_installation() -> bool:
     """Whether this backend is the installed desktop application's: its
     supervisor (``desktop/``), and nothing a page can reach, starts it with
-    ``DEBRIDPULSE_DESKTOP=1``. A desktop installation is Standalone, has no
+    ``DOWNLOADPULSE_DESKTOP=1``. A desktop installation is Standalone, has no
     Deployment Type or Administrator setup, and is given no download folder
     it did not choose."""
-    return os.environ.get("DEBRIDPULSE_DESKTOP") == "1"
+    return os.environ.get("DOWNLOADPULSE_DESKTOP") == "1"
 
 
 def download_folder_chosen(settings) -> bool:
@@ -424,7 +424,7 @@ def load_settings() -> AppSettings:
 
 
 class LegacySettingsDocument(ValueError):
-    """A configuration document written by an older DebridPulse."""
+    """A configuration document written by an older DownloadPulse."""
 
 
 def validate_settings_document(data) -> AppSettings:
@@ -433,7 +433,7 @@ def validate_settings_document(data) -> AppSettings:
     The side-effect-free twin of ``load_settings`` for a document that is not
     the live one (a backup's configuration): nothing is translated, clamped,
     migrated or written. A document that would need any of that was written by
-    an older DebridPulse and raises ``LegacySettingsDocument``; one that cannot
+    an older DownloadPulse and raises ``LegacySettingsDocument``; one that cannot
     produce settings at all raises ``ValueError``."""
     import copy
 

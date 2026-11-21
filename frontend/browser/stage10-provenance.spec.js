@@ -443,7 +443,7 @@ test('row identity survives an authoritative refresh: expansion and focus are ke
 
   // The same background refresh the Downloads/Dashboard surfaces trigger: the
   // Files rows are re-rendered wholesale from a fresh payload.
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:downloads-rendered')));
   await expect(page.locator('.dp-detail-files-card tr.dp-detail-file-row')).toHaveCount(10);
   // Expanded state is keyed by presentation_id, so it survives the re-render
   // instead of collapsing or reopening against the wrong row.

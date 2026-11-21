@@ -83,8 +83,8 @@ def test_the_frame_is_wired_from_the_page_to_the_shell():
     assert "if frame and frame != applied_frame:" in source                       # only a change is applied
     app = (ROOT / "frontend" / "static" / "app.js").read_text(encoding="utf-8")
     block = app[app.index("(function desktopFrame() {"):app.index("})();", app.index("(function desktopFrame() {"))]
-    assert "if (window.debridPulseDesktop !== true) return;" in block               # the desktop application only
-    assert "document.addEventListener('debridpulse:theme-changed', say);" in block
+    assert "if (window.downloadPulseDesktop !== true) return;" in block               # the desktop application only
+    assert "document.addEventListener('downloadpulse:theme-changed', say);" in block
     assert "api('PUT', '/desktop/frame', frame)" in block
 
 

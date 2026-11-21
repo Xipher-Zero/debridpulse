@@ -1,11 +1,11 @@
 # External execution cleanup lifecycle
 
-DebridPulse treats logical transfer terminality and already-launched external execution cleanup as separate durable facts.
+DownloadPulse treats logical transfer terminality and already-launched external execution cleanup as separate durable facts.
 A transfer can become `CANCELLED` or `DELETED` immediately while an executor job remains uncertain. Logical terminality never depends on a successful remote cancellation RPC, and later executor observations cannot revive the logical transfer.
 
 ## Durable reconciliation authority
 
-Once external executor work has launched under a durable execution handle, DebridPulse retains cleanup/reconciliation responsibility until that execution is authoritatively terminal or absent, or the executor contract returns an authoritative termination acknowledgement. Persistence alone is not sufficient: an unresolved cleanup obligation must remain automatically discoverable after process restart.
+Once external executor work has launched under a durable execution handle, DownloadPulse retains cleanup/reconciliation responsibility until that execution is authoritatively terminal or absent, or the executor contract returns an authoritative termination acknowledgement. Persistence alone is not sufficient: an unresolved cleanup obligation must remain automatically discoverable after process restart.
 
 The execution attempt's existing `authorized` flag continues to mean that the core owns observation and mutation authority for that launched external execution. Authorization remains true while external state is uncertain. Cleanup completion clears authorization only after authoritative terminality, absence, or a termination acknowledgement.
 

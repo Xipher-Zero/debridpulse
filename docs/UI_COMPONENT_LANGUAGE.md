@@ -1,6 +1,6 @@
-# DebridPulse UI Component Language
+# DownloadPulse UI Component Language
 
-This document defines the shared component language used by the DebridPulse v1.0.11.1 frontend. It complements `UI_DESIGN_TOKENS.md` and `UI_FRONTEND_ARCHITECTURE.md`: tokens define values, this document defines reusable visual/interaction families, and the architecture document defines source ownership.
+This document defines the shared component language used by the DownloadPulse frontend. It complements `UI_DESIGN_TOKENS.md` and `UI_FRONTEND_ARCHITECTURE.md`: tokens define values, this document defines reusable visual/interaction families, and the architecture document defines source ownership.
 
 ## Governing rule
 
@@ -88,7 +88,7 @@ The same semantic state should use the same family across badges, progress accen
 
 Use the canonical icon system described by `UI_ICON_SYSTEM.md`.
 
-- DebridPulse-specific artwork is used where product identity or a domain-specific symbol matters;
+- DownloadPulse-specific artwork is used where product identity or a domain-specific symbol matters;
 - Lucide is preferred for ordinary navigation/utility semantics;
 - UI-created frames, borders, and glows derive from shared tokens;
 - icons that are purely decorative are hidden from assistive technology;
@@ -140,7 +140,7 @@ The shared minimum contract includes:
 
 ## Interaction behavior where static mockups are silent
 
-The approved static references do not directly specify every hover, pressed, focus, disabled, loading, modal, toast, or reduced-motion state. DebridPulse therefore standardizes conservative extensions of the visible design language:
+The approved static references do not directly specify every hover, pressed, focus, disabled, loading, modal, toast, or reduced-motion state. DownloadPulse therefore standardizes conservative extensions of the visible design language:
 
 - hover = modest surface/border lift, not large glow;
 - pressed = subtle compression where useful;
@@ -152,8 +152,8 @@ The approved static references do not directly specify every hover, pressed, foc
 
 ## Release-state implementation
 
-The v1.0.11.1 shell and pages consume this language from the canonical shared sources and direct page owners. `style.css` is the stylesheet import root; canonical JavaScript page/runtime assets are loaded directly by the base document rather than sequenced through a presentation loader.
+The shell and pages consume this language from the canonical shared sources and direct page owners. `style.css` is the stylesheet import root; canonical JavaScript page/runtime assets are loaded directly by the base document rather than sequenced through a presentation loader.
 
-Historical Dashboard batch/polish rules that remain behaviorally required have already been folded into `ui-dashboard.css`. The old batch files are not live runtime layers. Cleanup may remove unreachable source, but shared compatibility code with a supported consumer remains until a deliberate canonical rewrite replaces it.
+Dashboard polish rules that remain behaviorally required live in `ui-dashboard.css`; there are no separate batch runtime layers. Cleanup may remove unreachable source, but shared compatibility code with a supported consumer remains until a deliberate canonical rewrite replaces it.
 
 Any change to shared tokens, component contracts, or folded presentation rules requires renewed browser validation in both themes and the affected responsive contexts before accepting a new candidate boundary.

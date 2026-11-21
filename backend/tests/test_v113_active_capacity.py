@@ -5,7 +5,7 @@ A provider states its concurrent active-resource capacity for a request class
 lowered by the operator's own ceiling, never raised) and the account-wide
 occupancy. Core keeps backups out of a full provider (deferred through the
 ordinary backup cadence, no productive call) and lets primary work take back
-the slots DebridPulse's own unpromoted backups hold -- proactively when the
+the slots DownloadPulse's own unpromoted backups hold -- proactively when the
 maximum is known, and, when it is not, once after a genuine concurrent-
 capacity refusal (one backup, one retry). TorBox is the first provider to
 state it: its plan's active slots, and every torrent TorBox reports active.
@@ -64,7 +64,7 @@ def tb(client, *, plan=None, override=None, on=True):
 
 
 def external(client, native_id, *, active=True, cached=False):
-    """A torrent on the account that DebridPulse did not add."""
+    """A torrent on the account that DownloadPulse did not add."""
     item = torrent(native_id=native_id, state="cached" if cached else "downloading", present=cached)
     item["active"] = active
     client.objects[TORRENT][str(native_id)] = item
@@ -116,7 +116,7 @@ async def test_the_maximum_follows_the_plan_as_it_changes():
 
 async def test_occupancy_is_every_active_torrent_on_the_account_and_never_a_cached_one():
     client = FakeClient()
-    external(client, 1)                                   # active, not DebridPulse's: counts
+    external(client, 1)                                   # active, not DownloadPulse's: counts
     external(client, 2)
     external(client, 3, active=False, cached=True)        # cached: occupies no slot
     external(client, 4, active=False)

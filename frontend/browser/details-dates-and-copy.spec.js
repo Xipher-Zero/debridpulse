@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
  * own date owner (format, timezone, year); the unfiltered Downloads footer
  * counts Retained Items; and three exact copy corrections. */
 
-const PREF_KEY = 'debridpulse.downloads.date-presentation.v1';
+const PREF_KEY = 'downloadpulse.downloads.date-presentation.v1';
 // 23:30 UTC on New Year's Eve is already the next year in Tokyo.
 const ADDED = '2025-12-31T23:30:00Z';
 const transfer = (id, extra) => ({

@@ -1,4 +1,4 @@
-# DebridPulse's archive and Usenet helper tools for Windows x64 (par2, zstd,
+# DownloadPulse's archive and Usenet helper tools for Windows x64 (par2, zstd,
 # 7-Zip, UnRAR), on the same pinned Debian base as the other packaging recipes.
 # Build context: the repository root.
 #   podman build -f packaging/windows-tools/Dockerfile.windows -o <out-dir> .

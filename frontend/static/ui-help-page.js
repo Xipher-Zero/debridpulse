@@ -1,11 +1,11 @@
-/* DebridPulse canonical Help & Documentation page.
+/* DownloadPulse canonical Help & Documentation page.
  *
  * Help deliberately does not consume the inherited Help tab markup or legacy
  * tab lifecycle. This runtime owns the current user-facing documentation,
  * master-card/tab composition, and performs no API or backend work.
  *
  * The manual explains the interface its reader actually has: the one context
- * is the interface's own (auth.js `debridPulseAuth.presentation.context`:
+ * is the interface's own (auth.js `downloadPulseAuth.presentation.context`:
  * the role's capabilities, the deployment type, Easy or Advanced and the
  * Easy list's omissions), read again at every composition (`c`). It decides
  * the eligible sections (`eligibleTabs`: an Admin's Settings reference, a
@@ -53,7 +53,7 @@
 
   const UNREAD = Object.freeze({admin: false, personal: false, submit: false, operate: false, standalone: false, server: true,
     easy: false, advanced: true, shows: () => true});
-  const context = () => window.debridPulseAuth?.presentation?.context?.() || UNREAD;
+  const context = () => window.downloadPulseAuth?.presentation?.context?.() || UNREAD;
   // The context the sections were composed for.
   let c = context();
   // What a composition depends on: the same signature composes the same manual.
@@ -132,7 +132,7 @@
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p ${keyed('help.quickstart.lead.debridpulse_application_use_submit', {file_type_2: '.nzb', file_type_1: '.torrent'})}></p>
+          <p ${keyed('help.quickstart.lead.downloadpulse_application_use_submit', {file_type_2: '.nzb', file_type_1: '.torrent'})}></p>
           <p ${keyed('help.quickstart.lead.do_not_need')}></p>
         </div>
 
@@ -153,7 +153,7 @@
           ${step(1, 'help.quickstart.check_where_downloads.title', `
             <div class="dp-help-prose">
               <p ${keyed('help.quickstart.check_where_downloads.open_settings_downloads', {path: '/download'})}></p>
-              <p ${keyed('help.quickstart.check_where_downloads.if_debridpulse_runs', {path: '/download'})}></p>
+              <p ${keyed('help.quickstart.check_where_downloads.if_downloadpulse_runs', {path: '/download'})}></p>
             </div>`)}
 
           ${step(2, 'help.quickstart.choose_services_want.title', `
@@ -270,14 +270,14 @@ ${c.submit ? `<p ${keyed('help.using.dashboard_quick_add.quick_add')}></p>
             ${c.admin ? `<p ${keyed('help.using.dashboard_quick_add.recover_all')}></p>` : ''}
             ${c.submit ? `<p ${keyed('help.using.dashboard_quick_add.download_activity.submit')}></p>` : `<p ${keyed('help.using.dashboard_quick_add.download_activity.viewer')}></p>`}`)}
 
-          ${c.submit ? accordion('help.using.questions_debridpulse_may.title', `
+          ${c.submit ? accordion('help.using.questions_downloadpulse_may.title', `
             <ul>
-              <li ${keyed('help.using.questions_debridpulse_may.connect_local_network_address')}></li>
-              <li ${keyed('help.using.questions_debridpulse_may.download_item_collection')}></li>
-              <li ${keyed('help.using.questions_debridpulse_may.authentication_required')}></li>
-              <li ${keyed('help.using.questions_debridpulse_may.verify_server_identity')}></li>
+              <li ${keyed('help.using.questions_downloadpulse_may.connect_local_network_address')}></li>
+              <li ${keyed('help.using.questions_downloadpulse_may.download_item_collection')}></li>
+              <li ${keyed('help.using.questions_downloadpulse_may.authentication_required')}></li>
+              <li ${keyed('help.using.questions_downloadpulse_may.verify_server_identity')}></li>
             </ul>
-            <p ${keyed('help.using.questions_debridpulse_may.these_dialogs_do')}></p>`) : ''}
+            <p ${keyed('help.using.questions_downloadpulse_may.these_dialogs_do')}></p>`) : ''}
 
           ${c.submit ? accordion('help.using.choosing_files.title', `
             <p ${keyed('help.using.choosing_files.when_torrent_magnet')}></p>
@@ -375,7 +375,7 @@ ${c.submit ? `<p ${keyed('help.using.dashboard_quick_add.quick_add')}></p>
             </ul>`)}
 
           ${accordion('help.howitworks.when_something_fails.title', `
-            <p ${keyed('help.howitworks.when_something_fails.debridpulse_sorts_failures')}></p>
+            <p ${keyed('help.howitworks.when_something_fails.downloadpulse_sorts_failures')}></p>
             <ul>
               ${adminSees('download-behavior-advanced') ? `<li ${keyed('help.howitworks.when_something_fails.temporary_problem.download_behavior_advanced_shown')}></li>`
                 : `<li ${keyed('help.howitworks.when_something_fails.temporary_problem.download_behavior_advanced_hidden')}></li>`}
@@ -786,7 +786,7 @@ ${adminSees('download-behavior-advanced') ? `<p ${keyed('help.trouble.download_s
           ${c.admin ? accordion('help.trouble.files_not_where.title', `
             <ul>
               <li ${keyed('help.trouble.files_not_where.check_download_folder')}></li>
-              <li ${keyed('help.trouble.files_not_where.debridpulse_must_allowed')}></li>
+              <li ${keyed('help.trouble.files_not_where.downloadpulse_must_allowed')}></li>
               ${c.shows('disk-space-recovery') ? `<li ${keyed('help.trouble.files_not_where.when_free_space.disk_space_recovery_shown')}></li>` : `<li ${keyed('help.trouble.files_not_where.when_free_space.disk_space_recovery_hidden')}></li>`}
             </ul>`) : ''}
 
@@ -799,7 +799,7 @@ ${adminSees('download-behavior-advanced') ? `<p ${keyed('help.trouble.download_s
             <p ${keyed('help.trouble.my_webhook_notifications.notifications_page_press')}></p>`) : ''}
 
           ${accordion('help.trouble.page_stops_updating.title', `
-            <p ${keyed('help.trouble.page_stops_updating.debridpulse_sends_live')}></p>`)}
+            <p ${keyed('help.trouble.page_stops_updating.downloadpulse_sends_live')}></p>`)}
 
           ${c.standalone ? accordion('help.trouble.i_cannot_sign.title', `
             <p ${keyed('help.trouble.i_cannot_sign.standalone_installation_signs')}></p>
@@ -833,7 +833,7 @@ ${adminSees('download-behavior-advanced') ? `<p ${keyed('help.trouble.download_s
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
           <p ${keyed('help.license.lead.copyright', {notice: 'Copyright © 2026 Chris Moore', literal: 'GPL-2.0-or-later'})}></p>
           <p ${keyed('help.license.lead.gpl_permits_use')}></p>
-          <p class="dp-help-license-warranty" ${keyed('help.license.lead.debridpulse_provided_without_warranty')}></p>
+          <p class="dp-help-license-warranty" ${keyed('help.license.lead.downloadpulse_provided_without_warranty')}></p>
         </div>
 
         <article class="dp-help-inset">
@@ -871,7 +871,7 @@ ${adminSees('download-behavior-advanced') ? `<p ${keyed('help.trouble.download_s
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          ${c.submit ? `<p ${keyed('help.quickstart.lead.debridpulse_application_submits_routes.submit')}></p>` : `<p ${keyed('help.quickstart.lead.debridpulse_application_submits_routes.viewer')}></p>`}
+          ${c.submit ? `<p ${keyed('help.quickstart.lead.downloadpulse_application_submits_routes.submit')}></p>` : `<p ${keyed('help.quickstart.lead.downloadpulse_application_submits_routes.viewer')}></p>`}
         </div>
 
         <div class="dp-help-steps">
@@ -1187,7 +1187,7 @@ ${adminSees('download-behavior-advanced') ? `<p ${keyed('help.trouble.download_s
     bindEvents(view);
     activateTab(state.activeTab);
     navigation.fit({measure: true});
-    document.dispatchEvent(new CustomEvent('debridpulse:help-rendered', {detail: {view: 'help'}}));
+    document.dispatchEvent(new CustomEvent('downloadpulse:help-rendered', {detail: {view: 'help'}}));
   }
 
   // The one Help entry (app.js navigation): every entry opens on Quick Start.
@@ -1202,7 +1202,7 @@ ${adminSees('download-behavior-advanced') ? `<p ${keyed('help.trouble.download_s
   // The reader chose Easy or Advanced (auth.js) while Help is shown: compose
   // it again for that interface, on the same section where it still has it.
   // Shown later, its entry composes it (render compares the signature).
-  document.addEventListener('debridpulse:presentation-changed', () => {
+  document.addEventListener('downloadpulse:presentation-changed', () => {
     const view = root();
     if (view?.dataset.dpHelpRendered && view.classList.contains('active')) render();
   });
@@ -1211,7 +1211,7 @@ ${adminSees('download-behavior-advanced') ? `<p ${keyed('help.trouble.download_s
   // place (the section shown, an open accordion, the scroll and focus are
   // untouched, and nothing is composed again or read). The navigator measures
   // the new words: it fits them now, or, while Help is not shown, when it is.
-  document.addEventListener('debridpulse:locale-changed', () => {
+  document.addEventListener('downloadpulse:locale-changed', () => {
     if (root()?.dataset.dpHelpRendered) navigation.fit({measure: true});
   });
 

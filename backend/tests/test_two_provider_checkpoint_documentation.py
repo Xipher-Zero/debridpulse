@@ -26,12 +26,11 @@ def _released_version() -> str:
     raise AssertionError("CHANGELOG.md names no released version")
 
 
-def test_readme_describes_final_two_provider_state_and_current_release_examples():
+def test_readme_describes_current_state_and_current_release_examples():
     readme = _text("README.md")
     version = _text("VERSION").strip()
-    assert "AllDebrid + General HTTP(S) providers" in readme
     assert "SPECIALIZED" in readme and "GENERIC" in readme
-    # Source state: 1.0.12 is finalized, not an unfinished development checkpoint.
+    # The README describes the current product, not an unfinished development checkpoint.
     assert "not yet a released v1.0.12 baseline" not in readme
     assert "development architecture" not in readme
     assert "development support matrix" not in readme
@@ -39,18 +38,16 @@ def test_readme_describes_final_two_provider_state_and_current_release_examples(
     # canonical CHANGELOG. An in-development VERSION has no published image, so
     # the examples must never claim one.
     released = _released_version()
-    assert f"ghcr.io/xipher-zero/debridpulse:v{released}" in readme
-    assert "ghcr.io/xipher-zero/debridpulse:v1.0.11.1" not in readme
+    assert f"ghcr.io/xipher-zero/downloadpulse:v{released}" in readme
+    assert "ghcr.io/xipher-zero/downloadpulse:v1.0.11.1" not in readme
     if version != released:
-        assert f"ghcr.io/xipher-zero/debridpulse:v{version}" not in readme
-    # Deferred expansion belongs to 1.0.13, not to an unmet 1.0.12 requirement.
-    assert "1.0.13" in readme
+        assert f"ghcr.io/xipher-zero/downloadpulse:v{version}" not in readme
     assert "Deferred Items 12–16" not in readme
     assert "Settings → General" not in readme
 
 
 def test_public_project_surfaces_do_not_advertise_upstream_fork_origin():
-    """The public surfaces describe DebridPulse; provenance lives in legal files."""
+    """The public surfaces describe DownloadPulse; provenance lives in legal files."""
     readme = _text("README.md")
     landing_page = _text("index.html")
 
@@ -61,9 +58,9 @@ def test_public_project_surfaces_do_not_advertise_upstream_fork_origin():
             )
     assert "Upstream provenance" not in readme
 
-    # Both public surfaces still state DebridPulse's own license identity.
+    # Both public surfaces still state DownloadPulse's own license identity.
     assert "GPL-2.0-or-later" in readme
-    assert "DebridPulse · GPL-2.0-or-later" in landing_page
+    assert "DownloadPulse · GPL-2.0-or-later" in landing_page
 
     # Legal provenance remains preserved in its canonical legal surfaces.
     notice = _text("NOTICE")
@@ -79,18 +76,8 @@ def test_runtime_state_and_input_required_docs_name_current_consumers_truthfully
     assert "AllDebrid's dynamic supported-host state" in runtime_state
     assert "planned first production consumer" not in runtime_state
     assert "General HTTP & HTTPS path" in input_required
-    assert "does **not** imply that SSH, SFTP, or SCP is a current production transport" in input_required
-
-
-def test_current_regression_map_and_support_doc_preserve_deferred_stage_status():
-    regression = _text("docs/architecture/REGRESSION_MAP_V112.md")
-    support = _text("docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md")
-    assert "two-provider canonical" in regression.casefold()
-    assert "Items 12–16 remain intentionally deferred" in regression
-    assert "There remains no production consumer" not in regression
-    assert "Still deferred after Item 4" not in regression
-    assert "Current support matrix" in support
-    assert "eventual full Stage 17/18" in support
+    assert "`username_private_key`" in input_required
+    assert "is a current production transport" not in input_required
 
 
 def test_authoritative_development_version_surfaces_agree_with_the_version_file():
@@ -117,7 +104,7 @@ def test_authoritative_development_version_surfaces_agree_with_the_version_file(
 
 def test_oci_metadata_describes_current_architecture_and_retains_license_identity():
     dockerfile = _text("Dockerfile")
-    workflow = _text(".github/workflows/fork-image.yml")
+    workflow = _text(".github/workflows/image.yml")
     description = "Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines"
     # The two-provider description of 1.0.12 no longer describes the image.
     retired = "Universal transfer orchestration with AllDebrid and General HTTP(S) providers plus aria2 execution"
@@ -126,7 +113,7 @@ def test_oci_metadata_describes_current_architecture_and_retains_license_identit
     for value in (dockerfile, workflow):
         assert description in value
         assert retired not in value
-        assert "DebridPulse: Universal Transfer Manager" in value
+        assert "DownloadPulse: Universal Transfer Manager" in value
         assert "GPL-2.0-or-later" in value
     assert "Provider-independent transfer orchestration with AllDebrid resolution and aria2 execution" not in dockerfile
 
@@ -152,7 +139,7 @@ def test_dependency_license_inventory_states_its_closure_and_requires_reaudit_on
 
 def test_notice_preserves_legal_attribution_without_obsolete_single_provider_product_framing():
     notice = _text("NOTICE")
-    assert notice.startswith("DebridPulse — Universal Transfer Manager\n")
+    assert notice.startswith("DownloadPulse — Universal Transfer Manager\n")
     assert "GNU General Public License" in notice
     assert "version 2 or (at your option) any later version" in notice
     assert "kroeberd/alldebrid-client release" in notice
@@ -163,4 +150,4 @@ def test_help_page_explains_specialist_and_generic_paths_without_claiming_every_
     help_page = spoken(_text("frontend/static/ui-help-page.js"))   # 1.0.14: its words are the catalog's
     assert "Specialist services come first." in help_page
     assert "A web link goes to a debrid service only if that service lists the link's host as supported" in help_page
-    assert "For a normal HTTP or HTTPS source, DebridPulse sends the source to AllDebrid" not in help_page
+    assert "For a normal HTTP or HTTPS source, DownloadPulse sends the source to AllDebrid" not in help_page

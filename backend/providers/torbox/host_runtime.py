@@ -6,7 +6,7 @@ every account, so it is fetched without a credential and the snapshot carries
 no account truth that could cross from one connection to another. Each
 hoster's ``status`` is TorBox's own statement of whether that hoster can be
 used on TorBox now -- a JSON boolean -- and only a hoster whose status is
-exactly ``true`` contributes claims: DebridPulse never positively claims a
+exactly ``true`` contributes claims: DownloadPulse never positively claims a
 host TorBox itself says is unavailable.
 
 Claims are positive inventory only. The fact that TorBox might accept some

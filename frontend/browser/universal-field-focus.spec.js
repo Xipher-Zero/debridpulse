@@ -38,7 +38,7 @@ const tokens = page => page.evaluate(() => {
 for (const theme of ['dark', 'light']) {
   test(`${theme}: focused fields show their ring; a field holding an action is one surface around a bare control`, async ({page}) => {
     await open(page);
-    await page.evaluate(light => { window.DPTheme.setMode(light); document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light}})); }, theme === 'light');
+    await page.evaluate(light => { window.DPTheme.setMode(light); document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed', {detail: {light}})); }, theme === 'light');
     const {ring, field} = await tokens(page);
 
     // Quick Add: the field (its entry) owns material and ring; the textarea is bare.
@@ -81,7 +81,7 @@ for (const theme of ['dark', 'light']) {
 
 test('light: the speed-cap menu controls keep their own light control surface', async ({page}) => {
   await open(page);
-  await page.evaluate(() => { window.DPTheme.setMode(true); document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light: true}})); });
+  await page.evaluate(() => { window.DPTheme.setMode(true); document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed', {detail: {light: true}})); });
   const {control} = await tokens(page);
   for (const selector of ['.runtime-cap-options button', '.runtime-cap-custom input']) {
     await expect.poll(async () => (await material(page, selector)).background, selector).toBe(control);

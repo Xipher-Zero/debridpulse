@@ -253,7 +253,7 @@ async def test_a_magnet_admits_one_job_and_one_demand_under_its_v1_hash(qb):
     assert demand["id"] == job["demand_id"]
     [item] = await torrents(qb, category="tv")
     assert (item["hash"], item["category"], item["state"]) == (HASH, "tv", "queuedDL")
-    # No DebridPulse ID is on the wire.
+    # No DownloadPulse ID is on the wire.
     assert job["id"] not in json.dumps(item) and str(await transfer_of(job["id"])) not in item["hash"]
 
 
@@ -316,7 +316,7 @@ async def test_an_unsafe_or_unsupported_submission_admits_nothing(qb, variant, s
 
 async def test_settings_dp_does_not_honor_are_not_granted_and_change_nothing(qb, world):
     # Sequential order, first/last piece, content layout and share limits
-    # are accepted and have no effect: DebridPulse owns layout and never seeds.
+    # are accepted and have no effect: DownloadPulse owns layout and never seeds.
     assert await added(await add_magnet(qb, sequentialDownload="true", firstLastPiecePrio="true",
                                         contentLayout="Subfolder", ratioLimit="2", seedingTimeLimit="60")) == HASH
     [item] = await torrents(qb)
@@ -509,7 +509,7 @@ async def test_a_malformed_removal_is_refused_and_changes_nothing(qb, form):
     assert [item["hash"] for item in await torrents(qb)] == [HASH]
 
 
-# ── 6. calls DebridPulse declines ───────────────────────────────────────────
+# ── 6. calls DownloadPulse declines ───────────────────────────────────────────
 
 async def test_calls_dp_does_not_honor_are_declined_and_change_nothing(qb, world):
     await added(await add_magnet(qb))
@@ -526,7 +526,7 @@ async def test_calls_dp_does_not_honor_are_declined_and_change_nothing(qb, world
     assert [row["withdrawn_at"] for row in await demands()] == [None]
 
 
-# ── 7. the torrent upload ceiling is DebridPulse's own (16 MiB) ─────────────
+# ── 7. the torrent upload ceiling is DownloadPulse's own (16 MiB) ─────────────
 
 def large_torrent(size: int) -> bytes:
     """A valid v1 single-file .torrent of about ``size`` bytes: its piece

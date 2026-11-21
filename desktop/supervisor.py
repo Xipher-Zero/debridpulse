@@ -1,13 +1,13 @@
-"""The DebridPulse desktop supervisor: the thin native shim around the one
-DebridPulse backend of an installed desktop application.
+"""The DownloadPulse desktop supervisor: the thin native shim around the one
+DownloadPulse backend of an installed desktop application.
 
-It owns, and only owns, what a desktop process needs and DebridPulse does not:
+It owns, and only owns, what a desktop process needs and DownloadPulse does not:
 
 * the per-user data root (``data_root``) the backend's ``DB_PATH`` and
   ``CONFIG_PATH`` name, and one supervisor per data root (an exclusive lock);
-* the backend process: started through DebridPulse's own process ownership
+* the backend process: started through DownloadPulse's own process ownership
   (``executors.process_ownership``, the WS2 owner) on a free loopback port, in
-  desktop mode (``DEBRIDPULSE_DESKTOP=1``), with the backend's private control
+  desktop mode (``DOWNLOADPULSE_DESKTOP=1``), with the backend's private control
   channel (``application.desktop_control``): two anonymous pipes only the two
   processes hold;
 * the native window, tray and notices: a Neutralino process whose page is the
@@ -26,7 +26,7 @@ It owns, and only owns, what a desktop process needs and DebridPulse does not:
   process group or job), the crash backstop, and the log says so.
 
 It reads no attempt marker, keeps no transfer state of its own, and calls no
-DebridPulse HTTP API but the public health check: the tray's status, events
+DownloadPulse HTTP API but the public health check: the tray's status, events
 and Pause/Resume All travel on the private channel to their canonical owners.
 Nothing it does signs a session in or unlocks the interface. What the native
 side refuses or fails to do is logged (``logs/desktop.log``), never assumed
@@ -44,7 +44,7 @@ import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-APP_ID = "org.debridpulse.desktop"
+APP_ID = "net.downloadpulse.desktop"
 BACKEND_ID = "desktop-backend"
 SHELL_ID = "desktop-shell"
 READY_SECONDS = 120
@@ -52,7 +52,7 @@ QUIT_SECONDS = 60
 SHELL_EXIT_SECONDS = 10
 # How long the backend's shutdown waits for a request still open (an event
 # stream of a page that is not the shell's) before uvicorn cancels it and goes
-# on with DebridPulse's own shutdown.
+# on with DownloadPulse's own shutdown.
 GRACEFUL_SECONDS = 5
 POLL_SECONDS = 3.0
 # How soon a connected browser's Open DownloadPulse brings the window forward:
@@ -63,7 +63,7 @@ NATIVE_METHODS = ("os.setTray", "os.showNotification", "window.show", "window.hi
                   "window.setFrameTheme")
 # How long a Save dialog may stay open: the person's own time.
 DIALOG_SECONDS = 600
-logger = logging.getLogger("debridpulse.desktop.supervisor")
+logger = logging.getLogger("downloadpulse.desktop.supervisor")
 
 
 # ── layout ─────────────────────────────────────────────────────────────────
@@ -71,9 +71,9 @@ logger = logging.getLogger("debridpulse.desktop.supervisor")
 def layout() -> dict[str, Path]:
     """Where the bundled pieces are, relative to this file: the application
     (``backend``, ``frontend/static``), the bundled tools (``tools``) and the
-    native shell (``shell``). ``DEBRIDPULSE_DESKTOP_LAYOUT`` names another
+    native shell (``shell``). ``DOWNLOADPULSE_DESKTOP_LAYOUT`` names another
     root for a development run."""
-    root = Path(os.environ.get("DEBRIDPULSE_DESKTOP_LAYOUT") or HERE.parent).resolve()
+    root = Path(os.environ.get("DOWNLOADPULSE_DESKTOP_LAYOUT") or HERE.parent).resolve()
     return {"root": root, "backend": root / "backend", "static": root / "frontend" / "static",
             "tools": root / "tools", "shell": root / "desktop" / "shell"}
 
@@ -83,10 +83,10 @@ def data_root() -> Path:
     Windows LocalAppData, macOS Application Support, XDG data (Flatpak's own
     writable data) elsewhere."""
     if os.name == "nt":
-        return Path(os.environ["LOCALAPPDATA"]) / "DebridPulse"
+        return Path(os.environ["LOCALAPPDATA"]) / "DownloadPulse"
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Application Support" / "DebridPulse"
-    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "debridpulse"
+        return Path.home() / "Library" / "Application Support" / "DownloadPulse"
+    return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "downloadpulse"
 
 
 def shell_data_home() -> Path:
@@ -574,7 +574,7 @@ class Channel:
 # ── words ──────────────────────────────────────────────────────────────────
 
 class Words:
-    """The tray's and notices' words, from DebridPulse's own catalogs: at
+    """The tray's and notices' words, from DownloadPulse's own catalogs: at
     start the installation's default language (English when none is chosen),
     then the language the interface is shown in (op ``locale``), followed
     while the application runs (``choose``)."""
@@ -728,7 +728,7 @@ class SessionBus:
     * A notice is ``org.freedesktop.portal.Notification.AddNotification``.
     * The running instance owns its application ID on the bus and answers
       ``org.freedesktop.Application.Activate`` (``activate_running``): starting
-      DebridPulse again opens its window.
+      DownloadPulse again opens its window.
 
     A menu click, the item's own activation and Activate become the shell's
     events (``trayMenuItemClicked``), handled where every click is. Nothing
@@ -747,7 +747,7 @@ class SessionBus:
     but xdg-dbus-proxy lets nothing in the sandbox own such a name). The
     Flatpak may *see* (never talk to) the ``org.kde.*`` names for this check.
     An unconfined process of the same account could still register a host
-    name of its own; it could equally read this account's DebridPulse files,
+    name of its own; it could equally read this account's DownloadPulse files,
     so that is not a boundary the bus could add.
 
     **Availability.** The tray is shown (``tray_shown``) only while a watcher
@@ -831,7 +831,7 @@ class SessionBus:
                                                        interface=self.WATCHER[2])), "watching for tray hosts")
         owned = await self._ask(message_bus.RequestName(APP_ID, 0x4), "owning the application ID")   # DO_NOT_QUEUE
         if owned is not None and owned.body[0] not in (1, 4):
-            logger.error("the application ID %s is owned by another process; DebridPulse cannot be "
+            logger.error("the application ID %s is owned by another process; DownloadPulse cannot be "
                          "opened by starting it again", APP_ID)
         await self._register()
         await self._check_portal()
@@ -857,10 +857,10 @@ class SessionBus:
                     DBusAddress(SessionBus.APPLICATION, bus_name=APP_ID, interface="org.freedesktop.Application"),
                     "Activate", "a{sv}", ({},))), 10)
         except (OSError, KeyError, ValueError, TimeoutError) as exc:
-            logger.error("the running DebridPulse could not be asked to open: %s", exc)
+            logger.error("the running DownloadPulse could not be asked to open: %s", exc)
             return False
         if reply.header.message_type.name == "error":
-            logger.error("the running DebridPulse did not open: %s", reply.body)
+            logger.error("the running DownloadPulse did not open: %s", reply.body)
             return False
         return True
 
@@ -1117,13 +1117,13 @@ class SessionBus:
 
     def _properties(self, path: str, interface: str) -> dict:
         if path == self.ITEM and interface in {"org.kde.StatusNotifierItem", ""}:
-            return {"Category": ("s", "ApplicationStatus"), "Id": ("s", APP_ID), "Title": ("s", "DebridPulse"),
+            return {"Category": ("s", "ApplicationStatus"), "Id": ("s", APP_ID), "Title": ("s", "DownloadPulse"),
                     "Status": ("s", "Active"), "WindowId": ("i", 0), "IconName": ("s", ""),
                     "IconPixmap": ("a(iiay)", self.pixmaps), "IconThemePath": ("s", ""),
                     "OverlayIconName": ("s", ""), "OverlayIconPixmap": ("a(iiay)", []),
                     "AttentionIconName": ("s", ""), "AttentionIconPixmap": ("a(iiay)", []),
                     "AttentionMovieName": ("s", ""),
-                    "ToolTip": ("(sa(iiay)ss)", ("", [], "DebridPulse", self.status_line)),
+                    "ToolTip": ("(sa(iiay)ss)", ("", [], "DownloadPulse", self.status_line)),
                     "ItemIsMenu": ("b", False), "Menu": ("o", self.MENU)}
         if path == self.MENU and interface in {"com.canonical.dbusmenu", ""}:
             return {"Version": ("u", 3), "TextDirection": ("s", "ltr"), "Status": ("s", "normal"),
@@ -1151,14 +1151,14 @@ LIFECYCLE_NOTICES = {"transfer.accepted": "desktop.notice.accepted", "transfer.c
 
 def shell_environment(root: Path, environ=None, platform: str = sys.platform) -> dict[str, str]:
     """The native shell's environment: this process's own, plus
-      - Windows: its WebView2 profile inside DebridPulse's data root
+      - Windows: its WebView2 profile inside DownloadPulse's data root
         (Microsoft's documented override, not Neutralino's default
         %APPDATA%\\<executable name>);
       - Linux: WebKitGTK's TextureMapper compositor rather than Skia, which
         WebKitGTK 2.54 made the default. Composited with Skia, the window
         drew stale and blank frames as a page change ended (measured in the
         GNOME 49 runtime's WebKitGTK 2.54.1 on KDE Wayland; compositing stays
-        on). Where the person running DebridPulse has set it, their value
+        on). Where the person running DownloadPulse has set it, their value
         stands."""
     environ = os.environ if environ is None else environ
     env = {**environ, "PATH": environ.get("PATH", "")}
@@ -1201,7 +1201,7 @@ def notices(events: list[dict], words: Words) -> list[tuple[str, str]]:
 
 def local_port_notice(status: dict | None, words: Words) -> tuple[str, str] | None:
     """The one notice of a run whose Local Port is not listening (another
-    program holds it): external clients cannot reach DebridPulse until it is
+    program holds it): external clients cannot reach DownloadPulse until it is
     free or changed in Settings. None while it listens."""
     local = (status or {}).get("local_port") or {}
     if local.get("listening") is not False:
@@ -1234,7 +1234,7 @@ def main_menu(words: Words) -> list:
     the menu list itself), with Quit on Cmd+Q, chosen as the loop's own event
     (``mainMenuItemClicked``, an item without a native ``action``), never
     NSApp's termination."""
-    return [{"id": "app", "text": "DebridPulse", "menuItems": [
+    return [{"id": "app", "text": "DownloadPulse", "menuItems": [
         {"id": "quit", "text": words("desktop.tray.quit"), "shortcut": "q"}]}]
 
 
@@ -1263,7 +1263,7 @@ async def run() -> int:
     if lock is None:
         if sys.platform.startswith("linux") and await SessionBus.activate_running():
             return 0      # the running instance opens its window
-        logger.error("DebridPulse is already running for this account")
+        logger.error("DownloadPulse is already running for this account")
         return 3
     (root / "logs").mkdir(parents=True, exist_ok=True)
     diagnostics = logging.FileHandler(root / "logs" / "desktop.log", encoding="utf-8")
@@ -1274,7 +1274,7 @@ async def run() -> int:
     import aiohttp
     from executors.process_ownership import ProcessOwnership
 
-    db_path, config_path = root / "data" / "debridpulse.db", root / "config" / "config.json"
+    db_path, config_path = root / "data" / "downloadpulse.db", root / "config" / "config.json"
     for directory in (db_path.parent, config_path.parent):
         directory.mkdir(parents=True, exist_ok=True)
     processes = ProcessOwnership(root / "desktop-runtime")
@@ -1283,9 +1283,9 @@ async def run() -> int:
     request_end, answer_end = channel.child_ends()
     env = processes.environment({
         "DB_PATH": str(db_path), "CONFIG_PATH": str(config_path), "STATIC_DIR": str(paths["static"]),
-        "DEBRIDPULSE_DESKTOP": "1", "DEBRIDPULSE_DESKTOP_CONTROL": f"{request_end},{answer_end}",
+        "DOWNLOADPULSE_DESKTOP": "1", "DOWNLOADPULSE_DESKTOP_CONTROL": f"{request_end},{answer_end}",
         # The window's own port, which Local Port relays to (application.desktop_listener).
-        "DEBRIDPULSE_DESKTOP_PORT": str(port),
+        "DOWNLOADPULSE_DESKTOP_PORT": str(port),
         # The bundled tools, and the packaged rsync helper's own directory
         # (its MSYS runtime layout on Windows), before the system's.
         "PATH": os.pathsep.join([*(str(path) for path in (paths["tools"], paths["tools"] / "rsync" / "usr" / "bin")
@@ -1313,9 +1313,9 @@ async def run() -> int:
             auth_file = shell_data_home() / APP_ID / ".tmp" / "auth_info.json"
             private_directory(auth_file.parent)   # before the shell writes its credential; or no shell
             auth_file.unlink(missing_ok=True)
-            # The shell runs under DebridPulse's own name (its webview keys its
+            # The shell runs under DownloadPulse's own name (its webview keys its
             # data on it), in the environment shell_environment() gives it.
-            shell_binary = paths["shell"] / ("debridpulse-shell.exe" if os.name == "nt" else "debridpulse-shell")
+            shell_binary = paths["shell"] / ("downloadpulse-shell.exe" if os.name == "nt" else "downloadpulse-shell")
             shell_process = await processes.spawn(SHELL_ID, [
                 str(shell_binary), f"--path={paths['shell']}", "--load-dir-res",
                 f"--url=http://127.0.0.1:{port}/"], env=shell_environment(root))
@@ -1337,9 +1337,9 @@ async def run() -> int:
             await bus.close()
         channel.close()
         if not await _ended(backend, QUIT_SECONDS):
-            logger.error("the DebridPulse backend did not stop in %ss; ending it forcibly", QUIT_SECONDS)
+            logger.error("the DownloadPulse backend did not stop in %ss; ending it forcibly", QUIT_SECONDS)
             await processes.terminate(backend, BACKEND_ID, grace=5)
-        logger.info("the DebridPulse backend ended %s (%s)", "through its own shutdown"
+        logger.info("the DownloadPulse backend ended %s (%s)", "through its own shutdown"
                     if backend.process.returncode == 0 else "abnormally", backend.process.returncode)
         processes.forget(BACKEND_ID)
         if processes.alive(SHELL_ID):
@@ -1393,7 +1393,7 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
             minimized = event == "windowMinimize"
         elif event == "windowClose":
             # Hidden only where the tray can open it again; otherwise the
-            # window stays one click away (and DebridPulse keeps running).
+            # window stays one click away (and DownloadPulse keeps running).
             hidden = native.tray_shown
             await _window(shell, "window.hide" if hidden else "window.minimize")
             minimized = minimized or not hidden
@@ -1451,7 +1451,7 @@ async def _serve(shell: Shell, channel: Channel, words: Words, backend, native) 
             for waiting in (await channel.ask("saves")).get("saves") or []:
                 asyncio.ensure_future(_save(channel, native, words, waiting))
             next_poll = time.monotonic() + POLL_SECONDS
-    logger.error("the DebridPulse backend ended on its own (%s)", backend.process.returncode)
+    logger.error("the DownloadPulse backend ended on its own (%s)", backend.process.returncode)
     return 1
 
 
@@ -1525,7 +1525,7 @@ async def _save(channel, native, words, waiting: dict) -> None:
     backend (a path, or None for cancelled), which writes the file."""
     path = None
     try:
-        path = await native.save_destination(str(waiting.get("name") or "debridpulse-file"), words("desktop.save.title"))
+        path = await native.save_destination(str(waiting.get("name") or "downloadpulse-file"), words("desktop.save.title"))
     finally:
         try:
             await channel.ask("saved", save=waiting["save"], path=path)
@@ -1537,7 +1537,7 @@ async def _end_shell(shell: Shell, owned, processes) -> None:
     """The native shell's end at Quit, in order, recorded as what it is -- the
     shell's end, never the backend's.
 
-    * macOS: its own ``app.exit``. The shell DebridPulse builds
+    * macOS: its own ``app.exit``. The shell DownloadPulse builds
       (packaging/desktop/neutralino/macos-main-thread-shutdown.patch) tears its
       status item and window down on the main thread, and a termination
       signal is an event on its main queue that ends it the same way.
@@ -1582,7 +1582,7 @@ async def _ready(session, port: int, backend) -> None:
     deadline = time.monotonic() + READY_SECONDS
     while time.monotonic() < deadline:
         if backend.process.returncode is not None:
-            raise RuntimeError(f"the DebridPulse backend ended during start ({backend.process.returncode})")
+            raise RuntimeError(f"the DownloadPulse backend ended during start ({backend.process.returncode})")
         try:
             async with session.get(f"http://127.0.0.1:{port}/api/health", timeout=2) as response:
                 if response.status == 200:
@@ -1590,7 +1590,7 @@ async def _ready(session, port: int, backend) -> None:
         except (OSError, asyncio.TimeoutError, Exception):  # noqa: BLE001 -- not listening yet
             pass
         await asyncio.sleep(0.25)
-    raise TimeoutError("the DebridPulse backend did not become ready")
+    raise TimeoutError("the DownloadPulse backend did not become ready")
 
 
 async def _ended(owned, seconds: float) -> bool:

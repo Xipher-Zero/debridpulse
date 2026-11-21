@@ -1,6 +1,6 @@
 # Durable Route & Provider Provenance
 
-Roadmap Item 9 makes provider/acquisition history a canonical durable fact without changing logical transfer identity or adding automatic cross-provider failover policy.
+Provider/acquisition history is a canonical durable fact that never changes logical transfer identity.
 
 ## Identity and ownership
 
@@ -11,7 +11,7 @@ Roadmap Item 9 makes provider/acquisition history a canonical durable fact witho
 
 ## Historical truth
 
-Provider identity is persisted when routing/acquisition occurs and is never reconstructed later from the submitted URL, current provider enablement, current applicability, or current AllDebrid host state. Pre-Item-9 rows are backfilled only from durable resolution/candidate/execution facts. If a provider cannot be proven, provenance remains unknown rather than being guessed.
+Provider identity is persisted when routing/acquisition occurs and is never reconstructed later from the submitted URL, current provider enablement, current applicability, or current AllDebrid host state. Rows that predate provenance are backfilled only from durable resolution/candidate/execution facts. If a provider cannot be proven, provenance remains unknown rather than being guessed.
 
 A provider transition is represented as:
 
@@ -33,23 +33,23 @@ The completed-provider projection is derived from the execution attempt that pas
 
 ## Scope
 
-Item 9 does not add general automatic cross-provider failover policy and does not add the later provenance timeline/dashboard/badge/filter UI. It makes those later capabilities safe because their data source is durable history rather than reconstruction.
+Provenance records history; it decides nothing. Cross-provider failover is a policy decision (see retry isolation below), and every presentation surface reads this durable history rather than reconstructing it.
 
-## Item 10 presentation contract
+## Presentation contract
 
-Roadmap Item 10 projects this durable history into the normal UI without reconstructing it. Recent Activity and Downloads use the current durable route for active transfers and the verified delivering provider for completed transfers. Details presents the safe original resource separately from the provider route and keeps route attempts in the Item 9 durable order.
+The normal UI projects this durable history without reconstructing it. Recent Activity and Downloads use the current durable route for active transfers and the verified delivering provider for completed transfers. Details presents the safe original resource separately from the provider route and keeps route attempts in their durable order.
 
 Provider labels come from integration definitions. If a historical provider is no longer registered, the stable provider ID remains in the API while the normal UI falls back to a neutral unknown label. Current enablement, current applicability, current AllDebrid host data, executor identity, and the submitted URL never rewrite historical provenance.
 
 The Settings Sources & Providers controls update the canonical integration `enabled` state. AllDebrid and General HTTP(S) do not have parallel frontend enablement flags.
 
-## Post-audit retry isolation (v1.0.12)
+## Retry isolation
 
 Initial routing and ordinary retry are separate decisions. A new logical route uses the neutral provider-selection policy: enabled SPECIALIZED applicability wins over GENERIC applicability, then the normal same-class selection policy applies. Once that route has selected a provider, ordinary resolution retry and re-resolution remain bound to that selected provider. Provider enablement, health, priority, or dynamic host-applicability changes do not silently reopen the global provider set for an existing route.
 
-Ordinary retry is not cross-provider failover. Provider failover after exhaustion (v1.0.13) is the one explicit route transition: only once the bound provider's own retry budget is spent -- or the failure says it cannot continue without an operator -- and only for a provider-attributable failure (`transfers.policy.provider_attributable`: a provider-domain failure, or a network failure the provider was the origin of -- never an invalid request or content, a source fact, a failure its emitter attributed to the source, the user or a policy, or a security or integrity verdict) does `TransferPolicy.retry_resolution` decide `TRY_ALTERNATE_PROVIDER`: that provider is exhausted, the same way whether or not another provider remains. `TransferRepository.exhaust_route` then atomically records the exhaustion on the route's latest attempt (state `exhausted`, with its normalized error), attaches the ordinary owned cleanup intent to a resource DebridPulse positively owns, and ends the route. When another provider remains eligible for the same root request, the request returns to resolution, where the next provider of the one canonical competition binds with the exhausted provider excluded for the current routing campaign; otherwise the request fails with that provider's error, every provider of the campaign exhausted. Route History therefore reads Provider A failed -> Provider B, the switch's reason is A's normalized category, and the logical transfer is unchanged. Administrative disablement stays a hard stop, a route that already decomposed into members or materialized artifacts is never handed off. The operator's Retry begins a new campaign (`retry_requests(reset_budget=True)` releases exhausted attempts to `released`), so exhaustion is never a permanent ban. Provider identity recorded on route, candidate, artifact, and execution provenance is durable historical truth and is never reconstructed later from the submitted URL or current applicability state.
+Ordinary retry is not cross-provider failover. Provider failover after exhaustion is the one explicit route transition: only once the bound provider's own retry budget is spent -- or the failure says it cannot continue without an operator -- and only for a provider-attributable failure (`transfers.policy.provider_attributable`: a provider-domain failure, or a network failure the provider was the origin of -- never an invalid request or content, a source fact, a failure its emitter attributed to the source, the user or a policy, or a security or integrity verdict) does `TransferPolicy.retry_resolution` decide `TRY_ALTERNATE_PROVIDER`: that provider is exhausted, the same way whether or not another provider remains. `TransferRepository.exhaust_route` then atomically records the exhaustion on the route's latest attempt (state `exhausted`, with its normalized error), attaches the ordinary owned cleanup intent to a resource DownloadPulse positively owns, and ends the route. When another provider remains eligible for the same root request, the request returns to resolution, where the next provider of the one canonical competition binds with the exhausted provider excluded for the current routing campaign; otherwise the request fails with that provider's error, every provider of the campaign exhausted. Route History therefore reads Provider A failed -> Provider B, the switch's reason is A's normalized category, and the logical transfer is unchanged. Administrative disablement stays a hard stop, a route that already decomposed into members or materialized artifacts is never handed off. The operator's Retry begins a new campaign (`retry_requests(reset_budget=True)` releases exhausted attempts to `released`), so exhaustion is never a permanent ban. Provider identity recorded on route, candidate, artifact, and execution provenance is durable historical truth and is never reconstructed later from the submitted URL or current applicability state.
 
-## Torrent cache fact and Route History identity (v1.0.12)
+## Torrent cache fact and Route History identity
 
 Route History's middle value is the **logical source route**, not whichever URL an executor was handed. Two neutral durable facts make that possible without the browser (or generic core presentation) knowing any provider, hostname, or cache semantics.
 
@@ -59,7 +59,7 @@ Route History's middle value is the **logical source route**, not whichever URL 
 - AllDebrid documents the `ready` boolean returned by `POST /v4/magnet/upload` and `/v4/magnet/upload/file` as "already available". `providers.alldebrid.translation.cache_presence_from_upload` maps exactly `True` → `HIT`, exactly `False` → `MISS`, anything else → `UNKNOWN`, and only for upload responses. It is never inferred from a later `statusCode == 4`, `ResourceState.AVAILABLE`, speed, completion time, files/links, or an endpoint hostname.
 - Cache presence is **orthogonal to provider resource readiness**. `ResourceState` keeps its existing meaning (`AVAILABLE`: usable now; `PREPARING`: not yet) and is translated independently from the same native field. A `MISS` that later becomes `AVAILABLE` stays a `MISS`.
 - The fact is persisted in the existing `resolution_attempts.result` JSON (the durable `ResolutionResult`, `observation.cache_presence`). There is no side store and no schema migration. A row written before this fact existed has no field and decodes as `UNKNOWN` (`transfers.codec.cache_presence`); it is never migrated into a guess.
-- **Current 1.0.12 routing does not use cache presence.** Provider selection is unchanged (`IntegrationRegistry.provider_for` performs no I/O, and a provider that reports a `HIT` does not prefer itself). A future multi-provider availability/preflight policy may consume the same neutral fact through one core routing-policy owner; providers only ever emit facts.
+- **Current routing does not use cache presence.** Provider selection is unchanged (`IntegrationRegistry.provider_for` performs no I/O, and a provider that reports a `HIT` does not prefer itself). A future multi-provider availability/preflight policy may consume the same neutral fact through one core routing-policy owner; providers only ever emit facts.
 
 ### Route History identity rules
 
@@ -67,7 +67,7 @@ Route History's middle value is the **logical source route**, not whichever URL 
 
 | Route | `route_identity` |
 | --- | --- |
-| Ordinary native/direct route (for example General HTTP(S), or future FTP/SFTP/SCP) | Safe endpoint origin, or the safe path-bearing location when several routes share one origin — unchanged |
+| Ordinary native/direct route (for example General HTTP(S), FTP/SFTP or SCP) | Safe endpoint origin, or the safe path-bearing location when several routes share one origin — unchanged |
 | Provider-mediated hoster link (candidate `delivery == PROVIDER_ISSUED`) | The upstream host durably attested by the candidate's own `SourceIdentity("host", …)`, normalized by `core.presentation_safety.safe_public_host`; unknown (`—`) when no safe host is provable |
 | Any route descended from a magnet/torrent root | `Torrent cache` when the root acquisition's first authoritative cache observation on that provider is a `HIT`, otherwise `BitTorrent` |
 

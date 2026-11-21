@@ -1,6 +1,6 @@
 # Provider Applicability and Deterministic Routing
 
-The current v1.0.12 architecture has one provider-neutral path from HTTP(S) request structure to deterministic provider selection. Canonical applicability mechanics live in `backend/transfers/applicability.py`; `backend/transfers/registry.py` owns routing candidate construction and same-class selection; providers own the facts they expose.
+The architecture has one provider-neutral path from HTTP(S) request structure to deterministic provider selection. Canonical applicability mechanics live in `backend/transfers/applicability.py`; `backend/transfers/registry.py` owns routing candidate construction and same-class selection; providers own the facts they expose.
 
 ## Ownership boundary
 
@@ -47,7 +47,7 @@ The class decision is a filter, not provider-specific priority code. Registratio
 
 If no provider survives, routing returns the canonical non-retryable `UNSUPPORTED_REQUEST` before provider resolution begins. Unsupported routing therefore creates no fake provider attempt, consumes no provider retry budget, starts no executor/aria2 work, opens no authentication interaction and performs no host refresh.
 
-## Account entitlement (DP 1.0.13)
+## Account entitlement
 
 An account-backed provider (AllDebrid, Real-Debrid, TorBox, and any future one)
 has a fourth, separate dimension: what its CURRENT account may begin. It is the
@@ -107,11 +107,11 @@ Disabling a provider removes it from eligibility without deleting its retained p
 
 Magnet/torrent capabilities remain static request-type declarations and do not acquire HTTP(S) specialized/generic precedence.
 
-Torrent cache presence is not applicability. The provider-neutral `CachePresence` fact (`HIT`/`MISS`/`UNKNOWN`) is a durable historical observation recorded with the resolution result and presented by Route History; it does not enter classification or provider selection in 1.0.12, and static magnet/torrent capability routing is not repurposed into cache policy. A future availability/preflight policy would consume the same neutral fact through one core owner (see `docs/ROUTE_PROVIDER_PROVENANCE.md`).
+Torrent cache presence is not applicability. The provider-neutral `CachePresence` fact (`HIT`/`MISS`/`UNKNOWN`) is a durable historical observation recorded with the resolution result and presented by Route History; it does not enter classification or provider selection, and static magnet/torrent capability routing is not repurposed into cache policy. A future availability/preflight policy would consume the same neutral fact through one core owner (see `docs/ROUTE_PROVIDER_PROVENANCE.md`).
 
 ## Provenance and presentation
 
-Durable provider/candidate/executor provenance is now part of the production architecture. Historical route identity is persisted at the attempt/execution boundary and is never inferred from current URL applicability. Recent Activity, Downloads and Details consume backend provenance projections; presentation does not classify or route.
+Durable provider/candidate/executor provenance is part of the production architecture. Historical route identity is persisted at the attempt/execution boundary and is never inferred from current URL applicability. Recent Activity, Downloads and Details consume backend provenance projections; presentation does not classify or route.
 
 Provider enablement is exposed through the Sources & Providers settings UI and round-trips through the canonical backend integration configuration. There is no frontend-only enablement mechanism.
 
@@ -119,9 +119,9 @@ Provider enablement is exposed through the Sources & Providers settings UI and r
 
 Applicability is not trust. A specialized match never bypasses DNS/egress protection, redirects policy, TLS/SNI verification, credential secrecy, signed-source sanitization, filesystem ownership or execution authorization.
 
-See [MULTI_PROVIDER_HTTP_SLICE.md](MULTI_PROVIDER_HTTP_SLICE.md) for the complete converged ownership map and Item 11 end-to-end boundary.
+See [UNIVERSAL_TRANSFER_CORE.md](UNIVERSAL_TRANSFER_CORE.md) for the core ownership map and [ROUTE_PROVIDER_PROVENANCE.md](../ROUTE_PROVIDER_PROVENANCE.md) for route provenance.
 
-## Explicit applicability contract (post-audit v1.0.12)
+## Explicit applicability contract
 
 Every production provider that participates in neutral routing declares applicability explicitly. Missing applicability is not a compatibility signal and does not make a provider eligible for URL routing. Providers with intentionally empty neutral applicability use an explicit `ProviderApplicability()` value; protocol-generic providers declare generic schemes; specialized providers declare provider-owned claims translated into neutral facts.
 

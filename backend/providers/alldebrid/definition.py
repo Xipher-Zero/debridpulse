@@ -32,7 +32,7 @@ _LEGACY_AGENT_IDENTITIES = frozenset({
 
 
 def _upgrade_legacy_options(legacy: dict, existing: dict) -> dict:
-    """Replace a pre-DebridPulse application identity carried by legacy input."""
+    """Replace a pre-DownloadPulse application identity carried by legacy input."""
     upgraded = dict(legacy)
     if upgraded.get("agent") in _LEGACY_AGENT_IDENTITIES:
         upgraded["agent"] = APP_SHORT_NAME

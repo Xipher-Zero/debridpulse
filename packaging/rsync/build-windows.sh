@@ -1,8 +1,8 @@
 #!/usr/bin/bash
-# DebridPulse's rsync for Windows x64: upstream rsync built by MSYS2's own
+# DownloadPulse's rsync for Windows x64: upstream rsync built by MSYS2's own
 # maintained recipe (the PKGBUILD and patch pinned in official.sha256), with one
 # configure choice: rsync_cv_HAVE_SOCKETPAIR=no, so rsync talks to its remote
-# shell -- DebridPulse's native services/ssh_channel.py -- over real pipes. An
+# shell -- DownloadPulse's native services/ssh_channel.py -- over real pipes. An
 # MSYS2 socketpair() is an emulated socket a native Windows program cannot read.
 #
 # Runs inside an MSYS2 environment extracted from the pinned base archive into a

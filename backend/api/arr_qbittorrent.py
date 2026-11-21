@@ -5,14 +5,14 @@ which Sonarr and Radarr call with URL Base blank -- answered in qBittorrent
 WebAPI 2.15.1 shapes, over the native external contract (``external.service``)
 and the shared *arr translation (``external.arr``). The prefixed
 ``/api/qbittorrent/api/v2/…`` (URL Base ``/api/qbittorrent``) is the same
-endpoint. The client configures DebridPulse as a qBittorrent download client
+endpoint. The client configures DownloadPulse as a qBittorrent download client
 with an Integration token as its **API Key**, which
 it sends as ``Authorization: Bearer`` -- the existing authentication boundary
 verifies it like every Bearer token. There is no login, cookie, session or
 key in the URL.
 
 Only what Sonarr (>= v4.0.18.2971) and Radarr (>= v6.2.1.10461) call is
-answered; the calls they make that DebridPulse does not honor are declined
+answered; the calls they make that DownloadPulse does not honor are declined
 with qBittorrent's own ``409``; anything else is ``404``. The item a client
 sees is the native job, keyed on the wire by the torrent's v1 info-hash that
 the intake owner computed. The full mapping is
@@ -48,7 +48,7 @@ TORRENT_KINDS = tuple(sorted(arr.ADAPTER_SOURCE_KINDS[arr.QBITTORRENT]))
 # qBittorrent's own "ETA unknown" value, which *arr reads as no estimate.
 UNKNOWN_ETA = 8640000
 MAX_DELETE_HASHES = 100
-# The *arr calls DebridPulse declines: it owns queue order, start, seeding and
+# The *arr calls DownloadPulse declines: it owns queue order, start, seeding and
 # categories (``createCategory`` succeeds only for a category that exists).
 _DECLINED = {("torrents", "setCategory"), ("torrents", "setShareLimits"), ("torrents", "topPrio"),
              ("torrents", "setForceStart")}
@@ -110,11 +110,11 @@ async def qbittorrent_api(section: str, method: str, request: Request,
             form = await request.form(max_files=0, max_fields=8)
             category = str(form.get("category") or "").strip()
             known = {name for profile in _profiles(client_id) for name in profile.categories}
-            # A category is a DebridPulse delivery profile's: it exists, or
+            # A category is a DownloadPulse delivery profile's: it exists, or
             # it cannot be created by a client.
             return _text("") if category in known else _text("Unable to create category", 409)
         if call in _DECLINED:
-            return _text(f"{method} is not supported: DebridPulse owns queue order, start, seeding and categories",
+            return _text(f"{method} is not supported: DownloadPulse owns queue order, start, seeding and categories",
                          409)
         return _text("Not Found", 404)
     except ExternalRefused as exc:
@@ -123,9 +123,9 @@ async def qbittorrent_api(section: str, method: str, request: Request,
 
 def _preferences(client_id: str) -> dict:
     """What *arr reads from the preferences: no share-ratio or seeding-time
-    removal (DebridPulse never seeds), no queueing (it owns queue order), and
+    removal (DownloadPulse never seeds), no queueing (it owns queue order), and
     ``dht`` true -- the field *arr uses to decide whether a magnet without
-    trackers can be resolved, which DebridPulse's providers do."""
+    trackers can be resolved, which DownloadPulse's providers do."""
     roots = [profile.effective_import_root for profile in _profiles(client_id)]
     return {"save_path": posixpath.commonpath(roots) if roots else "/", "max_ratio_enabled": False,
             "max_ratio": -1, "max_seeding_time_enabled": False, "max_seeding_time": -1,
@@ -164,7 +164,7 @@ def _unfinished_progress(progress: dict) -> dict:
     """An unfinished job's progress as *arr reads a torrent: ``TotalSize =
     size`` and ``RemainingSize = size * (1 - progress)`` -- ``amount_left``
     and ``completed`` are never read -- so a bar exists only with a byte
-    total. The figure is DebridPulse's own primary one (``effective``: the
+    total. The figure is DownloadPulse's own primary one (``effective``: the
     in-flight execution while nothing is verified yet, else verified
     material), exactly as the SABnzbd dialect reports it.
 
@@ -173,7 +173,7 @@ def _unfinished_progress(progress: dict) -> dict:
       byte scope, or nonzero verified material's own measurement (its DP-valid
       bytes of the canonical artifacts' total): ``size`` is that total,
       ``progress`` the same ``completed / total`` (so *arr's remaining size is
-      DebridPulse's), and ``amount_left`` / ``completed`` the same counters.
+      DownloadPulse's), and ``amount_left`` / ``completed`` the same counters.
     * A percentage without exact bytes (an estimate, a unit count, or
       verified material without a known total): ``progress`` carries it;
       ``size`` stays ``0`` -- no total is derived from a percentage -- so
@@ -206,7 +206,7 @@ def _torrent(job: dict) -> dict:
     """One job as the torrent *arr parses (``QBittorrentTorrent``). No
     speed, seed or tracker figure is reported: none exists. A finished,
     importable job is ``stoppedUP`` -- downloaded and not transferring --
-    with a share-ratio limit of 0 already met: DebridPulse never seeds, so
+    with a share-ratio limit of 0 already met: DownloadPulse never seeds, so
     *arr may remove it once imported."""
     info_hash = str(job["source"]["info_hash"]).lower()
     profile = get_settings().external_delivery.by_id(job["profile_id"])
@@ -268,7 +268,7 @@ async def _add(request: Request, external: ExternalClients, principal):
             return _text("Submit exactly one magnet or one .torrent per request", 400)
         for name in ("savepath", "downloadPath"):
             if str(params.get(name) or "").strip():
-                return _text(f"{name} is not supported: DebridPulse owns where it writes", 409)
+                return _text(f"{name} is not supported: DownloadPulse owns where it writes", 409)
         for name in ("stopped", "paused", "useDownloadPath", "autoTMM"):
             if str(params.get(name) or "").strip().lower() == "true":
                 return _text(f"{name}=true is not supported", 409)
@@ -277,7 +277,7 @@ async def _add(request: Request, external: ExternalClients, principal):
             return _text("A category is required", 409)
         if urls:
             if not urls[0].lower().startswith("magnet:"):
-                return _text("Only a magnet link is accepted; DebridPulse does not fetch URLs here", 415)
+                return _text("Only a magnet link is accepted; DownloadPulse does not fetch URLs here", 415)
             source = {"kind": "magnet", "magnet": urls[0]}
         else:
             data = await uploads[0].read(MAX_TORRENT_BYTES + 1)
@@ -317,5 +317,5 @@ async def _delete(request: Request, application: ApplicationService, external: E
                     if str((job.get("source") or {}).get("info_hash") or "").lower() in hashes:
                         await arr.remove(external, principal, job["id"])
     except (ApplicationMaintenanceActive, TransferError):
-        return _text("DebridPulse is not accepting changes right now; retry later", 503)
+        return _text("DownloadPulse is not accepting changes right now; retry later", 503)
     return _text("")

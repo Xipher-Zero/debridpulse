@@ -57,10 +57,10 @@ def _no_store(body: dict) -> JSONResponse:
 
 # The setup wizard's development-only preview (Test First-Run Wizard) is
 # offered only on explicit opt-in: a development build (its own release
-# identity) started with DEBRIDPULSE_SETUP_PREVIEW=1. A released build never
+# identity) started with DOWNLOADPULSE_SETUP_PREVIEW=1. A released build never
 # offers it, whatever its environment. The preview itself commits nothing of
 # its own and has no endpoint; this only says whether to offer its entry.
-SETUP_PREVIEW_ENV = "DEBRIDPULSE_SETUP_PREVIEW"
+SETUP_PREVIEW_ENV = "DOWNLOADPULSE_SETUP_PREVIEW"
 
 
 def setup_preview_offered() -> bool:

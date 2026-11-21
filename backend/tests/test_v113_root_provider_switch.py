@@ -1848,7 +1848,7 @@ async def test_a_current_request_is_still_admitted_and_a_rewritten_one_is_not(tm
 async def test_a_late_answer_naming_a_created_resource_keeps_its_cleanup_and_never_binds(tmp_path, monkeypatch):
     """A7: the late answer of a released member attempt names a resource its
     provider created. The attempt stays released and the member and its
-    successor are untouched, but the resource is DebridPulse's: it is recorded
+    successor are untouched, but the resource is DownloadPulse's: it is recorded
     with the owned cleanup the replaced route's resources get, survives a
     restart and is drained by the one cleanup owner -- never dropped, never the
     member's or the root's binding."""

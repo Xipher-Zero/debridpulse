@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build DebridPulse's per-user Windows x64 installer from an assembled layout
+# Build DownloadPulse's per-user Windows x64 installer from an assembled layout
 # (packaging/desktop/assemble.py run on Windows) with NSIS 3.11:
 #   - MAKENSIS set (the hosted Windows build): that makensis, i.e. upstream's
 #     NSIS 3.11 for Windows, verified against official.sha256 beside this
@@ -24,12 +24,12 @@ if [ -n "${MAKENSIS:-}" ]; then
   native() { if command -v cygpath >/dev/null; then cygpath -w "$1"; else printf '%s' "$1"; fi; }
   echo "makensis $("$MAKENSIS" -VERSION)"
   "$MAKENSIS" -V2 -DVERSION="$version" -DSTAGE="$(native "$stage")" \
-    -DOUTFILE="$(native "$out/DebridPulse-$version-windows-x64.exe")" "$@" "$(native "$here/installer.nsi")"
+    -DOUTFILE="$(native "$out/DownloadPulse-$version-windows-x64.exe")" "$@" "$(native "$here/installer.nsi")"
 else
 podman run --rm -v "$here:/nsis:ro,Z" -v "$stage:/stage:ro,Z" -v "$out:/out:Z" \
   docker.io/library/python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea \
   sh -c "apt-get update -qq >/dev/null && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends nsis >/dev/null \
-         && makensis -V2 -DVERSION=$version -DSTAGE=/stage -DOUTFILE=/out/DebridPulse-$version-windows-x64.exe $* /nsis/installer.nsi \
+         && makensis -V2 -DVERSION=$version -DSTAGE=/stage -DOUTFILE=/out/DownloadPulse-$version-windows-x64.exe $* /nsis/installer.nsi \
          && dpkg-query -W nsis"
 fi
-(cd "$out" && sha256sum "DebridPulse-$version-windows-x64.exe" | tee -a SHA256SUMS)
+(cd "$out" && sha256sum "DownloadPulse-$version-windows-x64.exe" | tee -a SHA256SUMS)

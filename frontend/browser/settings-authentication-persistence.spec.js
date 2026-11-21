@@ -276,7 +276,7 @@ test('An Integration token is disclosed once, in its own dialog, and can never b
       const disclosure = page.locator('.dp-token-disclosure');
       await expect(disclosure).toBeVisible();
       await expect(page.locator('.dp-token-disclosure-warning'))
-        .toHaveText('Copy this token now. DebridPulse will not display it again.');
+        .toHaveText('Copy this token now. DownloadPulse will not display it again.');
       // The disclosed value is NOT configuration: the persistence owner, every
       // baseline and every payload this page builds are blind to it.
       const shown = disclosure.locator('input');

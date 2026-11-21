@@ -34,7 +34,7 @@ async function isolateFonts(page) {
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -236,8 +236,8 @@ test('E05: a saved Easy is composed before the first paint; an unread choice is 
   await page.route(bundle, async route => {
     const response = await route.fetch();
     return route.fulfill({response, body: (await response.text()).replace(
-      /window\.debridPulsePresentation=Object\.freeze\(\{"owned":true,"mode":"easy"\}\);/,
-      'window.debridPulsePresentation=Object.freeze({"owned":true,"mode":null});')});
+      /window\.downloadPulsePresentation=Object\.freeze\(\{"owned":true,"mode":"easy"\}\);/,
+      'window.downloadPulsePresentation=Object.freeze({"owned":true,"mode":null});')});
   });
   const unreadable = route =>
     route.request().method() === 'GET' ? route.fulfill({status: 503, json: {detail: 'unavailable'}}) : route.fallback();

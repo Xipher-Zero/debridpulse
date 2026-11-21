@@ -1,16 +1,16 @@
-/* DebridPulse desktop starting cover (window.DPDesktopStart): the one owner of
+/* DownloadPulse desktop starting cover (window.DPDesktopStart): the one owner of
  * the installed desktop application's starting cover.
  *
  * In the desktop application the window opens on the application's page as
  * soon as its backend answers, and the page then assembles itself (settings,
  * figures, lists, the first-run wizard) piece by piece. This owner covers
  * that: the cover (static markup in index.html, #dp-desktop-start: the
- * product's mark, title and "Starting DebridPulse", in the theme and language
+ * product's mark, title and "Starting DownloadPulse", in the theme and language
  * in force) is shown from the first paint and lifted once the interface says
- * it is ready (app.js dispatches 'debridpulse:interface-ready' once).
+ * it is ready (app.js dispatches 'downloadpulse:interface-ready' once).
  *
  * Only in the desktop application: the server says so before the first paint
- * (window.debridPulseDesktop, prepended to /ui-theme-bootstrap.js). A server
+ * (window.downloadPulseDesktop, prepended to /ui-theme-bootstrap.js). A server
  * installation opened in a browser never shows it. This parser-blocking
  * script runs right after ui-i18n.js, before the body is parsed, and only
  * marks the root (html[data-dp-desktop-starting], ui-desktop-start.css): the
@@ -40,7 +40,7 @@
   const LIFTING = 'data-dp-desktop-lifting';
   const LETTERED = 'data-dp-desktop-lettered';
   const FACE_WAIT_MS = 1000;
-  const READY_EVENT = 'debridpulse:interface-ready';
+  const READY_EVENT = 'downloadpulse:interface-ready';
   const MIN_SHOWN_MS = 3000;
   const LIFT_AFTER_MS = 20000;
   const FADE_MS = 180;
@@ -49,7 +49,7 @@
   let lifted = null;
   let failsafe = null;
 
-  if (window.debridPulseDesktop !== true) {
+  if (window.downloadPulseDesktop !== true) {
     // Not the desktop application: the cover is never drawn (no root mark),
     // and its markup leaves the page once parsed.
     document.addEventListener('DOMContentLoaded', () => document.getElementById('dp-desktop-start')?.remove(),

@@ -1,6 +1,6 @@
 """DP 1.0.13 rsync integration: the neutral extensions it needed, proven neutrally.
 
-rsync required four generalized DebridPulse surfaces; each is proven here
+rsync required four generalized DownloadPulse surfaces; each is proven here
 without rsync, so another executor can rely on the same contract:
 
 1. recursive remote discovery (``DiscoveryRequest.depth`` UNLIMITED /
@@ -276,7 +276,7 @@ async def test_one_attempt_owns_one_process_group_proven_by_its_inherited_lock(t
         assert owner.alive("attempt") is True
         with pytest.raises(ProcessGroupAlive):
             await owner.spawn("attempt", [sys.executable, "-c", "pass"], env=owner.environment())
-        # A new owner over the same state (a restarted DebridPulse) still sees
+        # A new owner over the same state (a restarted DownloadPulse) still sees
         # the live group, and can stop it by what the lock proves.
         restarted = ProcessOwnership(tmp_path / "runtime")
         assert restarted.alive("attempt") is True and restarted.recorded_group("attempt") == owned.group

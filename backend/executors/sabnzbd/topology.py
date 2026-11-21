@@ -1,7 +1,7 @@
-"""The filesystem seam between SAB's working area and DebridPulse's material.
+"""The filesystem seam between SAB's working area and DownloadPulse's material.
 
-SAB writes only inside a hidden working area beneath the DebridPulse global
-Download Folder. DebridPulse owns the visible namespace: a completed job's
+SAB writes only inside a hidden working area beneath the DownloadPulse global
+Download Folder. DownloadPulse owns the visible namespace: a completed job's
 repaired payload is moved into the core-allocated COLLECTION root by an atomic
 same-filesystem rename. No separate SAB download root exists, and nothing may
 escape the authorized root.
@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# The hidden working area beneath the DebridPulse global Download Folder.
+# The hidden working area beneath the DownloadPulse global Download Folder.
 WORKING_DIRECTORY_NAME = ".dpwork"
 INCOMPLETE_DIRECTORY_NAME = "incomplete"
 COMPLETE_DIRECTORY_NAME = "complete"

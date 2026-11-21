@@ -76,7 +76,7 @@ def test_log_out_lives_inside_the_sessions_field_as_a_flex_sibling_of_the_count(
     assert "data-auth-session-count" in session
     # One logout path, and it is the existing one.
     assert js.count('data-action="logout-session"') == 1
-    assert "window.debridPulseAuth.logout()" in js
+    assert "window.downloadPulseAuth.logout()" in js
 
     assert "dp-settings-auth-session-actions" not in css
     # No declared width stands in for the button's real, font-decided size.

@@ -90,7 +90,7 @@ def test_legacy_config_round_trips_through_load_save_and_reload(config_path):
     assert aria2["max_download_result"] == 200 and aria2["restart_interval_hours"] == 12
     alldebrid = migrated.integrations["alldebrid"].options
     assert alldebrid["api_key"] == "ad-private-key-12345"
-    assert alldebrid["agent"] == "DebridPulse"                          # legacy identity migrated
+    assert alldebrid["agent"] == "DownloadPulse"                          # legacy identity migrated
     assert alldebrid["rate_limit_per_minute"] == 120
     policy = migrated.transfer_policy
     assert (policy.max_concurrent_executions, policy.execution_retry_count,

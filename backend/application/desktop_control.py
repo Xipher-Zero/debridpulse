@@ -2,12 +2,12 @@
 
 The native desktop supervisor (``desktop/supervisor.py``) starts this backend
 as its own child and hands it the read end of one anonymous pipe and the write
-end of another, inherited by the child alone: ``DEBRIDPULSE_DESKTOP_CONTROL``
+end of another, inherited by the child alone: ``DOWNLOADPULSE_DESKTOP_CONTROL``
 names them (descriptors on POSIX, handles on Windows; the numbers are no
 secret -- only a process that holds the other ends can speak). There is no
 socket, port, URL or file: nothing a page, another account or another process
 can connect to. The authority is the supervisor's ownership of this process
-and of those pipe ends, never a DebridPulse account -- HTTP authentication,
+and of those pipe ends, never a DownloadPulse account -- HTTP authentication,
 roles and permissions are untouched, and nothing here signs a session in.
 
 The tray asks four things, each answered by its existing owner:
@@ -39,7 +39,7 @@ oversized line, an unexpected field -- is refused and changes nothing.
 
 The end of the supervisor's pipe (an explicit Quit, or the supervisor gone)
 stops this backend through its own shutdown: the interrupt uvicorn already
-handles, so DebridPulse's lifespan stops every owned executor as it always
+handles, so DownloadPulse's lifespan stops every owned executor as it always
 does. A desktop backend without a verified channel does not start.
 """
 from __future__ import annotations
@@ -53,9 +53,9 @@ import signal
 import stat
 import threading
 
-logger = logging.getLogger("debridpulse.desktop")
+logger = logging.getLogger("downloadpulse.desktop")
 
-ENVIRONMENT = "DEBRIDPULSE_DESKTOP_CONTROL"
+ENVIRONMENT = "DOWNLOADPULSE_DESKTOP_CONTROL"
 MAX_LINE = 16384                                   # a saved destination (MAX_PATH) and its JSON fit
 MAX_EVENTS = 100
 # The journal's transfer lifecycle: what the tray's notices are made of.
@@ -151,7 +151,7 @@ def _pipe(value: str, mode: str):
 
 
 def open_channel():
-    """The two pipe ends named by ``DEBRIDPULSE_DESKTOP_CONTROL`` ("<in>,<out>"),
+    """The two pipe ends named by ``DOWNLOADPULSE_DESKTOP_CONTROL`` ("<in>,<out>"),
     removed from the environment so nothing this backend starts sees it; or
     ``ChannelRefused``."""
     named = os.environ.pop(ENVIRONMENT, "")

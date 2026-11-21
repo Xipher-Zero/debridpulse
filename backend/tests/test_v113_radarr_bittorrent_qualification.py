@@ -269,7 +269,7 @@ async def delivered(world, key="k-1", client=None, **kwargs):  # noqa: F811
 
 
 def imported(collection, library):
-    """Radarr's move-style import: the files leave; DebridPulse's folders stay."""
+    """Radarr's move-style import: the files leave; DownloadPulse's folders stay."""
     library.mkdir(exist_ok=True)
     for item in sorted(collection.rglob("*"), key=lambda path: -len(path.parts)):
         if item.is_file():

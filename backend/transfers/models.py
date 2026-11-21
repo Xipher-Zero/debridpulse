@@ -243,8 +243,8 @@ class ActiveCapacity:
     lowered by the operator's own ceiling when one is set, never raised by it
     -- or ``None`` when no maximum can be known ahead of a refusal.
     ``occupancy`` is how much of it is in use now across the whole account
-    (including activity outside DebridPulse), or ``None`` when unknown. Never
-    a count of DebridPulse's own records standing in for the provider's."""
+    (including activity outside DownloadPulse), or ``None`` when unknown. Never
+    a count of DownloadPulse's own records standing in for the provider's."""
     maximum: int | None = None
     occupancy: int | None = None
 
@@ -362,7 +362,7 @@ class TransferRequest:
     acquisition_scope: str = ""
     # Whether ``name`` is the input's own declared file name (an uploaded
     # file's filename, or the file name a fetched link was served under or
-    # names in its path); a name DebridPulse made up is not. Recorded at
+    # names in its path); a name DownloadPulse made up is not. Recorded at
     # admission, never inferred later; not identity.
     name_supplied: bool = False
 
@@ -880,7 +880,7 @@ class ContinuationCapability(StrEnum):
     IMPORT_EXISTING_MATERIAL = "import_existing_material"
     # Observations carry the exact final-file ranges written so far
     # (``ExecutionObservation.material``); the only way uncommitted work can
-    # ever become DebridPulse-valid before completion.
+    # ever become DownloadPulse-valid before completion.
     EXPORT_MATERIAL_RANGES = "export_material_ranges"
     SOURCE_SEGMENT_TO_FINAL_RANGE = "source_segment_to_final_range"
     # The executor reconstructs an equivalent artifact using the existing
@@ -892,7 +892,7 @@ class ContinuationCapability(StrEnum):
     DESTINATION_AWARE_CONTINUATION = "destination_aware_continuation"
     # A FRESH native job can be given arbitrary DP-valid material -- every
     # whole geometry chunk (``material.CHUNK_BYTES``, or the executor's coarser
-    # ``continuation_alignment``) DebridPulse holds valid, anywhere in a FILE of
+    # ``continuation_alignment``) DownloadPulse holds valid, anywhere in a FILE of
     # KNOWN total size -- and acquires only the rest, never rewriting what it
     # was given. The executor states the trust in its own native terms and
     # refuses a total or geometry it cannot state; the material itself is
@@ -900,11 +900,11 @@ class ContinuationCapability(StrEnum):
     IMPORT_SPARSE_MATERIAL = "import_sparse_material"
     # A natively quiesced job keeps its own private acquisition state and
     # continues exactly where it stopped when resumed (``PauseResume.resume``).
-    # Disposable acceleration only: never DebridPulse material truth.
+    # Disposable acceleration only: never DownloadPulse material truth.
     NATIVE_PRIVATE_RESUME = "native_private_resume"
     # ``PauseResume.pause`` stops acquisition gracefully so the final completed
     # work can be checkpointed before the writer is fenced. An optimization:
-    # lacking it never prevents a DebridPulse Pause.
+    # lacking it never prevents a DownloadPulse Pause.
     NATIVE_QUIESCE = "native_quiesce"
     # ``transfers.contracts.ContinuationBoundaryDiscovery``: the executor can
     # answer, for concrete source data, the largest offset at or below the
@@ -1211,7 +1211,7 @@ class ExecutionObservation:
     materialization: MaterializationResult | None = None
     # ``EXPORT_MATERIAL_RANGES``: exact ``[start, end)`` final-file ranges this
     # writer reports completely written. Evidence for a core checkpoint only --
-    # it never becomes DebridPulse-valid by being reported (``None`` = the
+    # it never becomes DownloadPulse-valid by being reported (``None`` = the
     # executor reports none).
     material: tuple[tuple[int, int], ...] | None = None
     # The same evidence for a COLLECTION: per member file (relative path to

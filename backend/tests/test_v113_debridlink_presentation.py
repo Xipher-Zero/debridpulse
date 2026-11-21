@@ -57,7 +57,7 @@ const text = node => node.children.length ? node.children.map(text) : node.textC
 
 def _render(entries):
     script = _DOM + PREMIUM_JS + f"""
-listeners['debridpulse:provider-status']({{detail: {{entries: {json.dumps(entries)}}}}});
+listeners['downloadpulse:provider-status']({{detail: {{entries: {json.dumps(entries)}}}}});
 console.log(JSON.stringify({{lines: nodes['lbl-premium'].children.map(text),
                              shown: nodes['premium-row'].style.display !== 'none'}}));
 """

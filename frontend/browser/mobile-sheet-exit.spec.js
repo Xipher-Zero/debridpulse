@@ -134,7 +134,7 @@ test.describe('handheld sheets present their whole exit', () => {
     // thread as it opens), and what was drawn of More at that moment.
     await page.evaluate(() => {
       window.__navigations = [];
-      document.addEventListener('debridpulse:navigation', event => {
+      document.addEventListener('downloadpulse:navigation', event => {
         window.__navigations.push({view: event.detail.view, moreDrawn: getComputedStyle(document.getElementById('shell-more')).display !== 'none'});
         const end = performance.now() + 150;
         while (performance.now() < end) { /* the page's work */ }
@@ -160,7 +160,7 @@ test.describe('handheld sheets present their whole exit', () => {
     await open(page);
     await page.evaluate(() => {
       window.__navigations = [];
-      document.addEventListener('debridpulse:navigation', event => window.__navigations.push(event.detail.view));
+      document.addEventListener('downloadpulse:navigation', event => window.__navigations.push(event.detail.view));
     });
     const more = page.locator(SHEETS.more.open);
     // Reversed: a page chosen, then More pressed again before it is down.
@@ -345,7 +345,7 @@ test.describe('handheld sheets present their whole exit', () => {
     await page.emulateMedia({reducedMotion: 'no-preference'});
     await page.evaluate(() => {
       window.__navigations = [];
-      document.addEventListener('debridpulse:navigation', event => window.__navigations.push(event.detail.view));
+      document.addEventListener('downloadpulse:navigation', event => window.__navigations.push(event.detail.view));
     });
     await openSheet(page, 'more');
     await page.locator('#shell-more .dp-shell-sheet-item', {hasText: 'Activity Log'}).click();

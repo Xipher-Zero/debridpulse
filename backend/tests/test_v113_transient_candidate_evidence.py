@@ -122,7 +122,7 @@ async def bindings(transfer_id):
 
 
 async def durable_text():
-    """Every TEXT value DebridPulse durably holds, across every table."""
+    """Every TEXT value DownloadPulse durably holds, across every table."""
     async with get_db() as db:
         tables = [row["name"] for row in await db.fetchall("SELECT name FROM sqlite_master WHERE type='table'")]
         values = []

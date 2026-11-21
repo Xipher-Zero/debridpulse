@@ -524,7 +524,7 @@ async def test_a_failure_reaches_history_only_when_the_core_says_failed(sab, wor
     assert (job["phase"], job["reason"], job["actionability"]) == ("failed", "acquisition_failed", "operator")
     if terminal:
         assert (slot["nzo_id"], slot["status"], slot["storage"]) == (nzo_id, "Failed", "")
-        assert slot["fail_message"] == "DebridPulse: acquisition_failed"
+        assert slot["fail_message"] == "DownloadPulse: acquisition_failed"
     else:
         assert (slot["nzo_id"], slot["status"], slot["storage"], slot["fail_message"]) == (nzo_id, "Paused", "", "")
 
@@ -645,7 +645,7 @@ async def test_removing_a_completed_item_acknowledges_it_and_keeps_dp_history(sa
     async with database.get_db() as db:
         delivery = await db.fetchone("SELECT acknowledged_at FROM external_deliveries WHERE job_id=?", (nzo_id,))
     assert delivery["acknowledged_at"] is not None
-    # DebridPulse's transfer, demand and the moved file are untouched; nothing
+    # DownloadPulse's transfer, demand and the moved file are untouched; nothing
     # is reacquired or reclassified as failed.
     for _ in range(3):
         await world.engine.tick()

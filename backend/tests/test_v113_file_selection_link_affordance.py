@@ -1,6 +1,6 @@
 """Transfer 1080 (live acceptance of 7f10b9d6): a download submitted as direct
 links, one file offered by several mirrors, showed "Choose Files" -- whose
-click said DebridPulse was still waiting for "the file list for this torrent".
+click said DownloadPulse was still waiting for "the file list for this torrent".
 
 The submission asked for interactive selection, so each provider resource a
 link root bound to (here a provider still preparing a web download) opened an
@@ -136,4 +136,4 @@ def test_the_waiting_message_names_no_resource_type():
     assert "'file_selection.pending_message'" in message
     words = english("file_selection.pending_message")
     assert "torrent" not in message.lower() and "torrent" not in words.lower()
-    assert words.startswith("DebridPulse is still waiting for the file list for this download.")
+    assert words.startswith("DownloadPulse is still waiting for the file list for this download.")

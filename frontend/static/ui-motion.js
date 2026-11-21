@@ -1,4 +1,4 @@
-/* DebridPulse navigation and disclosure motion: presentation only.
+/* DownloadPulse navigation and disclosure motion: presentation only.
  *
  * Each surface keeps its own navigation and disclosure state; this module only
  * moves what that owner commits. It never decides what is shown, holds no page,

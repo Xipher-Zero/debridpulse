@@ -31,7 +31,7 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
     assert "PRESENTATION_OWNERS" not in provider
     assert "createElement('script')" not in provider
     assert 'createElement("script")' not in provider
-    assert "debridpulse:presentation-ready" not in provider
+    assert "downloadpulse:presentation-ready" not in provider
     assert "ui-presentation-loader.js" not in provider
     assert "DPPresentationLoader" not in provider
 
@@ -228,8 +228,8 @@ def test_app_js_is_the_sole_modal_coordinator_and_showdetail_owner() -> None:
     assert "window.DPModal = DPModal" in app
     assert "window.showDetail = showDetail" in app
     assert "window.closeModal = closeModal" in app
-    assert "debridpulse:detail-rendered" in app
-    assert "debridpulse:detail-closed" in app
+    assert "downloadpulse:detail-rendered" in app
+    assert "downloadpulse:detail-closed" in app
     assert "requestModalClose" in app
     for name in _all_js():
         if name.name == "app.js":
@@ -246,8 +246,8 @@ def test_detail_candidates_listens_to_lifecycle_events_without_wrapping_globals(
     assert "window.showDetail" not in runtime
     assert "window.closeModal" not in runtime
     assert "dpCandidateWrapped" not in runtime
-    assert "debridpulse:detail-rendered" in runtime
-    assert "debridpulse:detail-closed" in runtime
+    assert "downloadpulse:detail-rendered" in runtime
+    assert "downloadpulse:detail-closed" in runtime
 
 
 def test_file_selection_has_one_bounded_runtime_and_style_owner() -> None:

@@ -202,12 +202,12 @@ class RealDebridProvider:
             raise TransferError(creation_error(exc, secrets=self._secrets())) from None
         try:
             # Nothing is selected here: which files Real-Debrid fetches is
-            # DebridPulse's decision, synchronized once it is made
+            # DownloadPulse's decision, synchronized once it is made
             # (``synchronize_selection``). The torrent waits for it as
             # ``waiting_files_selection``, its file list already selectable.
             observation = replace(await self.observe(resource), request=request)
         except TransferError as exc:
-            # The torrent exists and its id is known: it reaches DebridPulse's
+            # The torrent exists and its id is known: it reaches DownloadPulse's
             # durable provider-resource boundary unready rather than vanish
             # with this exception -- a failed first observation is no proof it
             # is gone, and only a bound resource is observed again and cleaned
@@ -253,7 +253,7 @@ class RealDebridProvider:
     @normalized_boundary(Stage.RECONCILIATION)
     async def synchronize_selection(self, resource: ProviderResource,
                                     members: tuple[FileManifestEntry, ...], *, submit: bool = True) -> bool:
-        """Make this torrent's selected files exactly DebridPulse's
+        """Make this torrent's selected files exactly DownloadPulse's
         authorized ``members`` (``contracts.UpstreamSelection``), or say why
         it cannot.
 
@@ -356,7 +356,7 @@ class RealDebridProvider:
         archive, which is never a selected file and is never unpacked. Every
         file Real-Debrid reports selected must be proven by its own link, or
         the manifest fails: a partial delivery never passes for the selection
-        DebridPulse synchronized. The proven members are emitted in native
+        DownloadPulse synchronized. The proven members are emitted in native
         ``files[]`` order; which of them the transfer materializes is core's
         selection, not this adapter's. The unrestricted answer is proof only:
         each member keeps its restricted link, which resolution unrestricts

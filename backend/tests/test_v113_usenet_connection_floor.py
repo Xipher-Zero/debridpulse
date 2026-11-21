@@ -1,7 +1,7 @@
 """1.0.13 Gate-9 rev-5, item 2: zero connections is never "ready".
 
 SAB's own bound allows 0, and 0 is meaningful there because it is how SAB
-switches a server off. DebridPulse does not need that meaning: it has an
+switches a server off. DownloadPulse does not need that meaning: it has an
 explicit per-server Enable control, so a DP server carrying 0 connections is a
 server the operator believes is on while the native side cannot open a single
 connection to it.

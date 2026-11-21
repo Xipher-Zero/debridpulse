@@ -8,7 +8,7 @@ const { test, expect } = require('@playwright/test');
  * bordered Account Connection island in every connection state (what it is on
  * the left, its action on the right) with the state's one line centred
  * beneath it, an authorization that opens in the operator's own browser and
- * never navigates DebridPulse, a connection that switches the provider on
+ * never navigates DownloadPulse, a connection that switches the provider on
  * without a reload, and an Additional Settings region that holds the four
  * tunables and nothing else. */
 
@@ -34,7 +34,7 @@ function projection(connected) {
 async function prepare(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
-  // The operator's browser, observed: nothing may navigate DebridPulse itself.
+  // The operator's browser, observed: nothing may navigate DownloadPulse itself.
   await page.addInitScript(() => {
     window.__opened = [];
     window.open = (...args) => { window.__opened.push(args); return null; };
@@ -158,7 +158,7 @@ test('the Real-Debrid card uses the shipped mark and keeps Additional Settings f
   await expect(card.locator('[data-integration-enabled="realdebrid"]')).not.toBeChecked();
 
   // No provider description: the card's reserved top row is there, and blank.
-  await expect(card.locator('.card-body .dp-settings-copy', {hasText: 'Connect DebridPulse to'})).toHaveCount(0);
+  await expect(card.locator('.card-body .dp-settings-copy', {hasText: 'Connect DownloadPulse to'})).toHaveCount(0);
   const blank = await reservedRow(card, region);
   expect(blank.text).toBe('');
   await expect(region.locator('.dp-settings-account-island-actions [data-action="connect-realdebrid"]'))

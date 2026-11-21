@@ -1,4 +1,4 @@
-/* DebridPulse 1.0.13 root provider: the one live badge, picker and switch
+/* DownloadPulse 1.0.13 root provider: the one live badge, picker and switch
  * action for Transfer Details (Files header and each file), Recent Activity
  * and Downloads.
  *
@@ -119,7 +119,7 @@
     const identity = identityOf(known ? item.route_provider_id : '');
     // Switching a route redirects everyone's work: offered only where the
     // server says this caller may (``access.destroy``).
-    if (!known || !(item && item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
+    if (!known || !(item && item.route_switch_available && window.downloadPulseAuth?.mayDestroy(item))) {
       return '<span class="dp-provider-chip dp-root-provider-badge" data-provider-state="' +
         (known ? 'known' : 'pending') + '"' + identity.attributes + '>' + identity.glyph + labelMarkup(label, known ? item.route_provider_id : '') + '</span>' +
         switchingMarkup(item && item.id) + deferredMarkup(item);
@@ -131,7 +131,7 @@
     const state = String(provider.state || 'pending');
     const providerId = state === 'known' ? String(provider.id || '') : '';
     const label = String(provider.label || t('root_provider.pending'));
-    if (!(item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
+    if (!(item.route_switch_available && window.downloadPulseAuth?.mayDestroy(item))) {
       const identity = identityOf(providerId);
       return '<span class="dp-provider-chip" data-provider-state="' + esc(state) + '"' + identity.attributes + '>' +
         identity.glyph + labelMarkup(label, providerId) + '</span>' + switchingMarkup(item.id) + deferredMarkup(item) + pendingMarkup(item);
@@ -146,7 +146,7 @@
     const route = file && file.route_root;
     const artifactId = file && (file.artifact_id != null ? file.artifact_id : file.id);
     if (!route || !route.switch_available || artifactId == null || !detail ||
-        !window.debridPulseAuth?.mayDestroy(detail)) return '';
+        !window.downloadPulseAuth?.mayDestroy(detail)) return '';
     return launcherMarkup(detail.id, route.provider_id, providerLabel(route.provider_name, route.provider_id),
       'details', {artifactId: artifactId, rootId: route.root_id});
   }
@@ -250,7 +250,7 @@
   }
 
   async function readStatus(transferId, artifactId, scope) {
-    const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/route' +
+    const response = await window.downloadPulseAuth.fetch('/api/torrents/' + transferId + '/route' +
       (scope === 'transfer' ? '/transfer' : artifactId != null ? '?artifact_id=' + encodeURIComponent(artifactId) : ''));
     if (!response.ok) throw new Error('route status ' + response.status);
     return response.json();
@@ -281,7 +281,7 @@
     try {
       const status = await readStatus(transfer.id);
       const live = document.querySelector('#modal-body ' + MOUNT_SELECTOR);
-      if (live && Number(transfer.id) === detailTransferId && status.switchable && window.debridPulseAuth?.mayDestroy(transfer) &&
+      if (live && Number(transfer.id) === detailTransferId && status.switchable && window.downloadPulseAuth?.mayDestroy(transfer) &&
           status.current_provider_id === transfer.route_provider_id) {
         live.innerHTML = launcherMarkup(transfer.id, transfer.route_provider_id, label, 'details');
         detailMount = {id: Number(transfer.id), launcher: true};
@@ -482,7 +482,7 @@
     const body = {provider_id: providerId, expected_provider_id: expectedProviderId};
     if (subject && subject.artifactId != null) body.artifact_id = Number(subject.artifactId);
     if (subject && subject.rootId) body.expected_root_id = String(subject.rootId);
-    const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/route', {
+    const response = await window.downloadPulseAuth.fetch('/api/torrents/' + transferId + '/route', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(body),
@@ -499,7 +499,7 @@
   // THE transfer-wide action: one request; the backend switches each link
   // through the one-root switch and reports every link's outcome.
   async function switchTransferProvider(transferId, providerId, expectedRoutes) {
-    const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/route/transfer', {
+    const response = await window.downloadPulseAuth.fetch('/api/torrents/' + transferId + '/route/transfer', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({provider_id: providerId, expected_routes: expectedRoutes}),
@@ -732,7 +732,7 @@
   function install() {
     document.addEventListener('click', onDocumentClick, true);
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
-    document.addEventListener('debridpulse:detail-rendered', function (event) {
+    document.addEventListener('downloadpulse:detail-rendered', function (event) {
       const id = Number(event && event.detail && event.detail.transferId);
       detailTransferId = Number.isFinite(id) ? id : null;
       if (event && event.detail && event.detail.relabel) {
@@ -745,23 +745,23 @@
       onSurfaceRendered();
       renderDetailMount(event && event.detail && event.detail.transfer);
     });
-    document.addEventListener('debridpulse:detail-closed', function () {
+    document.addEventListener('downloadpulse:detail-closed', function () {
       detailTransferId = null;
       detailMount = null;
       closeMenu();
     });
-    document.addEventListener('debridpulse:dashboard-recent-rendered', function () { queueMicrotask(onSurfaceRendered); });
-    document.addEventListener('debridpulse:downloads-rendered', function () { queueMicrotask(onSurfaceRendered); });
+    document.addEventListener('downloadpulse:dashboard-recent-rendered', function () { queueMicrotask(onSurfaceRendered); });
+    document.addEventListener('downloadpulse:downloads-rendered', function () { queueMicrotask(onSurfaceRendered); });
     // A language change re-says the open picker from the answer it holds
     // (no request): the same provider's control keeps focus. The surfaces
     // re-render their own badges, re-anchoring the picker as on a refresh.
     // Set before any page owner repaints for the change (window capture);
     // cleared after every repaint and its queued re-anchor.
-    window.addEventListener('debridpulse:locale-changed', function () {
+    window.addEventListener('downloadpulse:locale-changed', function () {
       relabeling = true;
       setTimeout(function () { relabeling = false; }, 0);
     }, true);
-    document.addEventListener('debridpulse:locale-changed', function () {
+    document.addEventListener('downloadpulse:locale-changed', function () {
       if (!menuEl || menuEl.hidden || !menuStatus) return;
       const focused = menuEl.contains(document.activeElement) ? document.activeElement : null;
       const focusedId = focused && focused.getAttribute('data-dp-provider-id');

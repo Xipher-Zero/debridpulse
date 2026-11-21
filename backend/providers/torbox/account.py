@@ -1,12 +1,12 @@
 """TorBox account semantics: native plans in, neutral entitlement out.
 
-What each TorBox plan exposes to DebridPulse:
+What each TorBox plan exposes to DownloadPulse:
 
-* Free (plan 0): nothing DebridPulse can use. TorBox's public plan material
+* Free (plan 0): nothing DownloadPulse can use. TorBox's public plan material
   ("Account Restrictions") describes limited Free torrent use, but the API
-  operation DebridPulse creates torrents with refused an ordinary public
+  operation DownloadPulse creates torrents with refused an ordinary public
   Ubuntu torrent on a Free account with ``PLAN_RESTRICTED_FEATURE`` ("API
-  feature not available on your plan"). DebridPulse follows what it can
+  feature not available on your plan"). DownloadPulse follows what it can
   actually consume, so a Free account exposes no acquisition family: it stays
   connected, standard and degraded, and claims no new work.
 * Essential (1) and Standard (3): torrents and web downloads; no Usenet.
@@ -43,7 +43,7 @@ FREE_PLAN = 0
 TORRENTS = frozenset({"magnet", "torrent"})
 WEB_DOWNLOADS = frozenset({"http", "https"})
 USENET = frozenset({"nzb"})
-# What each plan may begin through the API DebridPulse uses (see above).
+# What each plan may begin through the API DownloadPulse uses (see above).
 PLAN_ENTITLEMENT = {
     0: frozenset(),
     1: TORRENTS | WEB_DOWNLOADS,

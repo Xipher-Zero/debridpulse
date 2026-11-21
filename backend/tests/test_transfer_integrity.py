@@ -12,7 +12,7 @@ from transfers.models import ExecutionObservation, ExecutionState, IntegrityMeta
 
 @pytest.mark.asyncio
 # DP 1.0.13: a file of exactly the right length is NOT possession -- file
-# length never proves material. Strong integrity evidence (or DebridPulse's own
+# length never proves material. Strong integrity evidence (or DownloadPulse's own
 # committed material) does.
 @pytest.mark.parametrize('condition,adopt', [('exact',False),('exact_verified',True),('missing',False),('wrong_size',False),('unknown_size',False),('sidecar',False),('directory',False),('symlink',False)])
 async def test_existing_payload_requires_verified_possession(core, condition, adopt, tmp_path):

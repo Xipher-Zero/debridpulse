@@ -1,6 +1,6 @@
 """NZB link ingress normalization.
 
-An NZB link is how a posting reaches DebridPulse, never a request kind: the
+An NZB link is how a posting reaches DownloadPulse, never a request kind: the
 explicit NZB-link submission fetches it through the one guarded HTTP(S) owner,
 streams it straight into the one staged-input owner, validates it with the
 existing NZB reader, and admits the SAME canonical ``nzb`` request an uploaded

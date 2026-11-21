@@ -5,7 +5,7 @@ Sonarr (666, Premiumize) and Radarr (670, Real-Debrid) showed no BitTorrent
 progress bar. Their writer was aria2, which declares
 ``EXPORT_MATERIAL_RANGES``: its completely written ranges are checkpointed
 into DP-valid material while it downloads, so it never has an in-flight lane
-(``active_execution_progress_sql``) and DebridPulse's primary figure is
+(``active_execution_progress_sql``) and DownloadPulse's primary figure is
 verified material -- 42.50% and 31.59%. ``effective_progress`` attached byte
 counters only to an in-flight figure, so the qBittorrent dialect received a
 bare percentage and reported ``size: 0``; *arr reads ``TotalSize = size``,

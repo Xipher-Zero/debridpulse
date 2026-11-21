@@ -1,4 +1,4 @@
-/* DebridPulse product logo: its colours, for every page that draws it.
+/* DownloadPulse product logo: its colours, for every page that draws it.
  *
  * The logo's geometry has one source, logo.svg; its square and gradient stops
  * carry a dp-logo-* class each, and keep their own colours as attributes, so
@@ -8,7 +8,7 @@
  * the colour of the theme in force. An <img> of the file cannot follow a theme:
  * it does not inherit the page's custom properties.
  *
- * DebridPulse Dark is the logo's own colours. DebridPulse Light lifts the
+ * DownloadPulse Dark is the logo's own colours. DownloadPulse Light lifts the
  * square to the native light surface. An alternative palette
  * (ui-theme-palettes.css, body[data-dp-palette]) draws the square in its first
  * surface and the outline, arrow and pulse line in its accents: the line runs

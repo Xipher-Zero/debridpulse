@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "DebridPulse",
-  "short_name": "DebridPulse",
+  "name": "DownloadPulse",
+  "short_name": "DownloadPulse",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

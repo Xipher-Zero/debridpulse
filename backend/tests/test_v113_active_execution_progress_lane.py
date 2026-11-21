@@ -231,7 +231,7 @@ def test_the_shared_progress_presentation_words_the_lane_for_any_executor():
     assert "executionProgressWords(active, t.active_execution_basis)" in details
     # The lane stays secondary and explicit about what it is not.
     assert "T('transfer.progress.unverified_title')" in renderer
-    assert english("transfer.progress.unverified_title").endswith("not yet verified as DebridPulse material")
+    assert english("transfer.progress.unverified_title").endswith("not yet verified as DownloadPulse material")
     assert "'transfer.progress.verified'" in renderer and english("transfer.progress.verified") == "{percent}% verified"
     # Promotion: the execution value leads only while nothing is verified (no
     # verified percentage, or exactly 0%), and the two are never compared.

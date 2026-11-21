@@ -504,7 +504,7 @@ test('WS2-P1 a removal is complete only once its focus has settled: the caller a
   // Bulk: where focus is at the moment the settled notification is sent.
   await page.evaluate(() => {
     window.__dpBulkSettledFocus = null;
-    document.addEventListener('debridpulse:downloads-bulk-action-settled', () => {
+    document.addEventListener('downloadpulse:downloads-bulk-action-settled', () => {
       window.__dpBulkSettledFocus = document.activeElement?.id || document.activeElement?.tagName;
     }, {once: true});
   });

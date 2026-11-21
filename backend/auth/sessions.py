@@ -17,8 +17,8 @@ from fastapi import Request, Response
 from auth.models import Principal
 
 
-HTTP_SESSION_COOKIE = "debridpulse-session"
-HTTPS_SESSION_COOKIE = "__Host-debridpulse-session"
+HTTP_SESSION_COOKIE = "downloadpulse-session"
+HTTPS_SESSION_COOKIE = "__Host-downloadpulse-session"
 CSRF_HEADER = "X-CSRF-Token"
 
 

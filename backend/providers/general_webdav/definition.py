@@ -13,7 +13,7 @@ class GeneralWebdavOptions(BaseModel):
 
     # How far below a submitted folder its files are collected.
     directory_depth: DirectoryDepthSetting = "current"
-    # The most files one collection may contain for DebridPulse to accept it;
+    # The most files one collection may contain for DownloadPulse to accept it;
     # a larger one fails rather than arriving partly. The default and the
     # ceiling are the neutral listing bound every discovery already has.
     max_files: int = Field(default=10_000, ge=1, le=10_000)

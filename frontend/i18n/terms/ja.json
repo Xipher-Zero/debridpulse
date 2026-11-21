@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "ja",
  "register": "Japanese. Help prose and messages use the polite です・ます form; buttons and menu commands use the short noun or verb-stem forms standard in Japanese software (保存, キャンセル, 削除, 再試行); headings and labels use nouns. Full-width punctuation (、。「」：（）) in Japanese text; half-width for Latin literals, numbers and units. No spaces between Japanese words; a space only next to Latin text where Japanese software usually puts one. Established katakana loan words where Japanese IT usage is settled (サーバー, トークン, ダッシュボード), long-vowel mark included (サーバー, ユーザー, プロバイダー).",
  "terms": {

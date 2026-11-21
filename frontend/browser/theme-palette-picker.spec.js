@@ -3,13 +3,13 @@ const { test, expect } = require('@playwright/test');
 /* DP 1.0.14 contextual theme picker. The chevron beside the mode toggle opens
  * the active mode's palettes only; a choice applies at once to that mode
  * alone, is kept per mode in this browser, and is announced to theme
- * consumers (debridpulse:theme-changed) after it applies. Every read here is
+ * consumers (downloadpulse:theme-changed) after it applies. Every read here is
  * the page's own computed style or storage; nothing is written to the shared
  * backend. */
 
-const DARK = ['DebridPulse (Default)', 'Catppuccin Mocha', 'Dracula', 'Gruvbox Dark', 'Everforest Dark', 'Rosé Pine',
+const DARK = ['DownloadPulse (Default)', 'Catppuccin Mocha', 'Dracula', 'Gruvbox Dark', 'Everforest Dark', 'Rosé Pine',
   'Kanagawa Wave', 'Ayu Mirage', "SynthWave '84", 'Oxocarbon Dark'];
-const LIGHT = ['DebridPulse (Default)', 'Catppuccin Latte', 'Nord Light', 'Gruvbox Light', 'Rosé Pine Dawn', 'Everforest Light',
+const LIGHT = ['DownloadPulse (Default)', 'Catppuccin Latte', 'Nord Light', 'Gruvbox Light', 'Rosé Pine Dawn', 'Everforest Light',
   'Ayu Light', 'Flexoki Light', 'Oxocarbon Light', 'Bluloco Light'];
 // Retired in 1.0.14's catalog diversification: never offered, never accepted.
 const RETIRED = {dark: ['nord-dark', 'solarized-dark', 'tokyo-night'], light: ['solarized-light', 'tokyo-night-day']};
@@ -47,13 +47,13 @@ async function choose(page, label) {
 test('the picker lists only the active mode; each mode keeps its own palette through toggles and a reload', async ({page}) => {
   await noFonts(page);
   await page.goto('/');
-  // A new browser: DebridPulse Dark exactly, no palette on the page, picker closed.
+  // A new browser: DownloadPulse Dark exactly, no palette on the page, picker closed.
   expect(await state(page)).toMatchObject({light: false, palette: null, darkChoice: null, lightChoice: null});
   expect(await token(page, '--dp-bg-app')).toBe('#050814');
   expect(await menuOpen(page)).toBe(false);
 
   let menu = await openPicker(page);
-  expect(menu).toEqual({heading: 'Dark themes', note: 'Changes dark appearance only', labels: DARK, checked: ['DebridPulse (Default)'], expanded: 'true'});
+  expect(menu).toEqual({heading: 'Dark themes', note: 'Changes dark appearance only', labels: DARK, checked: ['DownloadPulse (Default)'], expanded: 'true'});
   // A swatch shows the palette's own values: Dracula's background and purple.
   const swatch = await page.evaluate(() => {
     const cells = [...document.querySelectorAll('#theme-picker [role="menuitemradio"]')][2].querySelectorAll('.dp-theme-swatch i');
@@ -72,7 +72,7 @@ test('the picker lists only the active mode; each mode keeps its own palette thr
   expect(await token(page, '--dp-bg-app')).toBe('#f4f7fc');
 
   menu = await openPicker(page);
-  expect(menu).toMatchObject({heading: 'Light themes', note: 'Changes light appearance only', labels: LIGHT, checked: ['DebridPulse (Default)']});
+  expect(menu).toMatchObject({heading: 'Light themes', note: 'Changes light appearance only', labels: LIGHT, checked: ['DownloadPulse (Default)']});
   await page.keyboard.press('Escape');
   await choose(page, 'Flexoki Light');
   expect(await state(page)).toMatchObject({light: true, palette: 'flexoki-light', darkChoice: 'catppuccin-mocha', lightChoice: 'flexoki-light'});
@@ -99,7 +99,7 @@ test('a browser with only theme=light, stale palette names or no storage at all 
   await page.goto('/');
   expect(await state(page)).toMatchObject({light: true, palette: null});
   expect(await token(page, '--dp-bg-app')).toBe('#f4f7fc');
-  expect((await openPicker(page)).checked).toEqual(['DebridPulse (Default)']);
+  expect((await openPicker(page)).checked).toEqual(['DownloadPulse (Default)']);
   await page.keyboard.press('Escape');
   await page.click('#theme-toggle');
   expect(await state(page)).toMatchObject({light: false, palette: null});
@@ -134,7 +134,7 @@ test('a retired palette stored in this browser is its own mode\'s native palette
   expect(await state(page)).toMatchObject({light: false, palette: null, darkChoice: 'tokyo-night', lightChoice: 'flexoki-light'});
   expect(await token(page, '--dp-bg-app')).toBe('#050814');
   const menu = await openPicker(page);
-  expect(menu.checked).toEqual(['DebridPulse (Default)']);
+  expect(menu.checked).toEqual(['DownloadPulse (Default)']);
   for (const retired of [...RETIRED.dark, ...RETIRED.light]) await expect(page.locator(`#theme-picker [data-palette="${retired}"]`)).toHaveCount(0);
   await page.keyboard.press('Escape');
   await page.click('#theme-toggle');
@@ -190,7 +190,7 @@ test('ten palettes per mode fit the menu at the narrowest desktop width without 
   }
 });
 
-test('DebridPulse (Default) puts back the exact native palette in each mode', async ({page}) => {
+test('DownloadPulse (Default) puts back the exact native palette in each mode', async ({page}) => {
   await noFonts(page);
   await page.goto('/');
   const paint = () => page.evaluate(() => ['body', '#sidebar', '.nav-item.active', '#theme-toggle', '#runtime-speed-badge', '#page-title', '.dash-hero-stat', '#dash-activity-card']
@@ -199,8 +199,8 @@ test('DebridPulse (Default) puts back the exact native palette in each mode', as
     const native = await paint();
     await choose(page, other);
     expect(await paint()).not.toEqual(native);
-    await choose(page, 'DebridPulse (Default)');
-    expect(await state(page)).toMatchObject({palette: null, [`${mode}Choice`]: `debridpulse-${mode}`});
+    await choose(page, 'DownloadPulse (Default)');
+    expect(await state(page)).toMatchObject({palette: null, [`${mode}Choice`]: `downloadpulse-${mode}`});
     expect(await paint()).toEqual(native);
     if (mode === 'dark') { await page.click('#theme-toggle'); await settled(page); }
   }
@@ -215,7 +215,7 @@ test('the menu works from the keyboard, Escape and an outside press dismiss it, 
   await page.focus('#theme-picker-toggle');
   await page.keyboard.press('Enter');
   await expect.poll(() => menuOpen(page)).toBe(true);
-  expect(await page.evaluate(() => document.activeElement.textContent.trim())).toBe('DebridPulse (Default)');
+  expect(await page.evaluate(() => document.activeElement.textContent.trim())).toBe('DownloadPulse (Default)');
   await page.keyboard.press('ArrowDown');
   await page.keyboard.press('ArrowDown');
   expect(await page.evaluate(() => document.activeElement.textContent.trim())).toBe('Dracula');
@@ -252,7 +252,7 @@ test('a palette chosen within a mode is announced after it applies; Statistics a
   await page.goto('/');
   await page.evaluate(() => {
     window.__themeEvents = [];
-    document.addEventListener('debridpulse:theme-changed', event => {
+    document.addEventListener('downloadpulse:theme-changed', event => {
       const chart = document.getElementById('daily-chart')?._ci;
       window.__themeEvents.push({detail: event.detail, palette: document.body.getAttribute('data-dp-palette'),
         background: getComputedStyle(document.body).getPropertyValue('--dp-bg-app').trim(),

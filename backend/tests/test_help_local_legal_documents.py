@@ -26,7 +26,7 @@ def test_bundled_document_endpoint_reads_the_canonical_packaged_file(document_id
     assert payload["content"] == (ROOT / relative_path).read_text(encoding="utf-8")
     assert payload["title"] == _LEGAL_DOCUMENTS[document_id]["title"]
     assert payload["latest_url"] == _LEGAL_DOCUMENTS[document_id]["latest_url"]
-    assert payload["latest_url"].startswith("https://github.com/Xipher-Zero/debridpulse/blob/main/")
+    assert payload["latest_url"].startswith("https://github.com/Xipher-Zero/downloadpulse/blob/main/")
     assert payload["bundled_version"]
 
 

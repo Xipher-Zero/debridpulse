@@ -33,7 +33,7 @@ def test_reviewed_toast_copy_is_owned_by_bridge() -> None:
     bridge = read("ui-toast-contract.js")
     # The replacement copy is the catalog's (1.0.14 localization), the same English.
     assert "window.DPI18n.t('quick_add.not_a_link')" in bridge
-    assert english("quick_add.not_a_link") == "DebridPulse stared at that for a moment. It is not a link, magnet, or torrent."
+    assert english("quick_add.not_a_link") == "DownloadPulse stared at that for a moment. It is not a link, magnet, or torrent."
     assert "window.DPI18n.t('recovery.checking')" in bridge and english("recovery.checking") == "Checking transfers for recoverable work…"
     assert "Checking AllDebrid for ready torrents" in bridge
 

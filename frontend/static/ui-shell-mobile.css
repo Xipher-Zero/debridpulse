@@ -1,4 +1,4 @@
-/* DebridPulse handheld shell (below 780px): one fixed header, the page as the
+/* DownloadPulse handheld shell (below 780px): one fixed header, the page as the
    one scrolling workspace, one fixed dock -- the same application, composed
    for a phone. app.js renders the dock from the authorized sidebar entries
    and owns More and the speed-cap sheet; auth.js owns the account control and

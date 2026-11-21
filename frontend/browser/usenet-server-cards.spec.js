@@ -744,7 +744,7 @@ test('Remove is confirmation-gated and names the server', async ({page}) => {
     .toHaveText('Remove news.removable.net?');
   await expect(acceptDanger(page)).toHaveText('Remove Server');
   await expect(dangerDialog(page).locator('.dp-modal-message'))
-    .toContainText(/removed from DebridPulse/i);
+    .toContainText(/removed from DownloadPulse/i);
 
   // Cancel removes nothing: not the card, and not the record.
   await cancelDanger(page).click();

@@ -1,4 +1,4 @@
-# DebridPulse's aria2 for Windows x64, built on the same pinned Debian base as
+# DownloadPulse's aria2 for Windows x64, built on the same pinned Debian base as
 # the Linux package (packaging/aria2/Dockerfile) with Debian's mingw-w64 cross
 # toolchain and Debian's signed source packages. Build context: the repository
 # root.

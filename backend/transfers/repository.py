@@ -1155,7 +1155,7 @@ class TransferRepository(_QualifiedTransferRepository):
     async def reclaimable_standbys(self, provider_id: str) -> tuple[dict, ...]:
         """The backups ``provider_id`` holds that primary work may take back:
         bound and never promoted, nothing already cleaning them up, their
-        resource not known gone, and DebridPulse's to clean up under the
+        resource not known gone, and DownloadPulse's to clean up under the
         existing OWNED authority (it CREATED or ADOPTED them). Newest first:
         the least prepared backup is given up first."""
         async with get_db() as db:
@@ -3177,12 +3177,12 @@ class TransferRepository(_QualifiedTransferRepository):
                                            predecessor_fingerprints, replacement_fingerprints, *,
                                            replacement_manifest_id=None):
         """The bounded coordinate correspondence between the predecessor's and
-        the replacement's COMPLETE file lists -- or ``None`` when DebridPulse
+        the replacement's COMPLETE file lists -- or ``None`` when DownloadPulse
         holds no durable binding of both to one torrent identity (D1), in
         which case nothing is proven here. Raises ``fs.SelectionUnprovable``
         when the binding holds but no single interpretation corresponds.
 
-        The binding, every element durable and authored by DebridPulse or a
+        The binding, every element durable and authored by DownloadPulse or a
         provider, never by a display name or a path:
 
         * the root's info-hash -- its admission fingerprint, reproduced from
@@ -3204,7 +3204,7 @@ class TransferRepository(_QualifiedTransferRepository):
           attested tree (a later hash never attests the earlier files by
           itself); or the root is an uploaded ``.torrent`` whose own verified
           member tree both file lists correspond to. A provider's report is
-          its record of the torrent it holds, which DebridPulse cannot verify
+          its record of the torrent it holds, which DownloadPulse cannot verify
           cryptographically.
 
         Every branch corresponds COMPLETE lists only: a recorded list whose
@@ -3827,7 +3827,7 @@ class TransferRepository(_QualifiedTransferRepository):
         no other provider's exhaustion and no other root is touched.
 
         Losing the route is not a reason to give the replaced provider
-        resource back. When DebridPulse owns it (CREATED or ADOPTED), it is
+        resource back. When DownloadPulse owns it (CREATED or ADOPTED), it is
         not already absent and nothing already owes its cleanup, the
         replaced provider's own Prepare Backup Torrents policy decides
         (``retain_replaced``, the caller's reading of

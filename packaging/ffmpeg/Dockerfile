@@ -1,8 +1,8 @@
-# DebridPulse's FFmpeg package image (docs/SUPPLY_CHAIN_POLICY.md section 4b).
+# DownloadPulse's FFmpeg package image (docs/SUPPLY_CHAIN_POLICY.md section 4b).
 #
 # A package CARRIER, not an FFmpeg runtime: built once per architecture by the
 # FFmpeg Package workflow and published write-once to
-# ghcr.io/xipher-zero/debridpulse-ffmpeg, whose multi-arch manifest DIGEST the
+# ghcr.io/xipher-zero/downloadpulse-ffmpeg, whose multi-arch manifest DIGEST the
 # application Dockerfile consumes. It is rebuilt only when this directory
 # changes (FFmpeg source version, build configuration or base/toolchain),
 # never by an application build.
@@ -30,9 +30,9 @@ RUN set -eux; \
 
 FROM scratch
 ARG FFMPEG_PACKAGE_VERSION=7:7.1.5-0+deb13u1+dp1
-LABEL org.opencontainers.image.title="DebridPulse FFmpeg packages"
-LABEL org.opencontainers.image.description="Debian FFmpeg rebuilt for DebridPulse: local stream-copy tools only, no encoder, device or network protocol"
+LABEL org.opencontainers.image.title="DownloadPulse FFmpeg packages"
+LABEL org.opencontainers.image.description="Debian FFmpeg rebuilt for DownloadPulse: local stream-copy tools only, no encoder, device or network protocol"
 LABEL org.opencontainers.image.version="${FFMPEG_PACKAGE_VERSION}"
-LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/debridpulse"
+LABEL org.opencontainers.image.source="https://github.com/Xipher-Zero/downloadpulse"
 LABEL org.opencontainers.image.licenses="LGPL-2.1-or-later"
 COPY --from=build /out/ /

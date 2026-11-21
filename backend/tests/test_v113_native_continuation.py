@@ -2,7 +2,7 @@
 continuation (1.0.13).
 
 Executor-private continuation state is disposable acceleration for the SAME
-source only: DebridPulse stays the sole owner of lifecycle intent, material
+source only: DownloadPulse stays the sole owner of lifecycle intent, material
 truth, writer authority and continuation policy, and a source switch --
 operator, Resume or automatic -- is always a fresh writer that keeps what the
 one planner retains. Driven through the real engine and repository with a

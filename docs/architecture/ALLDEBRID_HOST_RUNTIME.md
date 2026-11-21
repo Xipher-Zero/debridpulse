@@ -72,7 +72,7 @@ The AllDebrid Enable control in Sources & Providers updates the canonical backen
 
 When AllDebrid is actually selected, route/candidate/executor provenance is persisted by the neutral repository. Historical AllDebrid delivery remains historical AllDebrid delivery after restart or later changes to host inventory/configuration. Recent Activity, Downloads and Details consume that durable history; they do not classify the URL again.
 
-AllDebrid host inventory itself is not exposed as a user-facing host list/quota surface by this slice.
+AllDebrid host inventory itself is not exposed as a user-facing host list/quota surface by this runtime.
 
 ## Security boundary
 
@@ -80,4 +80,4 @@ A specialized AllDebrid claim is a routing fact, not destination trust. DNS/egre
 
 No AllDebrid hostname list, native alias, native regexp, native availability/status, native payload schema or endpoint semantics belongs in the universal classifier/core.
 
-See [PROVIDER_APPLICABILITY.md](PROVIDER_APPLICABILITY.md) and [MULTI_PROVIDER_HTTP_SLICE.md](MULTI_PROVIDER_HTTP_SLICE.md) for the neutral routing and complete converged ownership map.
+See [PROVIDER_APPLICABILITY.md](PROVIDER_APPLICABILITY.md) and [UNIVERSAL_TRANSFER_CORE.md](UNIVERSAL_TRANSFER_CORE.md) for the neutral routing and core ownership map.

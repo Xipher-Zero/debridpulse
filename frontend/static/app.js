@@ -1,4 +1,4 @@
-/* DebridPulse — self-hosted multi-provider transfer manager. */
+/* DownloadPulse — self-hosted multi-provider transfer manager. */
 
 const API = '/api';
 let settingsData = {};
@@ -22,7 +22,7 @@ async function refreshProviderStatus() {
 // The caller's authority, from its one owner (auth.js). Every control that a
 // role may lack is built only when this says so; the server decides anyway.
 function dpCan(capability) {
-  return !!(window.debridPulseAuth && window.debridPulseAuth.can(capability));
+  return !!(window.downloadPulseAuth && window.downloadPulseAuth.can(capability));
 }
 
 // The installation's display timezone, for every role (Admin's settings carry
@@ -31,7 +31,7 @@ function dpCan(capability) {
 // the computer's own, which this window knows.
 function dpDisplayTimezone() {
   const zone = String((typeof settingsData !== 'undefined' && settingsData && settingsData.timezone)
-    || (window.debridPulseAuth && window.debridPulseAuth.authority.display_timezone) || '').trim();
+    || (window.downloadPulseAuth && window.downloadPulseAuth.authority.display_timezone) || '').trim();
   if (zone) return zone;
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (_) { return 'UTC'; }
 }
@@ -127,7 +127,7 @@ function nav(el, event) {
                             () => navigateTo(el, {heading: false}))
     : (navigateTo(el), {settled: Promise.resolve()});
   // Whatever measures the destination's layout may do so again once it is still.
-  motion.settled.then(() => document.dispatchEvent(new CustomEvent('debridpulse:navigation-settled',
+  motion.settled.then(() => document.dispatchEvent(new CustomEvent('downloadpulse:navigation-settled',
     {detail: {view: document.querySelector('.view.active')?.id?.replace(/^view-/, '') || el.dataset.view}})));
 }
 
@@ -149,7 +149,7 @@ function navigateTo(el, {heading = true} = {}) {
   }
 
   const title = heading ? showPageHeading(el) : pageTitle(el);
-  document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title}}));
+  document.dispatchEvent(new CustomEvent('downloadpulse:navigation', {detail:{view:v,title}}));
   syncDashboardSparkPulses();
   if (v === 'dashboard') { loadStats(); loadRecent(); }
   // Every sidebar selection is a new entry: Downloads opens on page 1 (its
@@ -526,7 +526,7 @@ renderShellDock();
 /* The account's presentation changed (auth.js): the sidebar already holds
  * exactly the entries it shows. A withdrawn page that was the current one
  * gives way to Dashboard, and the dock is built again from the sidebar. */
-document.addEventListener('debridpulse:presentation-changed', event => {
+document.addEventListener('downloadpulse:presentation-changed', event => {
   const withdrawn = event.detail?.withdrawn || [];
   const current = withdrawn.some(node => node.classList.contains('active'));
   withdrawn.forEach(node => { node.classList.remove('active'); node.removeAttribute('aria-current'); });
@@ -538,7 +538,7 @@ document.addEventListener('debridpulse:presentation-changed', event => {
  * its keys): the shell's own messages follow -- the active page's heading,
  * the dock built from the sidebar's labels, and the sidebar handle -- with no
  * navigation, so no page reloads its data. */
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   const active = document.querySelector('#sidebar .nav-item.active');
   if (active) showPageHeading(active);
   renderShellDock();
@@ -611,10 +611,10 @@ async function chooseAcquisitionScope(link, choices) {
   return chosen;
 }
 
-/* The application action "open this address outside DebridPulse".
- * DebridPulse's own window is never navigated, framed or replaced: the address
+/* The application action "open this address outside DownloadPulse".
+ * DownloadPulse's own window is never navigated, framed or replaced: the address
  * opens in the operator's own browser. It is one function so a desktop host
- * that embeds DebridPulse can hand the address to the operating system's
+ * that embeds DownloadPulse can hand the address to the operating system's
  * default browser instead. Only an https address is ever opened. */
 function openExternalUrl(url) {
   let target;
@@ -653,7 +653,7 @@ function saidRefusal(data, first) {
   return typeof category === 'string' && DPI18n.has(`error.category.${category}`) ? DPI18n.t(`error.category.${category}`) : '';
 }
 
-/* Desktop saves. The installed desktop application (window.debridPulseDesktop,
+/* Desktop saves. The installed desktop application (window.downloadPulseDesktop,
  * said by the server before the first paint) has no browser download flow: its
  * window would put a download in the Downloads folder unasked. There, a file
  * the interface offers is saved where the person's own Save dialog says --
@@ -665,7 +665,7 @@ function saidRefusal(data, first) {
  * person's own time in the dialog. */
 const DESKTOP_SAVE_TIMEOUT_MS = 660000;
 const DPDesktopSave = Object.freeze({
-  active: window.debridPulseDesktop === true,
+  active: window.downloadPulseDesktop === true,
   async save(path) {
     const result = await api('POST', path, null, DESKTOP_SAVE_TIMEOUT_MS);
     if (result && result.saved) toast(DPI18n.t('desktop.save.saved', {name: result.name}), 'success');
@@ -682,7 +682,7 @@ window.DPDesktopSave = DPDesktopSave;
  * supervisor colours the frame with it. Only what changed is sent; a refused
  * or failed send is said again with the next change. Nothing elsewhere. */
 (function desktopFrame() {
-  if (window.debridPulseDesktop !== true) return;
+  if (window.downloadPulseDesktop !== true) return;
   const hex = value => {
     const parts = String(value).match(/\d+(?:\.\d+)?/g);
     return parts && parts.length >= 3
@@ -699,7 +699,7 @@ window.DPDesktopSave = DPDesktopSave;
     said = key;
     api('PUT', '/desktop/frame', frame).catch(() => { said = ''; });
   });
-  document.addEventListener('debridpulse:theme-changed', say);
+  document.addEventListener('downloadpulse:theme-changed', say);
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', say, {once: true});
   else say();
 })();
@@ -725,7 +725,7 @@ async function api(method, path, body, timeoutMs, options) {
   }
   opts.signal = controller.signal;
   try {
-    const r = await window.debridPulseAuth.fetch(API + path, opts);
+    const r = await window.downloadPulseAuth.fetch(API + path, opts);
     clearTimeout(tid);
     if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternal);
     const data = await r.json().catch(() => ({detail: r.statusText}));
@@ -773,7 +773,7 @@ window.dpIsInteractiveRowTarget = dpIsInteractiveRowTarget;
 // browser keeps its own menu wherever it does real work -- an editable text
 // field (Cut, Copy, Paste, spelling), a hyperlink (Open, Copy Link) or text the
 // operator selected where they right-clicked (Copy) -- and is otherwise
-// suppressed on DebridPulse's own surfaces, where the owner of a surface may
+// suppressed on DownloadPulse's own surfaces, where the owner of a surface may
 // offer its own through the one menu below: Downloads' unfinished rows
 // (DPDownloads.contextMenu), their selection checkboxes included, and Details'
 // Original Resource when Copy URL is allowed. No other module listens for
@@ -849,8 +849,8 @@ function dpOpenContextMenu(event, anchor, {label, items, restore}) {
   document.addEventListener('pointerdown', e => { if (!node.contains(e.target)) dpCloseContextMenu(false); }, {signal, capture: true});
   window.addEventListener('scroll', () => dpCloseContextMenu(false), {signal, capture: true});
   window.addEventListener('resize', () => dpCloseContextMenu(false), {signal});
-  document.addEventListener('debridpulse:navigation', () => dpCloseContextMenu(false), {signal});
-  document.addEventListener('debridpulse:detail-closed', () => dpCloseContextMenu(false), {signal});
+  document.addEventListener('downloadpulse:navigation', () => dpCloseContextMenu(false), {signal});
+  document.addEventListener('downloadpulse:detail-closed', () => dpCloseContextMenu(false), {signal});
   buttons[0].focus({preventScroll: true});
   return true;
 }
@@ -1056,7 +1056,7 @@ function sanitizeErrorMsg(message) {
 
 function toast(msg, type = 'info') {
   if (!window.DPIcons || typeof window.DPIcons.toast !== 'function') {
-    throw new Error('DebridPulse icon runtime is unavailable');
+    throw new Error('DownloadPulse icon runtime is unavailable');
   }
   return window.DPIcons.toast(msg, type);
 }
@@ -1100,7 +1100,7 @@ function setButtonPending(button, pending, pendingLabel) {
 
 // A language change: a pending control says its pending state in the new
 // words; it stays pending, disabled and busy, and nothing is run again.
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   document.querySelectorAll('[data-pending="1"][data-pending-label-key]').forEach(button => {
     (button.querySelector('[data-dp-icon-label]') || button).textContent = DPI18n.t(button.dataset.pendingLabelKey);
   });
@@ -1197,7 +1197,7 @@ function statusGlyph(s, detail) {
 // What a row's status shows: its tone, label and failure category.
 function statusShown(s, detail) {
   if (!window.DPIcons || typeof window.DPIcons.statusBadge !== 'function') {
-    throw new Error('DebridPulse icon runtime is unavailable');
+    throw new Error('DownloadPulse icon runtime is unavailable');
   }
   // A backend-projected presentation_status (transfers.presentation_repository
   // .effective_presentation) is canonical lifecycle truth and always wins over
@@ -1637,7 +1637,7 @@ function setDot(id, state, key, values = {}) {
   const row = l.closest('.conn-row');
   if (row) row.dataset.tooltip = label;
 }
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   _dotState.forEach(({state, key, values}, id) => setDot(id, state, key, values));
 });
 
@@ -1742,7 +1742,7 @@ var _operatorTitleState = {active: 0, progress: 0};
 
 function renderOperatorTitle() {
   if (_operatorTitleState.active === 0) {
-    document.title = 'DebridPulse';
+    document.title = 'DownloadPulse';
     return;
   }
 
@@ -2026,7 +2026,7 @@ function dashboardKpiFormats() {
 let _dashboardKpiTooltips = new WeakMap();
 // A language change re-renders each card's explanation (data-i18n-attr): the
 // explanations are read again and every card refitted.
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   _dashboardKpiTooltips = new WeakMap();
   fitDashboardKpiValues();
 });
@@ -2360,7 +2360,7 @@ function renderStatsWords(s) {
   set('i-avg-duration', fmtDuration(s.avg_download_duration_seconds));
   set('i-avg-size', s.avg_torrent_size_bytes ? fmtSize(s.avg_torrent_size_bytes) : '—');
 }
-document.addEventListener('debridpulse:locale-changed', () => { if (_lastStatsWords) renderStatsWords(_lastStatsWords); });
+document.addEventListener('downloadpulse:locale-changed', () => { if (_lastStatsWords) renderStatsWords(_lastStatsWords); });
 
 async function loadStats() {
   // Retry up to 5 times — server may be slow on first request after container start
@@ -2368,7 +2368,7 @@ async function loadStats() {
     try {
       const s = await api('GET', '/stats');
       updateOperatorTitle(s);
-      document.dispatchEvent(new CustomEvent('debridpulse:dashboard-stats-rendered', {detail:s}));
+      document.dispatchEvent(new CustomEvent('downloadpulse:dashboard-stats-rendered', {detail:s}));
       // ── populate sidebar version ────────────────────────────────────────
       const versionEl = document.getElementById('sidebar-version');
       if (versionEl) versionEl.textContent = s.version ? `v${s.version}` : 'v—';
@@ -2405,7 +2405,7 @@ async function loadStats() {
         'paused', 'verifying', 'extracting'].reduce((sum, status) => sum + (Number(bs[status]) || 0), 0);
       showDownloadsBadge(unfinished);
       // The topbar's active count is NOT written here: it has exactly one
-      // writer, the neutral runtime-status poll, whose number is DebridPulse's
+      // writer, the neutral runtime-status poll, whose number is DownloadPulse's
       // canonical execution-admission occupancy rather than this aggregate
       // lifecycle count. Two writers for one visible fact is how the indicator
       // could disagree with itself.
@@ -2677,7 +2677,7 @@ function fittedPlaceholder(input, twoLines, border) {
  * 780px the header is the desktop's. */
 // A language change has rendered Quick Add's words again (data-i18n-attr): its
 // placeholder is the new authored one, and both fits are measured afresh.
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   _authoredPlaceholders = new WeakMap();
   resizeDebridLinkInput(document.getElementById('q-transfer-input'));
   fitQuickAddHeader();
@@ -3111,7 +3111,7 @@ const DPModal = (function () {
     });
 
     if (closedMode === 'details') {
-      document.dispatchEvent(new CustomEvent('debridpulse:detail-closed',
+      document.dispatchEvent(new CustomEvent('downloadpulse:detail-closed',
         {detail: {reason: reason || null}}));
     }
   }
@@ -3184,7 +3184,7 @@ function dpRenderOriginalResource(modalBody, t) {
   field.replaceChildren(value);
   if (t.original_resource_copy_allowed === true) dpDetailResource = {url: full, node: value};
 }
-document.addEventListener('debridpulse:detail-closed', () => { dpDetailResource = null; });
+document.addEventListener('downloadpulse:detail-closed', () => { dpDetailResource = null; });
 
 /* Details' ERROR: the message as it always was, and -- when the backend
  * discloses facts of that very error (error_disclosure, bound to it by the
@@ -3228,7 +3228,7 @@ function dpRenderErrorDisclosure(modalBody, t) {
 }
 
 /* Details' REASON: the reporting integration's own words for the failure
- * Details shows or DebridPulse is still recovering from (error_reason, from
+ * Details shows or DownloadPulse is still recovering from (error_reason, from
  * the Details route), with only a real schedule -- the next automatic attempt
  * when one is scheduled, else that none is. The lifecycle stays the Status
  * badge's; every value is text. */
@@ -3346,7 +3346,7 @@ function dpPaintDetail(t, relabel) {
 
     // ``relabel``: the same transfer re-said in another language; the Files
     // header owners re-word from what they hold instead of re-reading.
-    document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
+    document.dispatchEvent(new CustomEvent('downloadpulse:detail-rendered',
       {detail: {transferId: Number(t.id), transfer: t, relabel: Boolean(relabel)}}));
 }
 
@@ -3370,7 +3370,7 @@ function dpRepaintKeepingPlace(root, paint) {
   const same = target && active && target.tagName === active.tagName && target.className === active.className;
   (same ? target : document.querySelector('#modal .modal-close'))?.focus?.({preventScroll: true});
 }
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   const body = document.getElementById('modal-body');
   if (DPModal.mode !== 'details' || !dpDetailShown || !body) return;
   // The newest payload held for this transfer (the Files owner may have refreshed it).
@@ -3378,7 +3378,7 @@ document.addEventListener('debridpulse:locale-changed', () => {
   if (newer && Number(newer.id) === Number(dpDetailShown.id)) dpDetailShown = newer;
   dpRepaintKeepingPlace(body, () => dpPaintDetail(dpDetailShown, true));
 });
-document.addEventListener('debridpulse:detail-closed', () => { dpDetailShown = null; });
+document.addEventListener('downloadpulse:detail-closed', () => { dpDetailShown = null; });
 
 /* Details opens its backdrop at once and its shell with its content: the
  * shell stays unseen until the transfer is rendered into it, so it never
@@ -3421,7 +3421,7 @@ async function showDetail(id) {
     }
 
     toast(sanitizeErrorMsg(e.message),'error');
-    document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
+    document.dispatchEvent(new CustomEvent('downloadpulse:detail-rendered',
       {detail: {transferId: Number(id), transfer: null, error: true}}));
   } finally {
     clearTimeout(slow);
@@ -3585,7 +3585,7 @@ async function downloadTransferTrace(button) {
       await DPDesktopSave.save(`/torrents/${encodeURIComponent(id)}/trace/save`);
       return;
     }
-    const r = await window.debridPulseAuth.fetch(`${API}/torrents/${encodeURIComponent(id)}/trace`);
+    const r = await window.downloadPulseAuth.fetch(`${API}/torrents/${encodeURIComponent(id)}/trace`);
     if (!r.ok) {
       const data = await r.json().catch(() => ({}));
       // The same reading of a refusal as api(): a structured detail speaks
@@ -3598,7 +3598,7 @@ async function downloadTransferTrace(button) {
     const url = URL.createObjectURL(await r.blob());
     const link = document.createElement('a');
     link.href = url;
-    link.download = named ? named[1] : `debridpulse-transfer-${id}-trace.json`;
+    link.download = named ? named[1] : `downloadpulse-transfer-${id}-trace.json`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -3860,17 +3860,17 @@ document.addEventListener('pointerdown', event => {
 function toggleTheme() {
   const isLight = window.DPTheme.mode() !== 'light';
   window.DPTheme.setMode(isLight);
-  document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail:{light:isLight}}));
+  document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed', {detail:{light:isLight}}));
 }
 // The toggle's glyph follows every effective theme change: this toggle, a
 // palette choice, and an account's appearance read after first paint.
-document.addEventListener('debridpulse:theme-changed', event => updateThemeToggle(!!event.detail?.light));
+document.addEventListener('downloadpulse:theme-changed', event => updateThemeToggle(!!event.detail?.light));
 
 function updateThemeToggle(isLight) {
   const btn = document.getElementById('theme-toggle');
   if (!btn) return;
   if (!window.DPIcons || typeof window.DPIcons.renderThemeGlyph !== 'function') {
-    throw new Error('DebridPulse icon runtime is unavailable');
+    throw new Error('DownloadPulse icon runtime is unavailable');
   }
   const action = DPI18n.t(isLight ? 'theme.switch_to_dark' : 'theme.switch_to_light');
   btn.dataset.tooltip = action;
@@ -3878,7 +3878,7 @@ function updateThemeToggle(isLight) {
   btn.dataset.themeToggleLight = isLight ? '1' : '0';
   window.DPIcons.renderThemeGlyph(!!isLight);
 }
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   const btn = document.getElementById('theme-toggle');
   if (btn && btn.dataset.themeToggleLight) updateThemeToggle(btn.dataset.themeToggleLight === '1');
 });
@@ -3957,13 +3957,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   // Returning to the Dashboard: the route is read again from the settled cards
   // (the heartbeat clock and the beats on the strip are untouched).
-  document.addEventListener('debridpulse:navigation-settled', function(event) {
+  document.addEventListener('downloadpulse:navigation-settled', function(event) {
     if (event.detail?.view === 'dashboard') remeasureDashboardHeartbeat();
   });
   syncDashboardSparkPulses();
   // ui-theme-bootstrap.js applied the stored mode and its palette at first paint.
   const isLight = window.DPTheme.mode() === 'light';
-  document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail:{light:isLight}}));
+  document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed', {detail:{light:isLight}}));
 });
 
 
@@ -4023,7 +4023,7 @@ document.addEventListener('DOMContentLoaded', () => {
   parsed
     .then(() => Promise.allSettled([recentLoaded, connectionsChecked, document.fonts?.ready,
                                     window.DPSetupWizard?.started]))
-    .then(() => document.dispatchEvent(new CustomEvent('debridpulse:interface-ready')));
+    .then(() => document.dispatchEvent(new CustomEvent('downloadpulse:interface-ready')));
 
   // Generic statistics availability says nothing about provider health.
   // The neutral provider-status runtime owns provider presentation.
@@ -4085,7 +4085,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // The stream's state is also readable (data-dp-pulse) by an owner
             // that binds after this event.
             document.documentElement.dataset.dpPulse = 'connected';
-            document.dispatchEvent(new CustomEvent('debridpulse:pulse-connected'));
+            document.dispatchEvent(new CustomEvent('downloadpulse:pulse-connected'));
           }
         );
 
@@ -4096,7 +4096,7 @@ document.addEventListener('DOMContentLoaded', () => {
           function(e) {
             let payload = {};
             try { payload = JSON.parse(e.data || '{}'); } catch (_) {}
-            document.dispatchEvent(new CustomEvent('debridpulse:file-selection-available',
+            document.dispatchEvent(new CustomEvent('downloadpulse:file-selection-available',
               {detail: payload}));
           }
         );
@@ -4109,7 +4109,7 @@ document.addEventListener('DOMContentLoaded', () => {
           function(e) {
             let payload = {};
             try { payload = JSON.parse(e.data || '{}'); } catch (_) {}
-            document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed',
+            document.dispatchEvent(new CustomEvent('downloadpulse:activity-journal-changed',
               {detail: payload}));
           }
         );
@@ -4119,7 +4119,7 @@ document.addEventListener('DOMContentLoaded', () => {
         es.addEventListener(
           'statistics_changed',
           function() {
-            document.dispatchEvent(new CustomEvent('debridpulse:statistics-invalidated'));
+            document.dispatchEvent(new CustomEvent('downloadpulse:statistics-invalidated'));
           }
         );
 
@@ -4128,7 +4128,7 @@ document.addEventListener('DOMContentLoaded', () => {
         es.addEventListener(
           'integration_status_changed',
           function() {
-            document.dispatchEvent(new CustomEvent('debridpulse:integration-status-changed'));
+            document.dispatchEvent(new CustomEvent('downloadpulse:integration-status-changed'));
           }
         );
 
@@ -4155,7 +4155,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // transfer and statistics signals every connection already receives,
         // so no executor fact reaches a new audience.
         function executionActivityChanged() {
-          document.dispatchEvent(new CustomEvent('debridpulse:execution-activity-changed'));
+          document.dispatchEvent(new CustomEvent('downloadpulse:execution-activity-changed'));
         }
 
         es.addEventListener(
@@ -4164,7 +4164,7 @@ document.addEventListener('DOMContentLoaded', () => {
             executionActivityChanged();
             loadStats().catch(()=>{});
             // The Statistics owner decides whether it is shown and when to re-read.
-            document.dispatchEvent(new CustomEvent('debridpulse:statistics-invalidated'));
+            document.dispatchEvent(new CustomEvent('downloadpulse:statistics-invalidated'));
 
             if (
               document
@@ -4226,7 +4226,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 Number(payload?.id ?? payload?.torrent_id);
 
               if (Number.isFinite(semanticTransferId)) {
-                document.dispatchEvent(new CustomEvent('debridpulse:transfer-updated',
+                document.dispatchEvent(new CustomEvent('downloadpulse:transfer-updated',
                   {detail: {transferId: semanticTransferId}}));
               }
             } else if (!progressStatsTimer) {
@@ -4251,7 +4251,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (document.getElementById('view-stats')?.classList.contains('active')) {
               loadStats().catch(()=>{});
             }
-            document.dispatchEvent(new CustomEvent('debridpulse:pulse-heartbeat'));
+            document.dispatchEvent(new CustomEvent('downloadpulse:pulse-heartbeat'));
           }
         );
 
@@ -4266,18 +4266,18 @@ document.addEventListener('DOMContentLoaded', () => {
         es.addEventListener('session_ended', function() {
           es.close();
           document.documentElement.dataset.dpPulse = 'lost';
-          document.dispatchEvent(new CustomEvent('debridpulse:pulse-lost'));
-          window.debridPulseAuth.refreshSession({force: true}).catch(()=>{});
+          document.dispatchEvent(new CustomEvent('downloadpulse:pulse-lost'));
+          window.downloadPulseAuth.refreshSession({force: true}).catch(()=>{});
         });
 
         es.onerror = function() {
           if (sseOk) streamLost = true;
           // Owners that present live state stop claiming it until the next
-          // debridpulse:pulse-connected.
+          // downloadpulse:pulse-connected.
           document.documentElement.dataset.dpPulse = 'lost';
-          document.dispatchEvent(new CustomEvent('debridpulse:pulse-lost'));
+          document.dispatchEvent(new CustomEvent('downloadpulse:pulse-lost'));
           // A refused reconnect is often an ended session or a changed role.
-          window.debridPulseAuth.refreshSession({force: true}).catch(()=>{});
+          window.downloadPulseAuth.refreshSession({force: true}).catch(()=>{});
           if (!sseOk) {
             startPolling();
           }
@@ -4424,7 +4424,7 @@ async function loadRuntimeStatus() {
   try {
     const data = await api('GET', '/execution/runtime-status', null, 3000);
     updateRuntimeStatusBadge({
-      // DebridPulse's own execution-admission occupancy, never a native queue count.
+      // DownloadPulse's own execution-admission occupancy, never a native queue count.
       active: Number(data.active_execution_slots) || 0,
     });
   } finally {
@@ -4443,7 +4443,7 @@ function updateRuntimeStatusBadge(patch) {
   if (!topBadge) return;
 
   if (elActive) elActive.textContent = s.active;
-  // The denominator is DebridPulse scheduler capacity: the canonical
+  // The denominator is DownloadPulse scheduler capacity: the canonical
   // transfer policy, never a value reported by any download engine.
   var maxDl = window.DPProcessingPresentation
     ? window.DPProcessingPresentation.configuredMaxConcurrency() : null;
@@ -4475,7 +4475,7 @@ function updateRuntimeStatusBadge(patch) {
 
 // A language change says the badge, the topbar's processing controls and the
 // browser-tab title again from the state they already hold.
-document.addEventListener('debridpulse:locale-changed', () => {
+document.addEventListener('downloadpulse:locale-changed', () => {
   renderTopbarActions();
   updateRuntimeStatusBadge({});
   renderOperatorTitle();

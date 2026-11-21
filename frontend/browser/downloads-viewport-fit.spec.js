@@ -56,7 +56,7 @@ async function openDownloads(page, items, {width = 1560, height = 1000, readOnly
       capabilities: ['interface', 'session', 'statistics.read', 'statistics.summary', 'transfers.read']});
     await page.route(url => url.pathname === '/app.js', async route => {
       const body = await (await route.fetch()).text();
-      const marker = 'window.debridPulseAuthority=Object.freeze(';
+      const marker = 'window.downloadPulseAuthority=Object.freeze(';
       const [head, rest] = body.split(marker);
       const end = rest.indexOf(');');
       return route.fulfill({status: 200, contentType: 'application/javascript',

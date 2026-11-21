@@ -103,7 +103,7 @@ def depth_options(depth) -> tuple[str, ...]:
     leading ``/`` anchors it at the transfer root -- so the files of levels
     0..N are listed and each deeper directory is excluded by the sender before
     it is opened (rsync never descends into an excluded directory). Nothing is
-    listed for DebridPulse to discard afterwards."""
+    listed for DownloadPulse to discard afterwards."""
     if depth.unlimited:
         return ("-r",)
     if not depth.levels:

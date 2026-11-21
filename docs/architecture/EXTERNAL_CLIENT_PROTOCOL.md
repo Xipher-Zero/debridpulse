@@ -1,12 +1,12 @@
-# External Client Protocol v1 (`debridpulse.external/1`)
+# External Client Protocol v1 (`downloadpulse.external/1`)
 
-DebridPulse 1.0.13 lets external programs act as requesters: an *arr installation,
+DownloadPulse lets external programs act as requesters: an *arr installation,
 a browser extension, a script. This is the native foundation they use. A
 compatibility adapter (for example a qBittorrent- or SABnzbd-shaped API for *arr)
-is a later, separate layer that calls only these operations.
+is a separate layer that calls only these operations.
 
 > External clients own their logical requests and delivery interests.
-> DebridPulse exclusively owns canonical transfers, execution decisions and
+> DownloadPulse exclusively owns canonical transfers, execution decisions and
 > artifact lifecycle.
 
 An external client can submit demand, inspect its own jobs and deliveries,
@@ -105,7 +105,7 @@ Owners in the code:
 | `magnet` | `magnet` | `submit_magnet` |
 | `nzb_link` | `url` (http/https) | `submit_nzb_link`: guarded fetch, staged, NZB-validated |
 | `nzb` | `nzb_base64` (≤ 8 MB decoded), `filename` (`*.nzb`) | `submit_nzb(validate=True)`: staged, NZB-validated before admission |
-| `torrent` | `torrent_base64` (≤ 16 MB decoded, DebridPulse's own torrent upload ceiling), `filename` (`*.torrent`) | `submit_torrent` |
+| `torrent` | `torrent_base64` (≤ 16 MB decoded, DownloadPulse's own torrent upload ceiling), `filename` (`*.torrent`) | `submit_torrent` |
 
 Not supported in v1:
 
@@ -165,7 +165,7 @@ it in Settings → Users & Access → **Integration Delivery Profiles**.
   - the job reads `withdrawn` (`withdrawn_by_administrator`).
 
   The core then settles the withdrawal as a client's "remove" would:
-  - work nobody else needs is cancelled, and DebridPulse's own provider
+  - work nobody else needs is cancelled, and DownloadPulse's own provider
     resources are given back;
   - shared work, other profiles' claims and native claims keep their work;
   - no downloaded file is deleted.
@@ -197,7 +197,7 @@ it in Settings → Users & Access → **Integration Delivery Profiles**.
 | `clients` | client IDs allowed to use it (explicit; empty admits nobody) |
 | `source_kinds` | permitted kinds |
 | `representation` | `shared_path` (the only one in v1) |
-| `local_root` | DebridPulse's view of the shared directory: the download folder or beneath it |
+| `local_root` | DownloadPulse's view of the shared directory: the download folder or beneath it |
 | `import_root` | the same directory as the client sees it (default: `local_root`) |
 | `retention_hours` | how long a committed delivery is advertised (1–8760, default 168) |
 
@@ -207,7 +207,7 @@ A category is a selector, never a path.
   `unknown_category`; the two cases are indistinguishable.
 - A profile cannot set a provider, executor, priority, target path, internal
   directory or post-processing.
-- DebridPulse writes downloads where it always does. A profile only confines and
+- DownloadPulse writes downloads where it always does. A profile only confines and
   maps delivery: nothing is copied, linked or moved.
 
 ## 5. Status
@@ -229,7 +229,7 @@ Each job also carries:
 - `actionability`: `none`, `wait`, `operator` or `resubmit`;
 - `progress`: `basis=members`, `completed_members`, `total_members`, and
   `percent` (verified material; `null` when no own figure exists). `effective`
-  is the figure DebridPulse shows as its primary bar: `percent`, `source`
+  is the figure DownloadPulse shows as its primary bar: `percent`, `source`
   (`verified`, or `execution` while downloading with nothing verified yet),
   `estimated`, and `completed_bytes`/`total_bytes` from the same measurement as
   `percent`: the executor's exact counters with an exact in-flight byte figure,
@@ -238,7 +238,7 @@ Each job also carries:
   otherwise. The two are never combined. An execution figure is activity, never
   material, and may move back when an attempt is replaced;
 - `error`: category and retryability only;
-- `estimate`: while the transfer downloads, DebridPulse's estimated time
+- `estimate`: while the transfer downloads, DownloadPulse's estimated time
   remaining, in its one public form from the one estimate owner
   (`acquisition_eta`): `{seconds, held, estimated, indeterminate}`, with
   `seconds` null while indeterminate; `null` otherwise. It is read when the job
@@ -260,7 +260,7 @@ A consolidated job completes only when the owning transfer has completed,
 including its finalization. One missing member is never `completed`. While some
 members are done, the delivery state is `partial`, with counts and no paths.
 
-**Finalization.** When DebridPulse ran post-processing (archive extraction),
+**Finalization.** When DownloadPulse ran post-processing (archive extraction),
 the job is ready only when it finishes. What the job then delivers is the final
 file set that post-processing recorded (`PostProcessOutcome.outputs`): the files
 it extracted plus the delivered inputs it kept. That set is taken from exactly
@@ -299,7 +299,7 @@ delivery stays `completed`, its delivery `unavailable / verifying_material`).
   `import_root`, `complete=true`, `total_bytes`, and `files[]` with `name`,
   `relative_path`, `import_path` and `size`.
 
-DebridPulse's own local root is never returned unless the Admin set no separate
+DownloadPulse's own local root is never returned unless the Admin set no separate
 `import_root`.
 
 **Commitment:**
@@ -329,7 +329,7 @@ re-verifies an available delivery at most every 60 seconds.
   delivery stays settled.
 - **Retention:** after `retention_hours` the delivery is `expired` and its paths
   are no longer advertised. Nothing is deleted. Storage is reclaimed only by
-  DebridPulse's existing lifecycle, and Delete never removes completed material.
+  DownloadPulse's existing lifecycle, and Delete never removes completed material.
   Reacquisition happens only through the existing demand and recovery policy.
 
 ## 7. Withdrawal vs acknowledgment
@@ -351,7 +351,7 @@ acknowledgment. A `deleteFiles` flag is never deletion authority.
 idempotent per `request_key`. Reusing a key for the other kind returns
 `409 control_conflict`.
 
-DebridPulse decides and applies the decision on the same serialized
+DownloadPulse decides and applies the decision on the same serialized
 operator-control boundary as Pause and Resume, through the core transition
 (`ApplicationService.adjudicated_control`). The response carries:
 
@@ -414,7 +414,7 @@ A retry never creates a second hold.
 **Re-adjudication.** A standing client pause is re-adjudicated on withdrawal, on
 every client control, and by the 15-second maintenance pass:
 
-- If another requester's demand now shares the work, DebridPulse releases the
+- If another requester's demand now shares the work, DownloadPulse releases the
   pause (`revoked / shared_interest_joined`), unless a global pause holds the
   transfer anyway.
 - If the operator replaced it, or Resume All cleared it, it is retired

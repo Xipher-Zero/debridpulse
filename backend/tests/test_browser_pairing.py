@@ -49,7 +49,7 @@ class Server:
             "download_folder": str(root / "downloads"), "deployment_type": "server",
             "auth_password_enabled": True, "auth_username": "owner", "auth_password": PASSWORD}))
         env = {key: value for key, value in os.environ.items() if key in {"PATH", "HOME", "LANG", "TMPDIR"}}
-        env.update(DB_PATH=str(root / "data" / "debridpulse.db"), CONFIG_PATH=str(root / "config" / "config.json"),
+        env.update(DB_PATH=str(root / "data" / "downloadpulse.db"), CONFIG_PATH=str(root / "config" / "config.json"),
                    STATIC_DIR=str(ROOT / "frontend" / "static"))
         self.process = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "main:app", "--app-dir", str(BACKEND), "--host", "127.0.0.1",
@@ -194,7 +194,7 @@ async def test_a_browser_pairs_on_approval_and_collects_its_token_exactly_once(w
     try:
         status, started = await extension(world, "POST", "/api/browser/v1/pairings",
                                           json={"client_name": "Firefox on Linux"})
-        assert status == 200 and started["protocol"] == "debridpulse.browser/1"
+        assert status == 200 and started["protocol"] == "downloadpulse.browser/1"
         assert re.fullmatch(r"[A-Z0-9]{4}-[A-Z0-9]{4}", started["user_code"])
         assert started["verification_path"] == f"/?connect-browser={started['user_code']}"
         poll = {"device_code": started["device_code"]}
@@ -216,18 +216,18 @@ async def test_a_browser_pairs_on_approval_and_collects_its_token_exactly_once(w
         for origin in (FIREFOX, CHROMIUM):
             status, session = await extension(world, "GET", "/api/browser/v1/session", collected["token"], origin)
             assert status == 200 and session == {
-                "protocol": "debridpulse.browser/1", "token": {"id": collected["token_id"], "label": "Laptop-Firefox"},
+                "protocol": "downloadpulse.browser/1", "token": {"id": collected["token_id"], "label": "Laptop-Firefox"},
                 "account": {"display_name": "Administrator"},
                 "capabilities": {"sources": ["links", "magnet", "metalink", "nzb", "nzb_link", "torrent"],
                                  "controls": ["pause", "resume"], "withdraw": True, "estimate": True,
                                  "cookies": {"max_count": 300, "max_bytes": 32768, "sources": ["links"]}},
-                "appearance": {"mode": "dark", "dark_palette": "debridpulse-dark", "light_palette": "debridpulse-light"}}
+                "appearance": {"mode": "dark", "dark_palette": "downloadpulse-dark", "light_palette": "downloadpulse-light"}}
         # The person's appearance is its owner's answer: a change there is the extension's next read.
         status, changed = await owner.call("PATCH", "/api/account/appearance",
                                            json={"mode": "light", "light_palette": "nord-light"})
         assert status == 200, changed
         _, session = await extension(world, "GET", "/api/browser/v1/session", collected["token"])
-        assert session["appearance"] == {"mode": "light", "dark_palette": "debridpulse-dark", "light_palette": "nord-light"}
+        assert session["appearance"] == {"mode": "light", "dark_palette": "downloadpulse-dark", "light_palette": "nord-light"}
         assert (await owner.call("PATCH", "/api/account/appearance", json={"mode": "dark"}))[0] == 200
 
         status, events = await owner.call("GET", "/api/events?limit=50", csrf=False)

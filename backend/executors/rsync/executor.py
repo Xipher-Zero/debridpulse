@@ -39,7 +39,7 @@ implementation is shaped as it is):
 * Neither native pause nor native private resume is declared: stopping an
   rsync process ends its session, and keeping a stopped one would hold a
   server connection slot for a paused transfer. A new process continues
-  portably from DebridPulse material under a new plan.
+  portably from DownloadPulse material under a new plan.
 
 Execution runs through the process-ownership owner
 (``executors.process_ownership``): a durable, flock-proven identity per
@@ -1145,7 +1145,7 @@ class RsyncExecutor:
         total = run.expected or run.reported_length or 0
         # Until rsync's begun record the session is not yet proven (connected
         # and authenticated), so no byte counts as having arrived -- the
-        # retained prefix already at the target is DebridPulse's, not this
+        # retained prefix already at the target is DownloadPulse's, not this
         # writer's progress. Its material evidence is reported either way. A
         # destination-aware reconstruction reports its private output's
         # length as execution progress only: it is never material.

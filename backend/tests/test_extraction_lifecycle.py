@@ -89,7 +89,7 @@ async def test_extract_archives_reports_missing_archive(tmp_path):
     path, ok, message = results[0]
     assert path == archive
     assert ok is False
-    assert "not accessible to DebridPulse" in message
+    assert "not accessible to DownloadPulse" in message
 
 
 def test_part_rar_cleanup_uses_only_db_known_archive_set_members(tmp_path):
@@ -202,7 +202,7 @@ def _merge_case(tmp_path, existing: dict[str, bytes], staged: dict[str, bytes]):
     """A destination holding ``existing`` and a staging tree under it (same
     filesystem, as ``staged_external_extract`` creates it) holding ``staged``."""
     dest = tmp_path / "download"
-    stage = dest / ".debridpulse-extract-test"
+    stage = dest / ".downloadpulse-extract-test"
     for root, files in ((dest, existing), (stage, staged)):
         for name, data in files.items():
             path = root / name

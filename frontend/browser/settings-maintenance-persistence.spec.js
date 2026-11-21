@@ -170,7 +170,7 @@ test('Backup Folder is a centred island at roughly 70% with Browse inside the fi
     expect(grammar.leftOfControl).toBe(true);
     expect(grammar.title).toBe('Backup Folder');
     expect(grammar.hint)
-      .toBe('Choose where DebridPulse stores database and configuration backups.');
+      .toBe('Choose where DownloadPulse stores database and configuration backups.');
     expect(grammar.centred).toBeLessThan(2);
   });
 

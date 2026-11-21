@@ -23,7 +23,7 @@ class Words:
 
 def test_the_page_gets_no_native_token_library_or_extension_and_close_only_hides():
     window = CONFIG["modes"]["window"]
-    # The page is DebridPulse's own loopback interface: nothing native is
+    # The page is DownloadPulse's own loopback interface: nothing native is
     # injected into it, so it holds no Neutralino token to call anything with.
     assert window["injectGlobals"] is False and window["injectClientLibrary"] is False
     assert CONFIG["enableExtensions"] is False and "extensions" not in CONFIG and "globalVariables" not in CONFIG
@@ -202,7 +202,7 @@ def test_the_macos_usenet_patch_is_the_pinned_one_for_the_pinned_release_and_onl
     assert removed[0] == "    elif sabnzbd.MACOS and sabnzbd.FOUNDATION:"
     assert "        AppHelper.runEventLoop()" in removed
     assert added and all(line.lstrip().startswith("#") for line in added)   # a notice, no new code
-    assert "Modified by DebridPulse" in added[0]
+    assert "Modified by DownloadPulse" in added[0]
 
 
 # -- B-1: Neutralino's exported credential is private before it exists ---------------------
@@ -217,13 +217,13 @@ POSIX = os.name != "nt"
 
 @pytest.mark.only_on(POSIX, reason="POSIX modes; Windows is checked by its ACL below")
 def test_the_credential_directory_is_made_private_before_the_shell_writes_into_it(tmp_path):
-    home = tmp_path / "org.debridpulse.desktop"
+    home = tmp_path / "net.downloadpulse.desktop"
     (home / ".tmp").mkdir(parents=True, mode=0o755)
     home.chmod(0o755)
     (home / ".tmp").chmod(0o755)          # what Neutralino itself creates
     supervisor.private_directory(home / ".tmp")
     assert (home.stat().st_mode & 0o777, (home / ".tmp").stat().st_mode & 0o777) == (0o700, 0o700)
-    fresh = tmp_path / "fresh" / "org.debridpulse.desktop" / ".tmp"
+    fresh = tmp_path / "fresh" / "net.downloadpulse.desktop" / ".tmp"
     fresh.parent.parent.mkdir()
     supervisor.private_directory(fresh)
     assert fresh.stat().st_mode & 0o777 == 0o700 and fresh.parent.stat().st_mode & 0o777 == 0o700
@@ -233,7 +233,7 @@ def test_the_credential_directory_is_made_private_before_the_shell_writes_into_i
 def test_a_linked_credential_directory_or_file_fails_closed(tmp_path):
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir(mode=0o755)
-    home = tmp_path / "org.debridpulse.desktop"
+    home = tmp_path / "net.downloadpulse.desktop"
     home.mkdir(mode=0o700)
     (home / ".tmp").symlink_to(elsewhere)
     with pytest.raises(OSError):
@@ -335,8 +335,8 @@ def test_the_credential_is_read_by_handle_and_deleted_and_a_linked_one_fails_clo
     decoy.write_text('{"nlToken": "x", "nlConnectToken": "y", "nlPort": 2}')
     try:
         os.symlink(decoy, credential)
-    except OSError as exc:   # without Developer Mode, Windows refuses the link before DebridPulse sees it
-        pytest.skip(f"Windows blocked creating the file symlink before DebridPulse's check: {exc}")
+    except OSError as exc:   # without Developer Mode, Windows refuses the link before DownloadPulse sees it
+        pytest.skip(f"Windows blocked creating the file symlink before DownloadPulse's check: {exc}")
     with pytest.raises(PermissionError, match="reparse point"):
         supervisor.read_credential(credential)
     assert decoy.exists()
@@ -675,7 +675,7 @@ def test_the_tray_host_alone_takes_the_trays_actions_and_anyone_may_read_and_ope
     pauses and quits; a plain peer, or one owning another org.kde name, reads
     the item and menu and opens the window, and its Pause All, Resume All and
     Quit are refused with AccessDenied before anything reaches the supervisor;
-    a watcher that is its own host acts; starting DebridPulse again opens it."""
+    a watcher that is its own host acts; starting DownloadPulse again opens it."""
     bus = BareBus(tmp_path)
     icons = tmp_path / "icons"
     icons.mkdir()
@@ -902,12 +902,12 @@ def test_the_tray_is_unavailable_while_no_watcher_or_host_and_returns_with_them(
 
 def test_macos_quit_is_the_application_menus_cmd_q_event_never_the_shells_own_termination():
     menu = supervisor.main_menu(Words())
-    assert menu == [{"id": "app", "text": "DebridPulse", "menuItems": [
+    assert menu == [{"id": "app", "text": "DownloadPulse", "menuItems": [
         {"id": "quit", "text": "desktop.tray.quit", "shortcut": "q"}]}]
     # No native action: Neutralino sends the click to the supervisor (mainMenuItemClicked).
     assert all("action" not in item for top in menu for item in top["menuItems"])
     assert "window.setMainMenu" in supervisor.NATIVE_METHODS and "window.setMainMenu" in CONFIG["nativeAllowList"]
-    # macOS Quit asks the shell to exit itself (main-thread teardown in the shell DebridPulse builds).
+    # macOS Quit asks the shell to exit itself (main-thread teardown in the shell DownloadPulse builds).
     assert "app.exit" in supervisor.NATIVE_METHODS and "app.exit" in CONFIG["nativeAllowList"]
 
 
@@ -969,8 +969,8 @@ def test_quit_ends_the_shell_in_order_and_says_how(tmp_path):
 def test_the_shell_composites_with_texturemapper_on_linux_and_a_persons_own_choice_stands(tmp_path):
     """WebKitGTK 2.54's default Skia compositor drew stale and blank frames as
     a page change ended; its TextureMapper compositor, with compositing still
-    on, did not. The Linux shell gets it unless the person running DebridPulse
-    chose otherwise; Windows keeps its WebView2 profile in DebridPulse's data
+    on, did not. The Linux shell gets it unless the person running DownloadPulse
+    chose otherwise; Windows keeps its WebView2 profile in DownloadPulse's data
     root; macOS gets the environment as it is."""
     base = {"PATH": "/usr/bin", "HOME": "/home/someone"}
     linux = supervisor.shell_environment(tmp_path, base, "linux")

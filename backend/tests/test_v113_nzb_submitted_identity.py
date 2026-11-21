@@ -12,7 +12,7 @@ the first faulty write: the candidate name becomes the collection artifact's
 Now a request whose ``name`` the submitter supplied (an upload's filename,
 recorded at admission as ``name_supplied``) names the candidate -- as
 SABnzbd names a job after its NZB file. The posting's identity
-(``source_identity``) is unchanged, and an NZB link, whose name DebridPulse
+(``source_identity``) is unchanged, and an NZB link, whose name DownloadPulse
 derives from its path, is named by its posting exactly as before.
 """
 from __future__ import annotations

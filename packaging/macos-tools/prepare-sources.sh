@@ -4,7 +4,7 @@
 # base) for a Mac that has neither apt nor autotools:
 #   Debian's ffmpeg, c-ares, libssh2, openssl, par2cmdline and libzstd source
 #   packages, unpacked with Debian's patches applied; Debian's aria2 source with
-#   DebridPulse's connect-tunnel-exact-read.patch, autoreconf'd; plus the
+#   DownloadPulse's connect-tunnel-exact-read.patch, autoreconf'd; plus the
 #   official downloads pinned by official.sha256. Each tree is one tarball.
 # Usage (repository root):
 #   podman run --rm -v "$PWD/packaging:/dp:ro" -v <out-dir>:/out <pinned base image> \

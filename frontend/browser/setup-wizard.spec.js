@@ -19,7 +19,7 @@ const { test, expect } = require('@playwright/test');
 
 /* The development preview (Test First-Run Wizard) is hidden unless the server
  * offers it (`setup_preview`: a development build started with
- * DEBRIDPULSE_SETUP_PREVIEW=1, proven in backend/tests/test_setup_lifecycle.py).
+ * DOWNLOADPULSE_SETUP_PREVIEW=1, proven in backend/tests/test_setup_lifecycle.py).
  * These cases use the preview to reach the first-run pages, so the page reads
  * `setup_preview: true` in the one setup-state answer -- a labelled mock of
  * that one server fact, standing for the opt-in; W11 reads the real default. */
@@ -54,7 +54,7 @@ async function load(page, {width = 1280, height = 900, motion = false, preview =
 const wizard = page => page.locator('.dp-modal-dialog.dp-setup-dialog');
 const account = page => page.locator('.dp-modal-dialog.dp-account-dialog');
 const setLocale = (page, locale) => page.evaluate(locale => window.DPI18n.setLocale(locale), locale);
-const state = page => page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/state').then(response => response.json()));
+const state = page => page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/state').then(response => response.json()));
 const t = (page, key, values) => page.evaluate(([key, values]) => window.DPI18n.t(key, values), [key, values]);
 
 async function openAccount(page) {
@@ -66,7 +66,7 @@ async function openAccount(page) {
 test('W01: My Account offers Rerun Setup Wizard; a rerun opens over it, changes nothing it was not asked to, and Close ends it', async ({page}) => {
   await load(page);
   // No earlier rerun of this Admin's (a rerun resumes where it stopped).
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
   const before = await state(page);
   expect(before.initial.complete).toBe(true);
   expect(before.rerun).toBeNull();
@@ -90,7 +90,7 @@ test('W01: My Account offers Rerun Setup Wizard; a rerun opens over it, changes 
   page.on('request', request => { if (request.method() !== 'GET') requests.push(`${request.method()} ${new URL(request.url()).pathname}`); });
   await section.locator('[data-account-setup-rerun]').click();
   await expect(wizard(page)).toBeVisible();
-  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+  const deployment = await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type);
   const total = deployment === 'standalone' ? 4 : 5;
   await step(page, 1, total);
   await expect(wizard(page).locator('[data-modal-cancel]')).toBeVisible();      // a rerun may be closed
@@ -126,7 +126,7 @@ test('W02: a new installation\'s setup opens by itself, cannot be dismissed, and
   page.on('request', request => { if (request.method() !== 'GET') sent.push(`${request.method()} ${new URL(request.url()).pathname}`); });
   await load(page);
   await expect(wizard(page)).toBeVisible();
-  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+  const deployment = await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type);
   const total = deployment === 'standalone' ? 5 : 6;
   await step(page, 1, total);
   await expect(wizard(page).locator('[data-modal-cancel]')).toBeHidden();
@@ -196,9 +196,9 @@ test('W03: at 320px the rerun and My Account\'s section fit, in English and en-X
 
 test('W04: Open Users & Access reaches the visible Settings tab; an unsaved My Account edit is kept or discarded only by the operator\'s choice', async ({page}) => {
   await load(page);
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
-  expect(await page.evaluate(() => window.debridPulseAuth.authority.deployment_type)).toBe('server');
-  const savedName = (await page.evaluate(() => window.debridPulseAuth.fetch('/api/account').then(r => r.json()))).display_name;
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  expect(await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type)).toBe('server');
+  const savedName = (await page.evaluate(() => window.downloadPulseAuth.fetch('/api/account').then(r => r.json()))).display_name;
   await openAccount(page);
   const name = account(page).locator('[data-field="display_name"]');
   await name.fill(`${await name.inputValue()} (draft)`);
@@ -241,7 +241,7 @@ test('W04: Open Users & Access reaches the visible Settings tab; an unsaved My A
   });
   expect(unobscured).toBe(true);
   // Discarded, not saved. The rerun's record still says where it stopped...
-  expect((await page.evaluate(() => window.debridPulseAuth.fetch('/api/account').then(r => r.json()))).display_name).toBe(savedName);
+  expect((await page.evaluate(() => window.downloadPulseAuth.fetch('/api/account').then(r => r.json()))).display_name).toBe(savedName);
   expect((await state(page)).rerun).toEqual({phase: 'administrator'});
   // ...but an explicit Rerun Setup Wizard starts again at Welcome, page 1 of 5, nothing completed.
   await openAccount(page);
@@ -252,7 +252,7 @@ test('W04: Open Users & Access reaches the visible Settings tab; an unsaved My A
   expect((await state(page)).rerun).toEqual({phase: 'welcome'});
   await wizard(page).locator('[data-modal-cancel]').click();
   await account(page).locator('[data-modal-cancel]').click();
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
 });
 
 /* The server's setup record and deployment type, emulated in this browser so
@@ -266,8 +266,8 @@ async function emulateNewInstallation(page, {deployment, phase}) {
   const server = {deployment, state: {initial: {complete: false, phase, administrator: 'none'}, rerun: null}, writes: [],
     interruptPhase: 0};
   await page.route(url => url.pathname === '/app.js', async route => {
-    const body = (await (await route.fetch()).text()).replace(/^window\.debridPulseAuthority=Object\.freeze\((.*)\);$/m,
-      (_, json) => `window.debridPulseAuthority=Object.freeze(${JSON.stringify({...JSON.parse(json), deployment_type: server.deployment})});`);
+    const body = (await (await route.fetch()).text()).replace(/^window\.downloadPulseAuthority=Object\.freeze\((.*)\);$/m,
+      (_, json) => `window.downloadPulseAuthority=Object.freeze(${JSON.stringify({...JSON.parse(json), deployment_type: server.deployment})});`);
     await route.fulfill({status: 200, contentType: 'application/javascript', body});
   });
   await page.route(url => url.pathname === '/api/setup/state', route => route.fulfill({status: 200, contentType: 'application/json',
@@ -404,9 +404,9 @@ test('W09: the phase write lost in place, Next again: only the record is retried
  * returns to the rerun. Removed with this control at the final cleanup. */
 test('W10: Test First-Run Wizard previews the first-run pages of Standalone and Server, writes nothing, and returns to the rerun', async ({page}) => {
   await load(page);
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
-  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
-  const folder = (await page.evaluate(() => window.debridPulseAuth.fetch('/api/settings').then(response => response.json()))).download_folder;
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  const deployment = await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type);
+  const folder = (await page.evaluate(() => window.downloadPulseAuth.fetch('/api/settings').then(response => response.json()))).download_folder;
   await openAccount(page);
   await account(page).locator('[data-account-setup-rerun]').click();
   await expect(wizard(page)).toBeVisible();
@@ -466,17 +466,17 @@ test('W10: Test First-Run Wizard previews the first-run pages of Standalone and 
   const after = await state(page);
   expect(after.initial.complete).toBe(true);
   expect(after.rerun).toEqual({phase: 'welcome'});
-  expect(await page.evaluate(() => window.debridPulseAuth.authority.deployment_type)).toBe(deployment);
-  expect((await page.evaluate(() => window.debridPulseAuth.fetch('/api/settings').then(response => response.json()))).download_folder).toBe(folder);
+  expect(await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type)).toBe(deployment);
+  expect((await page.evaluate(() => window.downloadPulseAuth.fetch('/api/settings').then(response => response.json()))).download_folder).toBe(folder);
   await wizard(page).locator('[data-modal-cancel]').click();
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
 });
 
 /* TEMPORARY (WS3b): Test First-Run Wizard is hidden by default, even in a
  * development build. The server offers it (`setup_preview`) only where a
  * development build -- its own release identity, the running VERSION's
  * CHANGELOG entry titled Development -- is started with
- * DEBRIDPULSE_SETUP_PREVIEW=1, and never in a released build, whatever its
+ * DOWNLOADPULSE_SETUP_PREVIEW=1, and never in a released build, whatever its
  * environment (backend/tests/test_setup_lifecycle.py proves that matrix). This
  * reads the real default of a development instance started without the
  * opt-in, then the entry for each server answer: the opt-in (a labelled mock of
@@ -485,7 +485,7 @@ test('W10: Test First-Run Wizard previews the first-run pages of Standalone and 
  * never merely hidden by style. */
 test('W11: Test First-Run Wizard is hidden by default and offered only on a development build\'s explicit opt-in', async ({page}) => {
   await load(page, {preview: false});
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
   // This source tree is a development build, started without the opt-in: the server offers no preview.
   expect(await state(page)).toMatchObject({development_build: true, setup_preview: false});
   let answer = null;
@@ -516,7 +516,7 @@ test('W11: Test First-Run Wizard is hidden by default and offered only on a deve
     await expect(wizard(page)).toHaveCount(0);
     await account(page).locator('[data-modal-cancel]').click();
   }
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
 });
 
 /* The wizard shell and its Connected Page Progress Indicator.
@@ -538,7 +538,7 @@ async function bubbles(page) {
   })));
 }
 async function openRerun(page) {
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/setup/rerun', {method: 'DELETE'}));
   await openAccount(page);
   await account(page).locator('[data-account-setup-rerun]').click();
   await expect(wizard(page).locator('.dp-setup-welcome')).toBeVisible();
@@ -570,7 +570,7 @@ for (const [width, height] of [[1280, 900], [375, 667]]) {
       await expect(dialog.locator('.dp-modal-title')).not.toHaveText(before);
     };
     const seen = [await shape()];
-    const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+    const deployment = await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type);
     for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) { await advance(); seen.push(await shape()); }
     await expect(dialog.locator('.dp-setup-premium')).toBeVisible();
     for (const id of ['debridlink', 'torbox', 'usenet']) {
@@ -621,7 +621,7 @@ for (const [width, height] of [[1280, 900], [375, 667]]) {
 test('W13: the indicator is a reading: no completion at the start, the current page marked, no control in it', async ({page}) => {
   await load(page);
   await openRerun(page);
-  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+  const deployment = await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type);
   const total = deployment === 'standalone' ? 4 : 5;
   const now = await bubbles(page);
   expect(now.map(item => [item.state, item.current, item.number])).toEqual(
@@ -699,7 +699,7 @@ test('W15: Back keeps every completed page: the page viewed again keeps its chec
 test('W16: an optional page is completed by its Next alone; a provider view changes no progress and does not complete Premium Services', async ({page}) => {
   await load(page);
   await openRerun(page);
-  const deployment = await page.evaluate(() => window.debridPulseAuth.authority.deployment_type);
+  const deployment = await page.evaluate(() => window.downloadPulseAuth.authority.deployment_type);
   for (let i = 0; i < (deployment === 'standalone' ? 2 : 3); i += 1) await next(page);
   await expect(wizard(page).locator('.dp-setup-premium')).toBeVisible();
   const atPremium = await bubbles(page);

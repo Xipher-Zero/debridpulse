@@ -1,6 +1,6 @@
 # General HTTP & HTTPS Provider
 
-`general_http` is DebridPulse's general/non-debrid HTTP(S) provider. It resolves ordinary `http` and `https` requests into canonical transfer candidates; the Universal Transfer Core retains lifecycle ownership and aria2 remains the byte-transfer executor.
+`general_http` is DownloadPulse's general/non-debrid HTTP(S) provider. It resolves ordinary `http` and `https` requests into canonical transfer candidates; the Universal Transfer Core retains lifecycle ownership and aria2 remains the byte-transfer executor.
 
 ## Ownership boundary
 
@@ -67,6 +67,6 @@ Recent Activity, Downloads and Details consume this backend truth. They do not i
 
 General HTTP & HTTPS does not implement HTML login forms, browser sessions, cookies, OAuth/OIDC/SAML, JavaScript challenges, CAPTCHA flows, saved credentials or site-specific login automation. Ordinary HTTP 403/404/5xx, DNS/TLS failures and security failures are not reclassified as credential requests.
 
-Production cross-provider failure fallback is not introduced here. Item 11 qualifies the current deterministic initial routing and failover-ready provenance without inventing a new AllDebrid→HTTP runtime-failure policy.
+General HTTP & HTTPS adds no provider-specific cross-provider fallback of its own. Moving a request to another provider is the core policy's decision (provider failover after exhaustion, see [ROUTE_PROVIDER_PROVENANCE.md](../ROUTE_PROVIDER_PROVENANCE.md)), not an AllDebrid→HTTP runtime-failure rule.
 
-See [PROVIDER_APPLICABILITY.md](PROVIDER_APPLICABILITY.md) and [MULTI_PROVIDER_HTTP_SLICE.md](MULTI_PROVIDER_HTTP_SLICE.md) for the neutral classification/routing and converged ownership contracts.
+See [PROVIDER_APPLICABILITY.md](PROVIDER_APPLICABILITY.md) and [UNIVERSAL_TRANSFER_CORE.md](UNIVERSAL_TRANSFER_CORE.md) for the neutral classification/routing and core ownership contracts.

@@ -5,7 +5,7 @@ retired work back.
 * An operator Delete with remote removal owes every resource of the transfer
   -- the route's and each prepared backup's -- a USER_REQUEST cleanup; the
   final external withdrawal (an *arr removal of work only it needed) owes
-  every resource DebridPulse CREATED or ADOPTED an OWNED cleanup, never one it
+  every resource DownloadPulse CREATED or ADOPTED an OWNED cleanup, never one it
   only observed; a Delete that kept remote resources owes nothing.
 * A backup whose creation answers after its transfer ended is bound with that
   end's cleanup in the same transaction (never left to escape it).

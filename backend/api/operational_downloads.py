@@ -64,7 +64,7 @@ from transfers.manual_failover import switch_eligible_sql
 from auth.permissions import require_destruction, transfer_access
 from core.localization import DisplayError, UNCLASSIFIED, code_of, disclosed
 
-logger = logging.getLogger("debridpulse.api.operational_downloads")
+logger = logging.getLogger("downloadpulse.api.operational_downloads")
 router = APIRouter()
 
 # The bounded list's remaining-work signal (Section 10 of the DP 1.0.12

@@ -314,7 +314,7 @@ def credential_scope(integration_id: str, credential: str) -> str:
     if not integration:
         raise ValueError("integration_id must be non-empty")
     material = str(credential or "").encode("utf-8")
-    digest = sha256(b"debridpulse:" + integration.encode("utf-8") + b":credential:v1\0" + material).hexdigest()
+    digest = sha256(b"downloadpulse:" + integration.encode("utf-8") + b":credential:v1\0" + material).hexdigest()
     return f"{_SCOPE_VERSION}-{digest}"
 
 

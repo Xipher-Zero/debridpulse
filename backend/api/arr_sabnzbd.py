@@ -4,7 +4,7 @@ Wire syntax only: ``GET|POST /api?mode=…`` -- SABnzbd's own path, which
 Sonarr and Radarr call with URL Base blank -- answered in SABnzbd's JSON
 shapes, over the native external contract (``external.service``) and the
 shared *arr translation (``external.arr``). ``/api/sabnzbd/api`` (URL Base
-``/api/sabnzbd``) is the same endpoint. The client configures DebridPulse as a
+``/api/sabnzbd``) is the same endpoint. The client configures DownloadPulse as a
 SABnzbd download client with an Integration token as its API key; the
 authentication boundary verifies that key exactly as a Bearer token, on those
 two exact paths only (``external.arr.QUERY_KEY_PATHS``).
@@ -47,7 +47,7 @@ MAX_DELETE_IDS = 100
 # A job of another kind the same client submitted in the same category -- a
 # torrent through the qBittorrent dialect -- is never this dialect's item.
 NZB_KINDS = tuple(sorted(arr.ADAPTER_SOURCE_KINDS[arr.SABNZBD]))
-# SABnzbd fields a submission may not carry: DebridPulse owns post-processing,
+# SABnzbd fields a submission may not carry: DownloadPulse owns post-processing,
 # scripts, naming and archive passwords for its own work.
 _UNSUPPORTED_SUBMIT_FIELDS = ("pp", "script", "nzbname", "password")
 # SABnzbd's "add paused" priority: there is no client-held paused submission.
@@ -91,7 +91,7 @@ async def sabnzbd_api(request: Request, application: ApplicationService = Depend
     try:
         client_id = client_of(principal)
         if mode == "version":
-            # DebridPulse's own version: SABnzbd's is never claimed.
+            # DownloadPulse's own version: SABnzbd's is never claimed.
             return {"version": read_version()}
         if mode == "get_config":
             return _config(client_id)
@@ -179,16 +179,16 @@ async def _queue(external: ExternalClients, principal, params) -> dict:
     slots = []
     for index, job in enumerate(listing["jobs"], start=start):
         progress = job.get("progress") or {}
-        # DebridPulse's own primary figure (``effective``): the in-flight
+        # DownloadPulse's own primary figure (``effective``): the in-flight
         # execution while nothing is verified yet, else verified material.
         effective = progress.get("effective") or {}
         percent = effective.get("percent", progress.get("percent"))
         # *arr draws its progress bar from ``mb``/``mbleft`` alone
         # (``percentage`` is parsed but never read): they carry the
-        # executor's own exact byte counters when DebridPulse shows exactly
+        # executor's own exact byte counters when DownloadPulse shows exactly
         # those, else SABnzbd's unknown form -- never verified material's
         # measurement, whose total is the artifacts' declared sizes (a NZB's
-        # declared size is not what it delivers). Time left is DebridPulse's
+        # declared size is not what it delivers). Time left is DownloadPulse's
         # own estimate (the job's ``estimate``, from the one estimate owner),
         # else SABnzbd's unknown form; none is invented here.
         executor_bytes = effective.get("source") == "execution"
@@ -225,7 +225,7 @@ async def _history(external: ExternalClients, principal, params) -> dict:
         slot = {"nzo_id": job["id"], "name": _name(job), "category": job["category"], "bytes": 0,
                 "fail_message": "", "storage": ""}
         if arr.release_failed(job):
-            slot.update(status="Failed", fail_message=f"DebridPulse: {job['reason']}")
+            slot.update(status="Failed", fail_message=f"DownloadPulse: {job['reason']}")
         elif job["phase"] == "failed":
             # Stopped until an operator clears it (``arr.release_failed``):
             # never Failed, which would blocklist a release that was never at
@@ -246,7 +246,7 @@ async def _history(external: ExternalClients, principal, params) -> dict:
 async def _delete(application: ApplicationService, external: ExternalClients, principal, params):
     """Remove the named items from this client's view (``external.arr.remove``).
     ``del_files`` is accepted and never deletion authority: what happens to the
-    work and its files is decided by each job's own condition, and DebridPulse
+    work and its files is decided by each job's own condition, and DownloadPulse
     deletes no file because a client asked. Another client's or an unknown ID
     is skipped, indistinguishably."""
     if params.get("del_files") not in (None, "", "0", "1"):
@@ -269,5 +269,5 @@ async def _delete(application: ApplicationService, external: ExternalClients, pr
                     raise
                 removed.append(job_id)
     except (ApplicationMaintenanceActive, TransferError):
-        return _error("DebridPulse is not accepting changes right now; retry later")
+        return _error("DownloadPulse is not accepting changes right now; retry later")
     return {"status": True, "nzo_ids": removed}

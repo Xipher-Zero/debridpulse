@@ -1,4 +1,4 @@
-// The bilingual review sheet of one locale (WS5): every English key with its
+// The bilingual review sheet of one locale: every English key with its
 // category, criticality, translator context and geometry note, the English
 // and the translation (each plural and select shown at its sample values), the
 // Help's control references the translation must show, and the review ledger's

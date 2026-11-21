@@ -145,8 +145,8 @@ def confine() -> None:
 
 
 # ── Windows: AppContainer ────────────────────────────────────────────────
-CONTAINER = "DebridPulse.MediaHelpers"
-DESKTOP = "DebridPulse-MediaHelpers"
+CONTAINER = "DownloadPulse.MediaHelpers"
+DESKTOP = "DownloadPulse-MediaHelpers"
 _SECURITY_CAPABILITIES = 0x00020009
 _CHILD_PROCESS_POLICY = 0x0002000E
 _HANDLE_LIST = 0x00020002
@@ -210,8 +210,8 @@ def _container_sid(env) -> ctypes.c_void_p:
     it is missing: Windows starts no process in an AppContainer that has no
     profile."""
     sid = ctypes.c_void_p()
-    result = env.CreateAppContainerProfile(CONTAINER, "DebridPulse media helpers",
-                                           "DebridPulse Media Downloads helpers: no network, no children",
+    result = env.CreateAppContainerProfile(CONTAINER, "DownloadPulse media helpers",
+                                           "DownloadPulse Media Downloads helpers: no network, no children",
                                            None, 0, ctypes.byref(sid))
     if result & 0xFFFFFFFF == _ALREADY_EXISTS:
         result = env.DeriveAppContainerSidFromAppContainerName(CONTAINER, ctypes.byref(sid))
@@ -354,7 +354,7 @@ def run(tool: str) -> None:
         else:
             confine()
     except (OSError, KeyError, AttributeError, ValueError) as exc:
-        sys.stderr.write(f"DebridPulse: refusing to run {os.path.basename(tool)} without network confinement "
+        sys.stderr.write(f"DownloadPulse: refusing to run {os.path.basename(tool)} without network confinement "
                          f"({exc})\n")
         sys.exit(126)
     if os.name == "nt":

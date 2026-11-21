@@ -54,7 +54,7 @@ async def test_executor_disk_full_feedback_closes_dispatch_and_preserves_nonterm
     download_dir = tmp_path / "download"
     app_dir.mkdir()
     download_dir.mkdir()
-    capacity = DiskCapacity(download_dir, application_path=app_dir / "debridpulse.db")
+    capacity = DiskCapacity(download_dir, application_path=app_dir / "downloadpulse.db")
     capacity.check()
 
     generic = _local_error(Category.DISK_FULL)
@@ -83,7 +83,7 @@ async def test_executor_local_io_feedback_is_unavailable_not_full(tmp_path):
     download_dir = tmp_path / "download"
     app_dir.mkdir()
     download_dir.mkdir()
-    capacity = DiskCapacity(download_dir, application_path=app_dir / "debridpulse.db")
+    capacity = DiskCapacity(download_dir, application_path=app_dir / "downloadpulse.db")
     capacity.check()
 
     artifact = SimpleNamespace(id=8, state="queued", error=_local_error(Category.LOCAL_IO_FAILURE), retry_at=0.0)
@@ -110,7 +110,7 @@ def test_failed_probe_clears_stale_filesystem_topology(tmp_path, monkeypatch):
     download_dir = tmp_path / "download"
     app_dir.mkdir()
     download_dir.mkdir()
-    capacity = DiskCapacity(download_dir, application_path=app_dir / "debridpulse.db")
+    capacity = DiskCapacity(download_dir, application_path=app_dir / "downloadpulse.db")
     capacity.check()
     assert capacity.shared_filesystem is True
     assert capacity.snapshot(StorageDomain.APPLICATION_STATE).filesystem_id is not None

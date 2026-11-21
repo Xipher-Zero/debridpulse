@@ -133,7 +133,7 @@ test('the rsync Transfer Method card shares the identity and the canonical discl
   await expect(card).toHaveCount(1);
   await expect(card).toHaveClass(/dp-executor-tuning-card/);
   await expect(card.locator('.card-title')).toContainText('rsync');
-  await expect(card).toContainText('How DebridPulse transfers files using rsync.');
+  await expect(card).toContainText('How DownloadPulse transfers files using rsync.');
   const chip = card.locator('.card-title .dp-settings-protocol-chip');
   await expect(chip).toHaveAttribute('data-protocol', PROVIDER);
   const facts = await chipFacts(chip);

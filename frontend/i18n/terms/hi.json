@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "hi",
  "register": "Hindi (standard Hindi in Devanagari, as used in Indian software). The reader is addressed with the formal 'आप' and polite imperatives (-ें: सहेजें, रद्द करें, हटाएँ); never 'तुम' or 'तू'. Headings and labels use nouns. Correct gender and number agreement of verbs, adjectives and postpositions (का/की/के) with what they describe. Digits are Western Arabic numerals (0–9). Sentences end with the purna viram '।' (question and exclamation marks as in English); English letters only for product names, protocols and literals. Devanagari text is written in Unicode NFC, with a nukta letter as its base letter followed by U+093C (फ़, ज़, ड़) and chandrabindu where standard (एँ). Established English IT loan words transliterated where Hindi usage is settled (सर्वर, टोकन, वेबहुक, डाउनलोड, लॉग); otherwise standard Hindi (सेटिंग्स, पासवर्ड, फ़ोल्डर).",
  "terms": {

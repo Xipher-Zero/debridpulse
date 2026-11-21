@@ -2,11 +2,11 @@
 
 The bundled acquisition service is internal and private: there is no operator
 web UI, no published port and no operator service credential. Nothing but
-DebridPulse can legitimately configure a news server inside it, so the
+DownloadPulse can legitimately configure a news server inside it, so the
 canonical ``integrations.usenet`` server list is not merely the source of the
 servers DP added -- it is the source of EVERY server the service may hold.
 
-A server DebridPulse does not declare therefore has no legitimate origin. It
+A server DownloadPulse does not declare therefore has no legitimate origin. It
 would still take part in acquisition, using credentials DP never stored and an
 operator cannot see, so it must be removed rather than tolerated, and while it
 is present the configuration must never read as synchronized.
@@ -33,7 +33,7 @@ def admin_for(sab, opts=None, root="/download"):
 
 
 def foreign(sab, name="operator-added", **kw):
-    """A native server that DebridPulse never declared."""
+    """A native server that DownloadPulse never declared."""
     entry = dict(name=name, host="foreign.example", port=563, ssl=1,
                  username="who", password="secret", connections=8,
                  priority=0, enable=1, displayname=name)

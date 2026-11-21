@@ -4,7 +4,7 @@
 ``.tar.zst``/``.tzst``/``.tar.lzma`` inputs are decompressed by their exact
 outer codec and then passed to Python's validated TAR path.  This prevents a
 mislabeled composite archive from reaching 7-Zip's broad recursive format
-probe before DebridPulse has established the intended container type.
+probe before DownloadPulse has established the intended container type.
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from services.extraction_safety import (
 from postprocessors.archive.extractor import Extractor, _extract_into_directory, _extract_job_sync, _suffix
 from core.processes import WINDOWLESS
 
-logger = logging.getLogger("debridpulse.extractor_secure")
+logger = logging.getLogger("downloadpulse.extractor_secure")
 
 _COMPOSITE_TAR_EXTS = frozenset({".tar.zst", ".tzst", ".tar.lzma"})
 
@@ -85,7 +85,7 @@ def _decompress_zstd(archive: Path, output: Path) -> None:
 
 
 def _extract_composite_into_stage(archive: Path, stage: Path) -> None:
-    intermediate = stage / ".debridpulse-composite.tar"
+    intermediate = stage / ".downloadpulse-composite.tar"
     try:
         suffix = _suffix(archive)
         if suffix in {".tar.zst", ".tzst"}:

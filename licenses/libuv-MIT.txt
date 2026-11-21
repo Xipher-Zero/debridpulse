@@ -1,5 +1,5 @@
 libuv 1.48.0 -- compiled into the uvloop 0.22.1 extension module (uvloop/loop*.so)
-that DebridPulse ships. Texts reproduced from vendor/libuv/ of the hash-pinned
+that DownloadPulse ships. Texts reproduced from vendor/libuv/ of the hash-pinned
 uvloop 0.22.1 source distribution (sha256 6c84bae345b9147082b17371e3dd5d42775bddce91f885499017f4607fdaf39f).
 
 ==== vendor/libuv/LICENSE ====

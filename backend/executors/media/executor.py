@@ -13,13 +13,13 @@ retry, re-resolution, pause, recovery and materialization stay core's.
   workspace is gone before success is reported.
 * Process: one owned process group per attempt (``executors
   .process_ownership``): a duplicate start is refused, liveness survives a
-  DebridPulse restart, cancellation stops the whole group (yt-dlp, its
+  DownloadPulse restart, cancellation stops the whole group (yt-dlp, its
   downloaders, the JavaScript runtime and the finalizer alike).
 * Completion truth: the worker leaves one durable attempt record
   (``<runtime>/results``) -- completed with the installed size, failed with
   its outcome -- and this executor writes one when it proves a cancellation.
   A group that is gone without a record is ABSENT, never a guessed success.
-* Continuation: FULL_RESTART only. Nothing partial is ever DebridPulse
+* Continuation: FULL_RESTART only. Nothing partial is ever DownloadPulse
   material; a new attempt re-reads the medium and starts from zero.
 * Bandwidth: every byte crosses the guard on a route drawing on this
   executor's one download budget, so the core-assigned aggregate ceiling

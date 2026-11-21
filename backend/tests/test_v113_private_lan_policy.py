@@ -75,11 +75,11 @@ async def test_guard_admits_rfc1918_only_for_a_granted_credential_while_the_poli
                     "public.example": ["93.184.216.34"]})
     plain = _credential(guard, "http://nas.example/f.bin")
     granted = _credential(guard, "http://nas.example/f.bin", private_lan=True)
-    assert plain[0] == "debridpulse" and granted[0] == "debridpulse.lan" and plain[1] != granted[1]
+    assert plain[0] == "downloadpulse" and granted[0] == "downloadpulse.lan" and plain[1] != granted[1]
     assert guard._admits(*plain, "nas.example", 80) == (False, None, None)  # (grant, connect bound, budget)
     assert guard._admits(*granted, "nas.example", 80) == (True, None, None)
     # A grant cannot be forged by renaming an ungranted credential.
-    assert guard._admits("debridpulse.lan", plain[1], "nas.example", 80) is None
+    assert guard._admits("downloadpulse.lan", plain[1], "nas.example", 80) is None
     # A grant covers exactly its own authority.
     assert guard._admits(*granted, "other.example", 80) is None
 
@@ -97,7 +97,7 @@ async def test_guard_admits_rfc1918_only_for_a_granted_credential_while_the_poli
     assert await guard._approved_endpoints("public.example", 80, lan=False)
 
     same_host = _credential(guard, "ftp://nas.example/f.bin", scope=RouteScope.SAME_HOST, private_lan=True)
-    assert same_host[0] == "debridpulse.lan.same-host.21"
+    assert same_host[0] == "downloadpulse.lan.same-host.21"
     assert guard._admits(*same_host, "nas.example", 40000) == (True, None, None)
     assert guard._admits(*same_host, "nas.example", 22) is None
 

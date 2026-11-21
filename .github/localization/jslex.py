@@ -1,4 +1,4 @@
-"""A small JavaScript lexer for DebridPulse's localization census.
+"""A small JavaScript lexer for DownloadPulse's localization census.
 
 It does one thing: find every string literal and template literal in a
 first-party script, with its exact position, the text of each template

@@ -27,7 +27,7 @@ from auth.passwords import hash_password
 from auth.sessions import session_store
 from auth.throttle import password_failure_throttle
 
-ISSUER = "https://id.example/application/o/debridpulse/"
+ISSUER = "https://id.example/application/o/downloadpulse/"
 
 
 @pytest_asyncio.fixture
@@ -51,8 +51,8 @@ def _basic_request(username: str, password: str) -> Request:
     return Request({
         "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET",
         "scheme": "http", "path": "/api/stats", "raw_path": b"/api/stats", "query_string": b"",
-        "headers": [(b"host", b"debridpulse.local"), (b"authorization", f"Basic {token}".encode())],
-        "client": ("127.0.0.1", 12345), "server": ("debridpulse.local", 80),
+        "headers": [(b"host", b"downloadpulse.local"), (b"authorization", f"Basic {token}".encode())],
+        "client": ("127.0.0.1", 12345), "server": ("downloadpulse.local", 80),
     })
 
 
@@ -313,8 +313,8 @@ def _clear_last_password_into_open_mode(principal) -> Request:
     request = Request({
         "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "PUT",
         "scheme": "http", "path": "/api/auth/config", "raw_path": b"/api/auth/config", "query_string": b"",
-        "headers": [(b"host", b"debridpulse.local")],
-        "client": ("127.0.0.1", 12345), "server": ("debridpulse.local", 80),
+        "headers": [(b"host", b"downloadpulse.local")],
+        "client": ("127.0.0.1", 12345), "server": ("downloadpulse.local", 80),
     })
     request.state.principal = principal
     return request

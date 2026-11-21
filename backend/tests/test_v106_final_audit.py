@@ -208,7 +208,7 @@ def test_v1_metadata_does_not_claim_multiple_providers():
     inspected = [
         (root / "NOTICE").read_text(),
         (root / "backend" / "core" / "branding.py").read_text(),
-        (root / ".github" / "workflows" / "fork-image.yml").read_text(),
+        (root / ".github" / "workflows" / "image.yml").read_text(),
     ]
     joined = "\n".join(inspected)
     assert "Multi-provider Debrid Download Manager" not in joined

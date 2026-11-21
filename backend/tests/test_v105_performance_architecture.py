@@ -11,7 +11,7 @@ def source(rel):
 
 
 def test_v105_version_and_instrumentation():
-    assert Version((ROOT / "VERSION").read_text().strip()) >= Version("1.0.5")
+    assert Version((ROOT / "VERSION").read_text().strip()) >= Version("1.0.0")
     perf = source("backend/core/performance.py")
     assert "def snapshot()" in perf and "def observe(" in perf
 

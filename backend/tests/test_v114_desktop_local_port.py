@@ -3,7 +3,7 @@
 External applications reach the desktop application at a port that stays put
 -- Local Port, on this computer only -- while the window keeps its own private
 port. Each case starts a real desktop backend the way the supervisor does (its
-control channel, its internal port given as DEBRIDPULSE_DESKTOP_PORT), on a
+control channel, its internal port given as DOWNLOADPULSE_DESKTOP_PORT), on a
 disposable root, and talks to it over real sockets: nothing patched.
 
 * The application is served on Local Port, byte for byte the same app.
@@ -31,7 +31,7 @@ from desktop.supervisor import free_port
 
 def _port_backend(tmp_path, port: int, **kwargs) -> Backend:
     backend = Backend(tmp_path, locked=False, config_extra={"desktop_local_port": port}, **kwargs)
-    backend.env = {**backend.env, "DEBRIDPULSE_DESKTOP_PORT": str(backend.port)}
+    backend.env = {**backend.env, "DOWNLOADPULSE_DESKTOP_PORT": str(backend.port)}
     return backend
 
 
@@ -188,14 +188,14 @@ def test_local_port_is_explained_only_in_the_desktop_application_and_only_where_
     from pathlib import Path
     static = Path(__file__).resolve().parents[2] / "frontend" / "static"
     auth = (static / "auth.js").read_text(encoding="utf-8")
-    assert "desktop: window.debridPulseDesktop === true," in auth                 # the one Help context owner
+    assert "desktop: window.downloadPulseDesktop === true," in auth                 # the one Help context owner
     topic = (static / "ui-settings-help.js").read_text(encoding="utf-8")
     assert "{heading: 'help.topic.heading.local_port', when: onDesktop, list: [" in topic
     manual = (static / "ui-help-page.js").read_text(encoding="utf-8")
     shown = manual[manual.index("${c.shows('deployment-type') ? `${c.desktop ? '' : `<p ${keyed('help.settings.access_integrations.deployment_type')}></p>`}"):]
     assert shown.index("${c.desktop ? `<p ${keyed('help.settings.access_integrations.local_port'") < shown.index("` : ''}")
     page = (static / "ui-settings-page.js").read_text(encoding="utf-8")
-    assert "const localPort = window.debridPulseDesktop !== true ? '' : `" in page   # the card's item: the desktop's alone
+    assert "const localPort = window.downloadPulseDesktop !== true ? '' : `" in page   # the card's item: the desktop's alone
 
 
 def test_the_card_fits_one_row_then_the_triangle_then_stacked_and_a_server_card_is_unchanged():
@@ -216,8 +216,8 @@ def test_the_desktop_card_has_no_deployment_type_and_its_switching_is_not_explai
     static = Path(__file__).resolve().parents[2] / "frontend" / "static"
     page = (static / "ui-settings-page.js").read_text(encoding="utf-8")
     card = page[page.index("  function deploymentCard() {"):page.index("  /* Deployment & Language: its items")]
-    assert "const deployment = window.debridPulseDesktop === true ? '' : `" in card
-    assert "headerCenter: window.debridPulseDesktop === true ? null : say('settings.deployment.copy')," in card
+    assert "const deployment = window.downloadPulseDesktop === true ? '' : `" in card
+    assert "headerCenter: window.downloadPulseDesktop === true ? null : say('settings.deployment.copy')," in card
     topic = (static / "ui-settings-help.js").read_text(encoding="utf-8")
     for heading in ("server", "standalone", "what_switching_keeps", "what_switching_changes"):
         assert f"{{heading: 'help.topic.heading.{heading}', when: offDesktop, list: [" in topic

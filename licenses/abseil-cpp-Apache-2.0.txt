@@ -1,5 +1,5 @@
 Abseil (abseil-cpp) LTS 20250512 -- compiled into the google-re2 1.1.20251105
-extension module (re2/_re2*.so) that DebridPulse ships. The Abseil Authors,
+extension module (re2/_re2*.so) that DownloadPulse ships. The Abseil Authors,
 https://github.com/abseil/abseil-cpp. Licence text reproduced from the project's
 LICENSE at tag 20250512.1 (the project carries no NOTICE file).
 

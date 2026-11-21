@@ -20,7 +20,7 @@ from transfers.requests import normalize_direct_links, torrent_identity
 
 MAX_LINKS = 100
 MAX_LINK_LENGTH = 8192
-# Decoded bytes of an inline .torrent: the ceiling DebridPulse's own torrent
+# Decoded bytes of an inline .torrent: the ceiling DownloadPulse's own torrent
 # upload holds a metainfo file to (``api.routes.add_torrent_file``). Its
 # base64 form has a request body ceiling of its own (``external.arr``).
 MAX_TORRENT_BYTES = 16 * 1024 * 1024
@@ -28,7 +28,7 @@ MAX_TORRENT_BYTES = 16 * 1024 * 1024
 # NZB owner's own ceiling is larger and still applies to what it writes.
 MAX_NZB_BYTES = 8 * 1024 * 1024
 MAX_FILENAME = 255
-# Decoded bytes of an inline Metalink4 descriptor: the bound DebridPulse's own
+# Decoded bytes of an inline Metalink4 descriptor: the bound DownloadPulse's own
 # upload holds one to.
 MAX_METALINK_BYTES = 16 * 1024 * 1024
 
@@ -132,7 +132,7 @@ def normalize(source: object) -> Intake:
                       summary={"kind": "torrent", "info_hash": identity.info_hash,
                                "name": str(identity.name or filename)[:256]})
     if kind == "metalink":
-        # A Metalink4 descriptor, as DebridPulse's own upload takes it
+        # A Metalink4 descriptor, as DownloadPulse's own upload takes it
         # (``api.routes.add_multimeta_file``: ``.meta4`` only, 16 MB).
         filename = source.get("filename") or "upload.meta4"
         data = _uploaded(source.get("metalink_base64"), filename, field="metalink_base64", suffix=".meta4",

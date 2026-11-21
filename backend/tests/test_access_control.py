@@ -991,7 +991,7 @@ global.setInterval = () => 1; global.clearInterval = () => {};
 global.CustomEvent = class { constructor(type) { this.type = type; } };
 global.document = {documentElement: {dataset: {}}, dispatchEvent() {},
   getElementById: () => ({classList: {contains: () => true}})};
-global.window = {debridPulseAuth: {refreshSession: () => Promise.resolve()}};
+global.window = {downloadPulseAuth: {refreshSession: () => Promise.resolve()}};
 global.EventSource = class { constructor() { this.listeners = {}; sources.push(this); }
   addEventListener(type, fn) { this.listeners[type] = fn; } close() {} };
 SOURCE

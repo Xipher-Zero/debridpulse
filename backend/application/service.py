@@ -40,7 +40,7 @@ from core.localization import CodedValueError, CodedRuntimeError, code_of, fact,
 
 
 
-logger = logging.getLogger("debridpulse.application")
+logger = logging.getLogger("downloadpulse.application")
 
 # What fetching an NZB link can fail with, in the one in-process HTTP owner's
 # vocabulary (services.artifact_sampling), as the submission failure it is:
@@ -464,8 +464,8 @@ class ApplicationService:
 
         The ONE path from a persisted configuration mutation to the native
         integration service's own configuration transaction. Such a service is
-        external to the transfer core's implementation, yet inside DebridPulse
-        product ownership -- DebridPulse may run it, own its whole
+        external to the transfer core's implementation, yet inside DownloadPulse
+        product ownership -- DownloadPulse may run it, own its whole
         configuration and never expose it -- so it is named for what it is
         rather than as somebody else's endpoint. Returns ``None`` when the
         namespace has no applier, so callers can stay integration-neutral.
@@ -608,7 +608,7 @@ class ApplicationService:
         """Admit the NZB an explicitly submitted link names, as the SAME
         canonical ``nzb`` request an uploaded NZB becomes.
 
-        The link is how the posting reaches DebridPulse, never a request kind:
+        The link is how the posting reaches DownloadPulse, never a request kind:
         it is fetched here, before any provider is chosen, so no provider,
         executor or route ever sees it. One guarded read
         (``artifact_sampling.http_body``: every hop and redirect target judged
@@ -814,7 +814,7 @@ class ApplicationService:
                                 "choices": [{"scope": scope, "label": label} for scope, label in choices]})
             elif answer not in {scope for scope, _label in choices}:
                 raise CodedValueError(f"Link {index + 1} has no acquisition scope {answer!r}", code="submit.link_scope_missing",
-                                      # The scope is interpolated only when it is one DebridPulse defines:
+                                      # The scope is interpolated only when it is one DownloadPulse defines:
                                       # free-form caller text is never a parameter (``known``).
                                       params={"number": fact(index + 1),
                                               "scope": fact(repr(answer)) if known(answer, AcquisitionScope) else repr(answer)})
@@ -1006,7 +1006,7 @@ class ApplicationService:
         outstanding demand and checks that in its own commit, so demand
         admitted or consolidated meanwhile keeps the transfer. Only DP's own
         incomplete material is reclaimed, never a completed file; at a
-        provider, every resource DebridPulse created or adopted for it -- the
+        provider, every resource DownloadPulse created or adopted for it -- the
         route's and each prepared backup's -- is removed, durably and
         retryably, never one it only observed or one another transfer
         still holds."""
@@ -1264,7 +1264,7 @@ class ApplicationService:
         Provider and executor readiness are never prerequisites of serving:
         the application lifetime owner begins this and goes on, and each
         integration converges -- reporting its own truthful non-ready status
-        meanwhile -- while DebridPulse is already usable. This service is the
+        meanwhile -- while DownloadPulse is already usable. This service is the
         one creator, tracker and canceller of that work: work that needs
         started integrations waits on ``integrations_started``, and
         ``stop_integrations`` cancels and drains it, so it never outlives the

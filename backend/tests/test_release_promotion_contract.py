@@ -32,8 +32,8 @@ def test_browser_dependency_graph_is_lockfile_reproducible() -> None:
     assert "npm audit --audit-level=high" in workflow
 
 
-def test_fork_image_only_publishes_immutable_sha_tags() -> None:
-    workflow = _workflow("fork-image.yml")
+def test_image_only_publishes_immutable_sha_tags() -> None:
+    workflow = _workflow("image.yml")
 
     assert "type=raw,value=sha-${{ github.sha }}" in workflow
     assert "format=short" not in workflow
@@ -43,11 +43,11 @@ def test_fork_image_only_publishes_immutable_sha_tags() -> None:
     assert "Publication tag must be exactly" in workflow
 
 
-def test_fork_image_publishes_and_verifies_canonical_index_annotations() -> None:
-    workflow = _workflow("fork-image.yml")
+def test_image_publishes_and_verifies_canonical_index_annotations() -> None:
+    workflow = _workflow("image.yml")
 
     expected = (
-        "index:org.opencontainers.image.title=DebridPulse: Universal Transfer Manager",
+        "index:org.opencontainers.image.title=DownloadPulse: Universal Transfer Manager",
         "index:org.opencontainers.image.description=Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines",
         "index:org.opencontainers.image.version=${{ steps.version.outputs.version }}",
         "index:org.opencontainers.image.source=https://github.com/${{ github.repository }}",
@@ -116,7 +116,7 @@ def test_mutable_promotion_requires_exact_sha_workflows_and_signed_digest_eviden
         '"CodeQL"',
         '"Container Security"',
         '"Candidate Runtime Qualification"',
-        '"Fork Image"',
+        '"Image"',
     ):
         assert required in workflow
 
@@ -149,7 +149,7 @@ def test_release_tag_pushes_run_every_independent_qualifier() -> None:
         "codeql.yml",
         "container-security.yml",
         "candidate-runtime-qualification.yml",
-        "fork-image.yml",
+        "image.yml",
     ):
         workflow = _workflow(name)
         assert "- 'v*'" in workflow, name
@@ -160,12 +160,12 @@ def test_release_promotion_is_the_only_release_tag_owner() -> None:
     # Release tags (latest, v*, internal-v*) are Release Promotion's alone. The
     # one other mutable tag of the application image, the 1.0.14-testing
     # development alias, is Testing Alias's (test_testing_alias_contract); the
-    # package workflows tag only their own debridpulse-aria2/-ffmpeg images.
+    # package workflows tag only their own downloadpulse-aria2/-ffmpeg images.
     writers = {path.name for path in WORKFLOWS.glob("*.yml")
                if "imagetools create" in path.read_text(encoding="utf-8")}
     assert writers == {"release-promotion.yml", "testing-alias.yml", "aria2-package.yml", "ffmpeg-package.yml"}
     for name in ("aria2-package.yml", "ffmpeg-package.yml"):
-        assert f"IMAGE_NAME: ghcr.io/xipher-zero/debridpulse-{name.split('-')[0]}" in _workflow(name)
+        assert f"IMAGE_NAME: ghcr.io/xipher-zero/downloadpulse-{name.split('-')[0]}" in _workflow(name)
     promotion = _workflow("release-promotion.yml")
     assert 'target_tag="latest"' in promotion
     assert 'target_tag="$GITHUB_REF_NAME"' in promotion

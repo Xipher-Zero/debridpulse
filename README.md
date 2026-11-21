@@ -1,38 +1,38 @@
 <div align="center">
-  <img src="docs/logo.svg" width="96" alt="DebridPulse Logo"/>
-  <h1>DebridPulse</h1>
+  <img src="docs/logo.svg" width="96" alt="DownloadPulse Logo"/>
+  <h1>DownloadPulse</h1>
   <p><strong>Self-hosted transfer orchestration for direct links, magnets, torrents, NZBs and media pages.</strong><br/>Universal lifecycle · debrid, Usenet and network-source providers · aria2, rsync, SABnzbd and yt-dlp execution · recovery · observability</p>
 
-  [![License](https://img.shields.io/github/license/Xipher-Zero/debridpulse?style=flat-square)](LICENSE)
-  [![Tests](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/debridpulse/tests.yml?style=flat-square&label=tests)](https://github.com/Xipher-Zero/debridpulse/actions/workflows/tests.yml)
-  [![Image](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/debridpulse/fork-image.yml?style=flat-square&label=image)](https://github.com/Xipher-Zero/debridpulse/actions/workflows/fork-image.yml)
+  [![License](https://img.shields.io/github/license/Xipher-Zero/downloadpulse?style=flat-square)](LICENSE)
+  [![Tests](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/downloadpulse/tests.yml?style=flat-square&label=tests)](https://github.com/Xipher-Zero/downloadpulse/actions/workflows/tests.yml)
+  [![Image](https://img.shields.io/github/actions/workflow/status/Xipher-Zero/downloadpulse/image.yml?style=flat-square&label=image)](https://github.com/Xipher-Zero/downloadpulse/actions/workflows/image.yml)
 </div>
 
 ---
 
-## What is DebridPulse?
+## What is DownloadPulse?
 
-**DebridPulse** is a self-hosted download manager for a server or NAS, used from your browser. You give it a link, a magnet, a `.torrent`, an NZB, a Metalink file or a list of links; it records one durable **transfer**, works out which of your enabled services can obtain it, downloads the files with the right download engine, and keeps that transfer -- and its history -- whole even when its service, source or engine changes along the way.
+**DownloadPulse** is a self-hosted download manager for a server or NAS, used from your browser. You give it a link, a magnet, a `.torrent`, an NZB, a Metalink file or a list of links; it records one durable **transfer**, works out which of your enabled services can obtain it, downloads the files with the right download engine, and keeps that transfer -- and its history -- whole even when its service, source or engine changes along the way.
 
-That transfer, not any one service, is what DebridPulse manages. The service obtaining it, the sources and hosts its files come from (only ones confirmed to hold the same file), and each download-engine attempt are replaceable parts of it: they can be retried, recovered or switched while the transfer keeps its identity, its progress record and its route history.
+That transfer, not any one service, is what DownloadPulse manages. The service obtaining it, the sources and hosts its files come from (only ones confirmed to hold the same file), and each download-engine attempt are replaceable parts of it: they can be retried, recovered or switched while the transfer keeps its identity, its progress record and its route history.
 
 It is provider-neutral. Ordinary network sources (HTTP(S), FTP/SFTP, SCP, rsync, WebDAV, Metalink and supported media pages) work out of the box with no premium-service account. Premium debrid services (AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox) and Usenet are optional: each is switched off in a new installation and takes part only once you turn it on and connect your own account (Real-Debrid and TorBox switch on when a new connection is proven), and none is required.
 
-Around that core, 1.0.13 provides operator-controlled switching of a transfer's service or source, automatic retry and failover, file selection, Sonarr/Radarr download-client compatibility, user accounts and roles, and in-application backup and restore.
+Around that core, DownloadPulse provides operator-controlled switching of a transfer's service or source, automatic retry and failover, file selection, Sonarr/Radarr download-client compatibility, user accounts and roles, and in-application backup and restore.
 
-This README describes `v1.0.13`. Check [GHCR](https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse) for the published image tags, and [`CHANGELOG.md`](CHANGELOG.md) for what changed, the **upgrade notes** and the **known limitations** of this release.
+This README describes `v1.0.0`. Check [GHCR](https://github.com/Xipher-Zero/downloadpulse/pkgs/container/downloadpulse) for the published image tags, and [`CHANGELOG.md`](CHANGELOG.md) for what is included and the **known limitations** of this release.
 
 The workflow is deterministic:
 
 1. Submit a link, magnet, `.torrent` file, NZB (file or link), Metalink description or a file of links.
-2. DebridPulse creates one durable logical transfer before any provider or download-engine work.
+2. DownloadPulse creates one durable logical transfer before any provider or download-engine work.
 3. Enabled provider applicability is classified neutrally: a matching `SPECIALIZED` claim (a debrid service's supported host, or a media page an installed yt-dlp extractor recognizes) takes precedence over `GENERIC` handlers such as **HTTP & HTTPS**; magnets, torrents and NZBs go to the providers that accept them.
 4. The selected provider resolves the source into canonical candidates (for example unlocked links, a validated direct resource, or a Usenet job).
-5. DebridPulse selects a download engine through the executor boundary -- aria2, rsync, the bundled SABnzbd for Usenet, or yt-dlp for Media Downloads -- and performs the physical transfer.
+5. DownloadPulse selects a download engine through the executor boundary -- aria2, rsync, the bundled SABnzbd for Usenet, or yt-dlp for Media Downloads -- and performs the physical transfer.
 6. Provider route, candidate, engine and final-delivery provenance remain durable, so the interface reports what actually happened without inferring it from a URL.
 7. Failed or expired work is retried, recovered or moved to another provider according to universal policy, without rebuilding the logical download manually.
 
-DebridPulse runs and manages its own download engines (aria2, rsync, the bundled SABnzbd and yt-dlp); there is no separate download engine to install or connect.
+DownloadPulse runs and manages its own download engines (aria2, rsync, the bundled SABnzbd and yt-dlp); there is no separate download engine to install or connect.
 
 ---
 
@@ -48,7 +48,7 @@ DebridPulse runs and manages its own download engines (aria2, rsync, the bundled
 | **Network sources** | FTP & SFTP, SCP, rsync, WebDAV and Metalink sources, with sign-in prompts when a server asks |
 | **Media Downloads** | yt-dlp downloads from media pages it explicitly recognizes, without re-encoding |
 | **Service and source switching** | Choose another service for a download (best effort, link by link), or another confirmed-equivalent source for its files; a source chosen for a paused file that had already started is recorded, shown beside the controls and applied on Resume. The row shows the committed service and source, with a pending switch beside it, never as it (see [Switching and recovery](#switching-and-recovery)) |
-| **Sonarr and Radarr** | DebridPulse acts as a qBittorrent or SABnzbd download client through Integration Delivery Profiles |
+| **Sonarr and Radarr** | DownloadPulse acts as a qBittorrent or SABnzbd download client through Integration Delivery Profiles |
 | **User accounts and roles** | Admin, User, ReadOnly User and Integration accounts enforced by the server |
 | **Backups and restore** | Scheduled backups and in-application restore |
 | **Durable provider provenance** | Recent Activity, Downloads, and Details show current/final provider and ordered route history from persisted facts rather than URL inference |
@@ -56,11 +56,11 @@ DebridPulse runs and manages its own download engines (aria2, rsync, the bundled
 | **Torrent files** | Upload `.torrent` files to the premium services that accept them |
 | **Pause-safe intake** | Pause All stops processing, not intake: new links, magnets, and `.torrent` files are recorded locally and begin provider work after Resume All |
 | **Provider-side preparation** | Waits for a premium service to prepare its copy or to generate a delayed link, without losing the transfer's place |
-| **Managed aria2** | DebridPulse starts, configures, and supervises its bundled aria2 daemon for a self-contained deployment |
+| **Managed aria2** | DownloadPulse starts, configures, and supervises its bundled aria2 daemon for a self-contained deployment |
 | **Unified Downloads view** | Direct links, magnets, torrent files, and imported transfers share one lifecycle and history |
 | **Recent Activity** | Dashboard view of active and recently processed downloads |
 | **Retry and recovery** | Retry failed transfers and regenerate expired provider download links from the original source |
-| **Import from premium accounts** | Bring in transfers already present on an enabled premium service's account that DebridPulse does not track yet |
+| **Import from premium accounts** | Bring in transfers already present on an enabled premium service's account that DownloadPulse does not track yet |
 | **Live status updates** | Server-Sent Events carry the application's pulse without requiring full-page polling |
 | **Event log** | Searchable transfer and application event history |
 | **Statistics** | Built-in operational and download statistics |
@@ -74,9 +74,9 @@ DebridPulse runs and manages its own download engines (aria2, rsync, the bundled
 
 ## Direct-link downloads
 
-Direct HTTP(S) resources are first-class DebridPulse transfers rather than untracked aria2 jobs.
+Direct HTTP(S) resources are first-class DownloadPulse transfers rather than untracked aria2 jobs.
 
-Paste one or more HTTP/HTTPS links into the unified Dashboard submission field (direct links and magnets may be mixed, one item per line). DebridPulse then:
+Paste one or more HTTP/HTTPS links into the unified Dashboard submission field (direct links and magnets may be mixed, one item per line). DownloadPulse then:
 
 1. validates and durably records the original resource;
 2. evaluates enabled provider applicability without contacting a provider;
@@ -93,23 +93,23 @@ A single submission can contain up to **100 unique links**.
 
 ## Torrent downloads
 
-DebridPulse supports both magnet links and `.torrent` files.
+DownloadPulse supports both magnet links and `.torrent` files.
 
 For a torrent submission:
 
 1. the magnet or torrent metadata is sent to a premium service that accepts it (AllDebrid, Debrid-Link, Premiumize, Real-Debrid or TorBox);
-2. DebridPulse monitors that service's torrent state, and may prepare a backup on a second service;
+2. DownloadPulse monitors that service's torrent state, and may prepare a backup on a second service;
 3. once files are available, their unlocked HTTP(S) links are retrieved;
 4. those files are dispatched to aria2;
-5. DebridPulse tracks the complete transfer lifecycle locally.
+5. DownloadPulse tracks the complete transfer lifecycle locally.
 
-DebridPulse's aria2 is built without BitTorrent and never joins a swarm. The premium service performs the torrent-side work and aria2 downloads the resulting files.
+DownloadPulse's aria2 is built without BitTorrent and never joins a swarm. The premium service performs the torrent-side work and aria2 downloads the resulting files.
 
 ---
 
-## v1.0.13 provider and executor support matrix
+## v1.0.0 provider and executor support matrix
 
-This matrix is the **implemented and qualified v1.0.13 provider/executor set**. Anything not listed here is not supported.
+This matrix is the **implemented and qualified v1.0.0 provider/executor set**. Anything not listed here is not supported.
 
 | Integration | Kind | Enabled on a new installation |
 |---|---|---|
@@ -120,18 +120,18 @@ This matrix is the **implemented and qualified v1.0.13 provider/executor set**. 
 | Media Downloads (yt-dlp) | Provider with its own download engine | Yes |
 | aria2, rsync | Download engines | Yes |
 
-The [`CHANGELOG.md`](CHANGELOG.md) `[1.0.13]` entry lists the **known limitations** of this release (what cannot be switched, when a backup is promoted automatically, how a question waiting for input holds up the rest of a download, what cancelling one volume of a split archive does to extraction, what Sonarr and Radarr see, and how large sources are bounded). `STAGED-MATERIALIZATION-001` (staged, engine-owned downloading with atomic promotion) is not implemented; it is recorded there as a known limitation.
+The [`CHANGELOG.md`](CHANGELOG.md) `[1.0.0]` entry lists the **known limitations** of this release (what cannot be switched, when a backup is promoted automatically, how a question waiting for input holds up the rest of a download, what cancelling one volume of a split archive does to extraction, what Sonarr and Radarr see, and how large sources are bounded). `STAGED-MATERIALIZATION-001` (staged, engine-owned downloading with atomic promotion) is not implemented; it is recorded there as a known limitation.
 
 ---
 
 ## aria2
 
-DebridPulse starts its bundled aria2 daemon with the application and stops it on shutdown. The daemon
-listens on loopback only; DebridPulse constructs its RPC endpoint and credentials itself, applies the
-native engine settings, and writes every download into the Download Folder. On restart DebridPulse
+DownloadPulse starts its bundled aria2 daemon with the application and stops it on shutdown. The daemon
+listens on loopback only; DownloadPulse constructs its RPC endpoint and credentials itself, applies the
+native engine settings, and writes every download into the Download Folder. On restart DownloadPulse
 reconciles its tracked downloads against the daemon.
 
-Every aria2 job is still routed through the DebridPulse egress guard with per-job proxy, credential,
+Every aria2 job is still routed through the DownloadPulse egress guard with per-job proxy, credential,
 and host-key settings, so a job never inherits daemon-wide network configuration.
 
 ---
@@ -156,13 +156,13 @@ Switches are best effort and checked again when made. The row shows the committe
 Clone the repository:
 
 ```bash
-git clone https://github.com/Xipher-Zero/debridpulse.git
-cd debridpulse
+git clone https://github.com/Xipher-Zero/downloadpulse.git
+cd downloadpulse
 ```
 
 Review `docker-compose.yml` before starting it. Adapt host paths, UID/GID, timezone, networking, and persistent storage to your environment. The generic example uses bridge networking and an explicit `8095:8095` port mapping; use host networking only when your platform specifically requires it.
 
-Then start DebridPulse:
+Then start DownloadPulse:
 
 ```bash
 docker compose up -d
@@ -178,33 +178,33 @@ Go to **Settings → Services**. Network sources are switched on in a new instal
 
 ### Docker image
 
-DebridPulse runs as a server application with a browser interface; images are published for `linux/amd64` and `linux/arm64`. Every image is built once immutably and tagged by its full source SHA (`sha-<commit>`), then scanned and runtime-qualified on `linux/amd64` and `linux/arm64` with signed in-registry attestations; a versioned tag is only ever re-pointed at a digest that already passed every required gate.
+DownloadPulse runs as a server application with a browser interface; images are published for `linux/amd64` and `linux/arm64`. Every image is built once immutably and tagged by its full source SHA (`sha-<commit>`), then scanned and runtime-qualified on `linux/amd64` and `linux/arm64` with signed in-registry attestations; a versioned tag is only ever re-pointed at a digest that already passed every required gate.
 
 Versioned images use the release tag:
 
 ```text
-ghcr.io/xipher-zero/debridpulse:v1.0.13
+ghcr.io/xipher-zero/downloadpulse:v1.0.0
 ```
 
 Example:
 
 ```bash
 docker run -d \
-  --name debridpulse \
+  --name downloadpulse \
   --restart unless-stopped \
   -p 8095:8095 \
   -e PUID=1000 \
   -e PGID=1000 \
   -e TZ=America/Phoenix \
   -e CONFIG_PATH=/app/config/config.json \
-  -e DB_PATH=/app/data/debridpulse.db \
-  -v /path/to/debridpulse/config:/app/config \
-  -v /path/to/debridpulse/data:/app/data \
+  -e DB_PATH=/app/data/downloadpulse.db \
+  -v /path/to/downloadpulse/config:/app/config \
+  -v /path/to/downloadpulse/data:/app/data \
   -v /path/to/downloads:/download \
-  ghcr.io/xipher-zero/debridpulse:v1.0.13
+  ghcr.io/xipher-zero/downloadpulse:v1.0.0
 ```
 
-Adjust the paths and UID/GID for your system. Before upgrading an existing installation, read the **Upgrade notes** of the `[1.0.13]` entry in [`CHANGELOG.md`](CHANGELOG.md): among them, the first start deletes backups beyond the newest seven without asking, and `CORS_ORIGINS=*` now prevents startup.
+Adjust the paths and UID/GID for your system. `CORS_ORIGINS=*` prevents startup: list explicit origins, or leave it unset.
 
 ---
 
@@ -222,16 +222,16 @@ Provider enablement is backend-owned configuration. `enabled`, `configured`, pro
 
 Authentication has its own Settings tab.
 
-DebridPulse supports four effective interactive states:
+DownloadPulse supports four effective interactive states:
 
 - **No authentication** — supported for trusted standalone/LAN deployments;
-- **Username & Password** — browser sign-in through the DebridPulse login page, with HTTP Basic available to REST clients using the same credentials;
+- **Username & Password** — browser sign-in through the DownloadPulse login page, with HTTP Basic available to REST clients using the same credentials;
 - **OIDC** — provider-neutral OpenID Connect Authorization Code + PKCE browser sign-in;
 - **Username & Password + OIDC** — OIDC-preferred browser UX with the known-working local password path retained.
 
 Accounts and roles (Admin, User, ReadOnly User and Integration) are managed under **Settings → Users & Access**. Integration accounts carry the `dp_...` bearer tokens used by automation, Prometheus, Sonarr and Radarr; a token is shown only once and only its verifier is stored.
 
-DebridPulse includes lockout protections: Password cannot be disabled in favor of OIDC until a real OIDC login succeeds, and critical OIDC changes in OIDC-only mode stay pending until the proposed configuration itself completes a successful sign-in. Deliberately disabling all interactive authentication requires explicit confirmation.
+DownloadPulse includes lockout protections: Password cannot be disabled in favor of OIDC until a real OIDC login succeeds, and critical OIDC changes in OIDC-only mode stay pending until the proposed configuration itself completes a successful sign-in. Deliberately disabling all interactive authentication requires explicit confirmation.
 
 See **[docs/authentication.md](docs/authentication.md)** for configuration examples, reverse-proxy/OIDC callback guidance, API authentication, credential lifecycle, and recovery behavior.
 
@@ -246,7 +246,7 @@ Configure:
 
 ### Extraction
 
-Configure optional archive extraction. DebridPulse enforces per-archive file-count, expanded-size, and compression-ratio limits. Every supported archive format is extracted into an isolated staging directory, validated, and committed to the download tree with no-clobber semantics.
+Configure optional archive extraction. DownloadPulse enforces per-archive file-count, expanded-size, and compression-ratio limits. Every supported archive format is extracted into an isolated staging directory, validated, and committed to the download tree with no-clobber semantics.
 
 ### Notifications
 
@@ -254,7 +254,7 @@ Configure optional Discord lifecycle notifications.
 
 ### Data & Maintenance
 
-DebridPulse uses a single authoritative SQLite/WAL database. Configure its persistent path through `DB_PATH` or the container data mount.
+DownloadPulse uses a single authoritative SQLite/WAL database. Configure its persistent path through `DB_PATH` or the container data mount.
 
 The **Data & Maintenance** tab configures scheduled backups (backup folder, interval, retention and the number kept), lists and restores backups in the application, holds the statistics snapshot settings and Event Logging, and the guarded **Reset Database** action. Reset stays locked until **Allow Database Reset** is enabled; it always creates a safety backup first and is aborted if that backup fails.
 
@@ -298,7 +298,7 @@ Transfers can be searched and filtered by state, with retry, reset, pause, resum
 
 ## REST API
 
-DebridPulse exposes a REST API used by the web interface and available for external automation.
+DownloadPulse exposes a REST API used by the web interface and available for external automation.
 
 When Username & Password authentication is enabled, REST clients may use standard HTTP Basic with the same credentials as the browser login. Automation clients use an Integration account's token, `Authorization: Bearer dp_...`, which grants only submission, its own requests and `/api/metrics`. In an intentional no-auth deployment the API remains open. See [docs/authentication.md](docs/authentication.md) for precedence and security details.
 
@@ -326,7 +326,7 @@ When Username & Password authentication is enabled, REST clients may use standar
 | `PUT` | `/api/settings` | Update application settings (account credentials are managed under Users & Access) |
 | `GET` | `/api/events/stream` | Server-Sent Events status stream |
 | `GET` | `/api/metrics` | Prometheus-compatible metrics |
-| `GET` | `/api/version` | DebridPulse version |
+| `GET` | `/api/version` | DownloadPulse version |
 | `GET` | `/api/health` | Lightweight application health endpoint |
 
 ### Authentication API
@@ -346,13 +346,13 @@ When Username & Password authentication is enabled, REST clients may use standar
 
 ## Scope
 
-DebridPulse acquires what it is given; it does not look for it. Sonarr and Radarr can use DebridPulse as a download client (through its qBittorrent- and SABnzbd-compatible connections), but DebridPulse itself deliberately excludes:
+DownloadPulse acquires what it is given; it does not look for it. Sonarr and Radarr can use DownloadPulse as a download client (through its qBittorrent- and SABnzbd-compatible connections), but DownloadPulse itself deliberately excludes:
 
 - Jackett/Prowlarr search and indexer management;
 - FlexGet and RSS automation;
 - saved-search and media-library automation.
 
-DebridPulse is a **download and transfer manager**, not an all-in-one media automation suite.
+DownloadPulse is a **download and transfer manager**, not an all-in-one media automation suite.
 
 ---
 
@@ -390,7 +390,7 @@ The primary implementation areas are:
 
 Runtime dependencies are exactly pinned through `backend/requirements.in` → `backend/requirements.txt`. Python runtime license metadata is checked against `licenses/python-runtime.json`; published images also carry BuildKit provenance and SBOM attestations. See [`docs/DEPENDENCY_LICENSES.md`](docs/DEPENDENCY_LICENSES.md).
 
-The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries; [`docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md`](docs/architecture/MULTI_PROVIDER_HTTP_SLICE.md) is the design record of the original 1.0.12 two-provider slice (AllDebrid + General HTTP(S) providers) that later releases generalized.
+The [architecture guide](docs/architecture/UNIVERSAL_TRANSFER_CORE.md) explains the contracts, normalized failures, persistence, routing, and extension boundaries.
 
 Release notes for every version are in [`CHANGELOG.md`](CHANGELOG.md); the release operations runbook is [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md).
 
@@ -398,11 +398,11 @@ Release notes for every version are in [`CHANGELOG.md`](CHANGELOG.md); the relea
 
 ## Project direction
 
-DebridPulse favors a focused responsibility:
+DownloadPulse favors a focused responsibility:
 
 > **Resolve sources, transfer files reliably, and make delivery observable and recoverable.**
 
-Features that improve that workflow belong naturally in DebridPulse. Providers and download engines are independent implementations of canonical contracts; the ones included in 1.0.13 are listed in the support matrix above.
+Features that improve that workflow belong naturally in DownloadPulse. Providers and download engines are independent implementations of canonical contracts; the ones included in 1.0.0 are listed in the support matrix above.
 
 Recreating an entire media-management or indexer ecosystem inside the download client does not.
 
@@ -410,8 +410,8 @@ Recreating an entire media-management or indexer ecosystem inside the download c
 
 ## License
 
-DebridPulse is copyright © 2026 Chris Moore and is distributed under
-[`GPL-2.0-or-later`](LICENSE). Third-party and inherited copyright and permission
+DownloadPulse is copyright © 2026 Chris Moore and is distributed under
+[`GPL-2.0-or-later`](LICENSE). Third-party copyright and permission
 notices are preserved in [`NOTICE`](NOTICE) and [`LICENSES/`](LICENSES).
 Runtime dependency licensing is inventoried in
 [`docs/DEPENDENCY_LICENSES.md`](docs/DEPENDENCY_LICENSES.md). The container source

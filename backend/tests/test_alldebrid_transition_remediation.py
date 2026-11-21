@@ -44,7 +44,7 @@ def disabled_resource_record():
     engine = TransferEngine(
         repository,
         registry,
-        download_root="/tmp/debridpulse-transition-test",
+        download_root="/tmp/downloadpulse-transition-test",
         policy=TransferPolicy(),
     )
     record = RequestRecord(
@@ -91,7 +91,7 @@ def test_the_generalized_scope_keeps_alldebrid_s_established_namespace():
     host inventory: the token for an AllDebrid key is exactly the one the
     retired provider-local helper produced."""
     from hashlib import sha256
-    legacy = "credential-v1-" + sha256(b"debridpulse:alldebrid:credential:v1\0" + b"credential-one").hexdigest()
+    legacy = "credential-v1-" + sha256(b"downloadpulse:alldebrid:credential:v1\0" + b"credential-one").hexdigest()
     assert credential_scope("alldebrid", "credential-one") == legacy
     assert credential_scope("torbox", "credential-one") != legacy
 

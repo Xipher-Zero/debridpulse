@@ -86,7 +86,7 @@ def _test_tls_context(tmp_path: Path, state: dict) -> tuple[ssl.SSLContext, Path
             "-days",
             "1",
             "-subj",
-            "/CN=DebridPulse Test CA",
+            "/CN=DownloadPulse Test CA",
             "-addext",
             "basicConstraints=critical,CA:TRUE",
             "-addext",
@@ -320,7 +320,7 @@ async def test_guarded_options_override_daemon_global_proxy_bypasses() -> None:
         assert options["https-proxy"] == loopback
         assert options["no-proxy"] == ""
         assert options["proxy-method"] == "tunnel"
-        assert options["all-proxy-user"] == "debridpulse"
+        assert options["all-proxy-user"] == "downloadpulse"
         assert options["all-proxy-passwd"]
     finally:
         await guard.stop()

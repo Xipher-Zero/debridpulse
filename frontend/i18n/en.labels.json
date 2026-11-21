@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-help-labels/1",
+ "schema": "downloadpulse-help-labels/1",
  "about": "Every <b> span of the Help catalog (help.*), in order. kind: control = it names an interface element by its displayed name, so a translation shows that element's translated label exactly (key, or keys joined by join, with suffix); term = a concept in prose, which a translation may inflect (terminology is the termbase's); emphasis = plain emphasis; control-unmapped = an interface name no catalog key is (not checked); unresolved = the passage does not say which element (not checked). Each choice carries its reason. See docs/LOCALIZATION.md §4.",
  "spans": {
   "help.my_account.language.button": [
@@ -48,9 +48,9 @@
     "reason": "The language view's Back button, its way back to the profile."
    }
   ],
-  "help.quickstart.lead.debridpulse_application_use_submit": [
+  "help.quickstart.lead.downloadpulse_application_use_submit": [
    {
-    "text": "DebridPulse is the application you use to submit, route, track, and manage downloads.",
+    "text": "DownloadPulse is the application you use to submit, route, track, and manage downloads.",
     "kind": "emphasis",
     "reason": "Emphasised introductory sentence."
    }
@@ -222,7 +222,7 @@
     "reason": "Browse button beside the Download Folder field."
    }
   ],
-  "help.quickstart.check_where_downloads.if_debridpulse_runs": [
+  "help.quickstart.check_where_downloads.if_downloadpulse_runs": [
    {
     "text": "container",
     "kind": "term",
@@ -1057,7 +1057,7 @@
     "reason": "View All button in Download Activity."
    }
   ],
-  "help.using.questions_debridpulse_may.connect_local_network_address": [
+  "help.using.questions_downloadpulse_may.connect_local_network_address": [
    {
     "text": "Connect to a local network address?",
     "kind": "control",
@@ -1083,7 +1083,7 @@
     "reason": "Allow button in the local-network dialog."
    }
   ],
-  "help.using.questions_debridpulse_may.download_item_collection": [
+  "help.using.questions_downloadpulse_may.download_item_collection": [
    {
     "text": "Download the item or its collection?",
     "kind": "control",
@@ -1097,7 +1097,7 @@
     "reason": "Cancel Transfer button in the scope dialog."
    }
   ],
-  "help.using.questions_debridpulse_may.authentication_required": [
+  "help.using.questions_downloadpulse_may.authentication_required": [
    {
     "text": "Authentication Required",
     "kind": "control",
@@ -1111,7 +1111,7 @@
     "reason": "The Authentication Required dialog's Cancel button is rendered from common.cancel (ui-auth-required.js)."
    }
   ],
-  "help.using.questions_debridpulse_may.verify_server_identity": [
+  "help.using.questions_downloadpulse_may.verify_server_identity": [
    {
     "text": "Verify Server Identity",
     "kind": "control",
@@ -3685,7 +3685,7 @@
     "reason": "Opens the OpenID Connect card section; card title rather than the Authentication Status KPI figure."
    },
    {
-    "text": "Public DebridPulse Base URL",
+    "text": "Public DownloadPulse Base URL",
     "kind": "control",
     "key": "settings.oidc.public_base",
     "reason": "OIDC field."
@@ -4885,7 +4885,7 @@
     "reason": "Settings: a path starts at the sidebar entry; Authentication: the only interface key with this text"
    },
    {
-    "text": "Public DebridPulse Base URL",
+    "text": "Public DownloadPulse Base URL",
     "kind": "control",
     "key": "settings.oidc.public_base",
     "reason": "Field."
@@ -4960,9 +4960,9 @@
     "reason": "Field."
    }
   ],
-  "help.license.lead.debridpulse_provided_without_warranty": [
+  "help.license.lead.downloadpulse_provided_without_warranty": [
    {
-    "text": "DebridPulse is provided without warranty, as specified in the license.",
+    "text": "DownloadPulse is provided without warranty, as specified in the license.",
     "kind": "emphasis",
     "reason": "Emphasized sentence."
    }
@@ -4988,16 +4988,16 @@
     "reason": "Names a document in the License viewer; no candidate."
    }
   ],
-  "help.quickstart.lead.debridpulse_application_submits_routes.submit": [
+  "help.quickstart.lead.downloadpulse_application_submits_routes.submit": [
    {
-    "text": "DebridPulse is the application that submits, routes, tracks, and manages downloads.",
+    "text": "DownloadPulse is the application that submits, routes, tracks, and manages downloads.",
     "kind": "emphasis",
     "reason": "Emphasized sentence."
    }
   ],
-  "help.quickstart.lead.debridpulse_application_submits_routes.viewer": [
+  "help.quickstart.lead.downloadpulse_application_submits_routes.viewer": [
    {
-    "text": "DebridPulse is the application that submits, routes, tracks, and manages downloads.",
+    "text": "DownloadPulse is the application that submits, routes, tracks, and manages downloads.",
     "kind": "emphasis",
     "reason": "Emphasized sentence."
    }

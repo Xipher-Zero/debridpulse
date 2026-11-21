@@ -8,7 +8,7 @@ const { test, expect } = require('@playwright/test');
  *
  * en-XA (accented, ~40% longer) and ar-XB (right-to-left) are test locales:
  * the server accepts them only on a runtime started with
- * DEBRIDPULSE_I18N_TEST_LOCALES=1 (DP_I18N_TEST_LOCALES=1 here). Without it
+ * DOWNLOADPULSE_I18N_TEST_LOCALES=1 (DP_I18N_TEST_LOCALES=1 here). Without it
  * the cold-load case states the same first-paint projection itself; no case
  * skips. A live
  * switch uses DPI18n.setLocale, the substrate a later language choice will
@@ -31,7 +31,7 @@ async function isolateFonts(page) {
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -393,7 +393,7 @@ test.describe('the password-auth runtime', () => {
 
   // The projection the server states for an account that chose en-XA
   // (api.auth_routes._locale; its proof: test_account_locale.py).
-  const PSEUDO_PROJECTION = 'window.debridPulseLocale=Object.freeze({"owned":true,"locale":"en-XA","dir":"ltr","status":"pseudo","catalog":null});';
+  const PSEUDO_PROJECTION = 'window.downloadPulseLocale=Object.freeze({"owned":true,"locale":"en-XA","dir":"ltr","status":"pseudo","catalog":null});';
 
   test('L07a/L05: an en-XA account\'s cold load is veiled until its language is in place: no English frame', async ({browser}) => {
     const admin = await signIn(browser, ADMIN, {width: 1440, height: 914});
@@ -414,7 +414,7 @@ test.describe('the password-auth runtime', () => {
     if (!TEST_LOCALES) {
       await page.route('**/ui-theme-bootstrap.js*', async route => {
         const response = await route.fetch();
-        const body = (await response.text()).replace(/^window\.debridPulseLocale=.*$/m, PSEUDO_PROJECTION);
+        const body = (await response.text()).replace(/^window\.downloadPulseLocale=.*$/m, PSEUDO_PROJECTION);
         await route.fulfill({response, body});
       });
     }

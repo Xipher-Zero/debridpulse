@@ -163,7 +163,7 @@ def test_wrapped_refusals_name_their_cause():
     from services import backup
 
     rejected = backup.BackupRejected("add", backup.INVALID, detail_code="invalid_file")
-    assert rejected.message == "Backup could not be added. The selected file is not a valid DebridPulse backup."
+    assert rejected.message == "Backup could not be added. The selected file is not a valid DownloadPulse backup."
     assert code_of(rejected) == ("backup.add_detail", {"detail": {"$t": "error.backup.detail.invalid_file", "$v": {}}})
     assert code_of(backup.BackupRejected("save")) == ("backup.save", {})
     restore = RestoreFailed(400, rejected.detail, reason_said=rejected.detail_said)
@@ -308,7 +308,7 @@ async def test_an_invalid_scope_never_leaks_a_credential_through_its_params(scop
 @pytest.mark.asyncio
 async def test_a_recognised_scope_keeps_its_code_and_free_form_text_falls_back():
     link = "https://files.example/item"
-    # A scope DebridPulse defines (AcquisitionScope), refused because this link offers
+    # A scope DownloadPulse defines (AcquisitionScope), refused because this link offers
     # only the item: its producer recognises it, so the code and params are kept.
     app = _links_app(choices=(("item", "Just this item"),))
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
@@ -316,7 +316,7 @@ async def test_a_recognised_scope_keeps_its_code_and_free_form_text_falls_back()
     assert known_scope.status_code == 400
     assert known_scope.json() == {"detail": "Link 1 has no acquisition scope 'collection'",
                                   "code": "submit.link_scope_missing", "params": {"number": "1", "scope": "'collection'"}}
-    # "folder" is not a DebridPulse scope: free-form caller text, never a parameter.
+    # "folder" is not a DownloadPulse scope: free-form caller text, never a parameter.
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=_links_app()), base_url="http://test") as client:
         free_form = await client.post("/api/links/add", json={"links": [link], "acquisition_scopes": {link: "folder"}})
     assert free_form.status_code == 400

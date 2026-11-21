@@ -6,7 +6,7 @@ an SSH banner -- lost those bytes whenever they arrived in the same read, and
 the transfer timed out waiting for them. The image ships Debian's aria2 rebuilt
 with ``packaging/aria2/connect-tunnel-exact-read.patch``.
 
-The CONNECT proxy here is a test instrument, not DebridPulse's egress guard:
+The CONNECT proxy here is a test instrument, not DownloadPulse's egress guard:
 for the server-first case it waits until the destination has spoken and writes
 the ``200`` and those first bytes in ONE write, so the same-read condition is
 forced deterministically instead of depending on scheduler timing. The guard

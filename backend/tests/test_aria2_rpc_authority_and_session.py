@@ -1,16 +1,16 @@
 """1.0.13 WS7 SEC-002 / PA-PROV-4: aria2's RPC authority is this process's own, and its saved session is private and short-lived.
 
-SEC-002: the daemon's RPC secret was the constant ``debridpulse-internal-aria2-rpc``,
+SEC-002: the daemon's RPC secret was the constant ``downloadpulse-internal-aria2-rpc``,
 published with the source, so any local program could drive the daemon --
 add, change or read jobs and their credentials. It is now unpredictable and
-belongs to one DebridPulse process; restart and recovery in that process keep
+belongs to one DownloadPulse process; restart and recovery in that process keep
 using it.
 
 PA-PROV-4: aria2 saves its session (download and proxy passwords, signed
-addresses) every 30 s. DebridPulse never loads that session -- the database
+addresses) every 30 s. DownloadPulse never loads that session -- the database
 is the source of truth and every job is re-added from it -- yet the file was
 readable to other accounts wherever its folder was, and kept its credentials
-after the daemon stopped. A folder DebridPulse creates for it is now private
+after the daemon stopped. A folder DownloadPulse creates for it is now private
 to this account (aria2 replaces the file with its own mode on every save; the
 image's data folder is already private, ``entrypoint.sh``), and the session is
 emptied when the daemon stops, as it already was when one starts; saving
@@ -32,9 +32,9 @@ from executors.aria2.definition import Aria2Options
 from executors.aria2.runtime import Aria2Runtime, Aria2RuntimeConfiguration
 
 BACKEND = Path(__file__).resolve().parents[1]
-PUBLISHED = "debridpulse-internal-aria2-rpc"
+PUBLISHED = "downloadpulse-internal-aria2-rpc"
 JOB = {"pause": "true", "http-passwd": "HTTP-PASSWORD", "all-proxy": "http://127.0.0.1:9",
-       "all-proxy-user": "debridpulse", "all-proxy-passwd": "PROXY-CAPABILITY"}
+       "all-proxy-user": "downloadpulse", "all-proxy-passwd": "PROXY-CAPABILITY"}
 SECRETS = ("HTTP-PASSWORD", "PROXY-CAPABILITY", "SIGNED-ADDRESS")
 
 
@@ -51,7 +51,7 @@ async def _rpc(port: int, token: str, method: str, *params):
             return await response.json()
 
 
-def test_every_debridpulse_process_draws_its_own_unpredictable_secret():
+def test_every_downloadpulse_process_draws_its_own_unpredictable_secret():
     drawn = {subprocess.run([sys.executable, "-c", "from executors.aria2.runtime import RPC_SECRET; print(RPC_SECRET)"],
                             cwd=BACKEND, check=True, capture_output=True, text=True).stdout.strip() for _ in range(2)}
     assert len(drawn) == 2 and PUBLISHED not in drawn

@@ -22,7 +22,7 @@ async function adminPage(browser) {
   const errors = [];
   page.on('pageerror', error => errors.push(String(error.message)));
   await adminSession.signIn(page);
-  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.fetch));
+  await page.waitForFunction(() => Boolean(window.downloadPulseAuth?.fetch));
   return {context, page, errors};
 }
 
@@ -129,10 +129,10 @@ test('an Admin sees every connected browser in Integration Accounts, revokes it 
       idempotency_key: `k-${run}`, source: {kind: 'links', links: ['https://203.0.113.40/requested-by.iso']}}});
     expect(sent.status()).toBe(201);
     const requests = await admin.page.evaluate(async () =>
-      (await (await window.debridPulseAuth.fetch('/api/requests')).json()).requests);
+      (await (await window.downloadPulseAuth.fetch('/api/requests')).json()).requests);
     const request = requests.find((item) => item.credential_id === collected.token_id);
     const details = await admin.page.evaluate(async (id) =>
-      (await (await window.debridPulseAuth.fetch(`/api/torrents/${id}`)).json()), request.transfer_id);
+      (await (await window.downloadPulseAuth.fetch(`/api/torrents/${id}`)).json()), request.transfer_id);
     const rendered = await admin.page.evaluate((requested) => {
       const box = document.createElement('div');
       box.innerHTML = window.dpRequestedByMarkup(requested);
@@ -182,11 +182,11 @@ test('from 780px every token table in Integration Accounts lines its columns up'
     // Two Integration accounts with tokens of different lengths, and a connected browser.
     for (const [name, labels] of [[`Short ${run}`, ['A']], [`Suite ${run}`, ['Sonarr instance on the media server', 'Lidarr',
       'A very long token name for the automation on the second media server in the basement rack, nightly, with retries']]]) {
-      const created = await admin.page.evaluate(async (displayName) => (await (await window.debridPulseAuth.fetch('/api/accounts', {
+      const created = await admin.page.evaluate(async (displayName) => (await (await window.downloadPulseAuth.fetch('/api/accounts', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({kind: 'integration', display_name: displayName})})).json()), name);
       for (const label of labels) {
-        await admin.page.evaluate(async ([id, tokenLabel]) => window.debridPulseAuth.fetch(`/api/accounts/${id}/tokens`, {
+        await admin.page.evaluate(async ([id, tokenLabel]) => window.downloadPulseAuth.fetch(`/api/accounts/${id}/tokens`, {
           method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({label: tokenLabel})}), [created.id, label]);
       }
     }

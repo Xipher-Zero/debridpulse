@@ -70,13 +70,13 @@ class TestValidateAndSanitise:
             "AllDebrid-Torrent-Client",
         ],
     )
-    def test_legacy_application_identity_migrates_to_debridpulse(self, legacy_name):
+    def test_legacy_application_identity_migrates_to_downloadpulse(self, legacy_name):
         # The notification identity is a top-level setting the validator owns;
         # the AllDebrid agent identity is migrated with the legacy input that
         # carries it (see test_canonical_settings_migration.py).
         cfg = make_cfg(discord_username=legacy_name)
         result = validate_and_sanitise(cfg)
-        assert result.discord_username == "DebridPulse"
+        assert result.discord_username == "DownloadPulse"
 
     def test_custom_application_identity_is_preserved(self):
         cfg = make_cfg(discord_username="My notifier")

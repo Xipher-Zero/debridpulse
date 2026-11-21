@@ -49,7 +49,7 @@ async function open(page, {delay = () => 0, stream} = {}) {
   return state;
 }
 
-const invalidate = page => page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:statistics-invalidated')));
+const invalidate = page => page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:statistics-invalidated')));
 const settled = page => page.waitForFunction(() => { const chart = document.getElementById('daily-chart')._ci; return chart && !Chart.animator.running(chart); });
 
 // Every figure the page shows, from all three groups.
@@ -170,7 +170,7 @@ test('hidden, Statistics asks for nothing; re-entry and a restored stream each r
   const away = state.requests.length;
   state.version = 3;
   await invalidate(page);
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:pulse-heartbeat')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:pulse-heartbeat')));
   await page.waitForTimeout(2500);
   expect(state.requests.length).toBe(away);
   await page.evaluate(() => nav(document.querySelector('[data-view="stats"]')));
@@ -180,7 +180,7 @@ test('hidden, Statistics asks for nothing; re-entry and a restored stream each r
 
   state.version = 4;
   await page.waitForTimeout(2100);
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:pulse-connected')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:pulse-connected')));
   await expect.poll(() => state.requests.length).toBe(away + 2);
   await settled(page);
   expect(await figures(page)).toEqual(expected('7d', 4));
@@ -189,13 +189,13 @@ test('hidden, Statistics asks for nothing; re-entry and a restored stream each r
 test('a heartbeat re-reads only an answer old enough to have aged', async ({page}) => {
   const state = await open(page);
   const fresh = state.requests.length;
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:pulse-heartbeat')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:pulse-heartbeat')));
   await page.waitForTimeout(2500);
   expect(state.requests.length).toBe(fresh);                   // just read: nothing has aged
   // 26 s later (the shown answer's age, moved on rather than waited for).
   await page.evaluate(() => { const now = Date.now; Date.now = () => now() + 26000; });
   state.version = 5;                                           // e.g. a completion left the window
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:pulse-heartbeat')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:pulse-heartbeat')));
   await expect.poll(() => state.requests.length).toBe(fresh + 1);
   await settled(page);
   expect(await figures(page)).toEqual(expected('7d', 5));
@@ -229,7 +229,7 @@ test('app.js forwards the stream\'s statistics_changed and heartbeat; the heartb
   const gate = new Promise(resolve => { release = resolve; });
   await page.addInitScript(() => {
     window.__beats = 0;
-    document.addEventListener('debridpulse:pulse-heartbeat', () => { window.__beats++; });
+    document.addEventListener('downloadpulse:pulse-heartbeat', () => { window.__beats++; });
   });
   const state = await open(page, {stream: async route => {
     await gate;

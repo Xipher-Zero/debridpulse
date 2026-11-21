@@ -1,6 +1,6 @@
 """Uploaded ``.torrent`` bytes as authoritative identity evidence (D2, D8).
 
-The original metainfo DebridPulse already persists for an upload is read --
+The original metainfo DownloadPulse already persists for an upload is read --
 only when identity evidence is needed -- by one pure validator at the torrent
 input owner (``transfers.requests``): the v1 info-hash over the ``info``
 value's ORIGINAL bytes, the torrent's own member tree, the v1 side of a

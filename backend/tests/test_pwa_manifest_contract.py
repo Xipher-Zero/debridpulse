@@ -1,7 +1,7 @@
 """DP 1.0.14 installed-app metadata: one browser Web App Manifest.
 
 ``frontend/static/manifest.webmanifest`` asks a browser that installs
-DebridPulse for a ``standalone`` window, with the application's own identity
+DownloadPulse for a ``standalone`` window, with the application's own identity
 (``/``) and its established icon at 192 and 512 pixels. The application page
 and the sign-in pages both link it; the sign-in pages' strict policy admits
 exactly their own origin's manifest and icons. Those files are public
@@ -43,7 +43,7 @@ def png_size(path: Path) -> tuple[int, int]:
 
 def test_the_manifest_requests_a_standalone_window_with_the_applications_own_identity():
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
-    assert manifest["name"] == manifest["short_name"] == "DebridPulse"
+    assert manifest["name"] == manifest["short_name"] == "DownloadPulse"
     # Root-relative, the same at every origin: no host, account or cache-busting value.
     assert manifest["id"] == manifest["start_url"] == manifest["scope"] == "/"
     assert manifest["display"] == "standalone"

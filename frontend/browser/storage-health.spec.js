@@ -4,7 +4,7 @@ const GIB = 1024 ** 3;
 
 function snapshot(domain, state, generation, options = {}) {
   const defaults = {
-    configured_path: domain === 'application_state' ? '/app/data/debridpulse.db' : '/downloads',
+    configured_path: domain === 'application_state' ? '/app/data/downloadpulse.db' : '/downloads',
     resolved_path: domain === 'application_state' ? '/app/data' : '/downloads',
     exists: true,
     is_directory: true,

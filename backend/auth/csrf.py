@@ -13,8 +13,8 @@ from fastapi import Request, Response
 from auth.sessions import request_is_secure
 
 
-HTTP_LOGIN_CSRF_COOKIE = "debridpulse-login-csrf"
-HTTPS_LOGIN_CSRF_COOKIE = "__Host-debridpulse-login-csrf"
+HTTP_LOGIN_CSRF_COOKIE = "downloadpulse-login-csrf"
+HTTPS_LOGIN_CSRF_COOKIE = "__Host-downloadpulse-login-csrf"
 
 
 @dataclass(frozen=True, slots=True)

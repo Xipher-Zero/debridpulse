@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DebridPulse's FFmpeg for macOS (arm64): the same Debian source package (as
+# DownloadPulse's FFmpeg for macOS (arm64): the same Debian source package (as
 # prepared by packaging/macos-tools/prepare-sources.sh) and the same capability
 # set (build-package.sh's configure options) as the Linux package, built natively with Apple's
 # Command Line Tools. --disable-autodetect keeps every system framework out.

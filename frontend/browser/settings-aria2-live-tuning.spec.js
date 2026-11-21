@@ -3,11 +3,11 @@ const { test, expect } = require('@playwright/test');
 /* DP 1.0.14: Network Sources tuning also reaches existing downloads.
  *
  * Connections per Server, Segments per File and Minimum Split Size: while
- * DebridPulse's own downloads are running, saving one asks first (they will
+ * DownloadPulse's own downloads are running, saving one asks first (they will
  * briefly reconnect); Cancel saves nothing and the field returns. What the
  * save did to existing downloads is reported apart from the save, from what
  * the server observed per download. Other fields never ask. The running count
- * comes from /api/aria2/downloads (DebridPulse's own downloads only); these
+ * comes from /api/aria2/downloads (DownloadPulse's own downloads only); these
  * cases substitute that listing and the per-download outcome the save
  * returns -- the save itself is the real server's. Every case restores the
  * options it changed. */

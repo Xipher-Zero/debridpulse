@@ -1,6 +1,6 @@
 """Container Security and Candidate Runtime Qualification wait on the publisher.
 
-They qualify ``sha-<commit>`` only once this commit's Fork Image run has
+They qualify ``sha-<commit>`` only once this commit's Image run has
 published it, so they wait while that run is queued or running (a re-run
 included) instead of exhausting a fixed window, and fail -- saying why -- once
 it finished without publishing, never appeared, or the bound passed.
@@ -29,7 +29,7 @@ QUALIFIERS = ("container-security.yml", "candidate-runtime-qualification.yml")
 
 
 def fork(*, status="completed", conclusion="success", run_id=900, attempt=1, sha=SHA, event="push",
-         path=waiter.FORK_IMAGE):
+         path=waiter.IMAGE_WORKFLOW):
     return {"id": run_id, "path": path, "head_sha": sha, "event": event, "status": status,
             "conclusion": conclusion if status == "completed" else None, "run_attempt": attempt}
 
@@ -64,7 +64,7 @@ class Timeline:
                            log=lambda line: None, **kwargs)
 
 
-def test_a_slow_queued_and_publishing_fork_image_is_waited_for_not_timed_out():
+def test_a_slow_queued_and_publishing_image_is_waited_for_not_timed_out():
     # Exactly 37a6759d's and c63f1048's shape: about 7 minutes queued for the
     # publish runner, then a multi-arch push -- well past the old 10 minutes.
     timeline = Timeline([
@@ -88,11 +88,11 @@ def test_a_publisher_that_finished_without_publishing_fails_at_once_saying_so(co
     timeline = Timeline([(0, [fork(status="in_progress")], "absent"),
                          (300, [fork(conclusion=conclusion, attempt=1)], "absent")])
     ready, why = timeline.wait()
-    assert not ready and "Fork Image run 900 (attempt 1) concluded" in why and "not published" in why
+    assert not ready and "Image run 900 (attempt 1) concluded" in why and "not published" in why
     assert timeline.now < 300 + 2 * waiter.POLL
 
 
-def test_an_authorized_fork_image_rerun_is_waited_for():
+def test_an_authorized_image_rerun_is_waited_for():
     # Attempt 1 failed (the qualifier would fail if it looked then), but the
     # re-run is already in progress when it looks: it waits for attempt 2.
     timeline = Timeline([(0, [fork(status="in_progress", attempt=2)], "absent"),
@@ -113,7 +113,7 @@ def test_a_failed_newest_run_fails_at_once_whatever_an_older_run_is_doing():
     runs = [fork(run_id=800, status="queued"), fork(run_id=900, conclusion="failure", attempt=2)]
     timeline = Timeline([(0, runs, "absent")])
     ready, why = timeline.wait()
-    assert not ready and why == "Fork Image run 900 (attempt 2) concluded failure: the candidate was not published"
+    assert not ready and why == "Image run 900 (attempt 2) concluded failure: the candidate was not published"
     assert timeline.slept == 0
 
 
@@ -123,19 +123,19 @@ def test_a_succeeded_newest_run_starts_propagation_whatever_an_older_run_is_doin
     runs = [fork(run_id=800, status="queued"), fork(run_id=900, conclusion="success")]
     timeline = Timeline([(0, runs, "absent")])
     ready, why = timeline.wait()
-    assert not ready and why == ("Fork Image run 900 (attempt 1) succeeded, but the exact candidate image is absent "
+    assert not ready and why == ("Image run 900 (attempt 1) succeeded, but the exact candidate image is absent "
                                  "from the registry")
     assert waiter.PROPAGATION <= timeline.now < waiter.PROPAGATION + 2 * waiter.POLL
 
 
-def test_only_this_commits_own_fork_image_push_runs_count():
+def test_only_this_commits_own_image_push_runs_count():
     for foreign in (fork(sha="d" * 40, status="in_progress"), fork(event="pull_request", status="in_progress"),
                     fork(event="workflow_dispatch", status="in_progress"),
                     fork(path=".github/workflows/tests.yml", status="in_progress")):
         assert waiter.publishers([foreign], SHA) == []
     timeline = Timeline([(0, [fork(sha="d" * 40, status="in_progress")], "absent")])
     ready, why = timeline.wait()
-    assert not ready and "no Fork Image push run" in why
+    assert not ready and "no Image push run" in why
     assert waiter.REGISTRATION <= timeline.now < waiter.REGISTRATION + 2 * waiter.POLL
 
 

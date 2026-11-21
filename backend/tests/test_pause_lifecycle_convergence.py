@@ -67,7 +67,7 @@ async def test_pause_converges_parent_execution_and_canonical_presentation(pause
     presentation = await ctx.repository.presentation(transfer.id)
     assert current.paused is True
     assert current.state == TransferState.PAUSED
-    # DebridPulse owns pause: the writer is fenced (stopped, no authority
+    # DownloadPulse owns pause: the writer is fenced (stopped, no authority
     # left) and the artifact holds no writer, rather than a native pause.
     assert execution.state == ExecutionState.CANCELLED.value
     assert artifact.execution is None and artifact.state == "paused"

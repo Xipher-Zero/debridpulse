@@ -39,11 +39,11 @@ REMOVED_ROUTE_MARKERS = {
 }
 
 
-def test_v1_identity_is_debridpulse_everywhere_it_is_centralized():
-    assert APP_NAME == "DebridPulse"
-    assert APP_SHORT_NAME == "DebridPulse"
-    assert APP_METADATA_TITLE == "DebridPulse — Universal Transfer Manager"
-    assert REPOSITORY_URL == "https://github.com/Xipher-Zero/debridpulse"
+def test_v1_identity_is_downloadpulse_everywhere_it_is_centralized():
+    assert APP_NAME == "DownloadPulse"
+    assert APP_SHORT_NAME == "DownloadPulse"
+    assert APP_METADATA_TITLE == "DownloadPulse — Universal Transfer Manager"
+    assert REPOSITORY_URL == "https://github.com/Xipher-Zero/downloadpulse"
 
 
 def test_removed_services_and_qbit_router_are_not_shipped():
@@ -123,10 +123,7 @@ def test_release_surfaces_do_not_advertise_removed_watch_folder_workflow():
 
 
 # Release-history records describe earlier releases and are not current documentation.
-HISTORICAL_RECORDS = {
-    "docs/architecture/COUPLING_INVENTORY_V112.md",   # v1.0.12 starting-architecture baseline
-    "docs/security-audit-v1.0.6-corrections.md",
-}
+HISTORICAL_RECORDS: set[str] = set()
 
 
 def test_current_documentation_and_configuration_describe_one_managed_aria2():
@@ -185,14 +182,14 @@ def test_unified_submission_input_expands_to_five_lines():
 
 
 def test_release_workflow_accepts_public_v1_tags():
-    image_workflow = (REPO_ROOT / ".github/workflows/fork-image.yml").read_text()
+    image_workflow = (REPO_ROOT / ".github/workflows/image.yml").read_text()
     promotion_workflow = (REPO_ROOT / ".github/workflows/release-promotion.yml").read_text()
     release_helper = (REPO_ROOT / "release.py").read_text()
     assert "- 'v*'" in image_workflow
     assert "- 'v*'" in promotion_workflow
     assert 'target_tag="$GITHUB_REF_NAME"' in promotion_workflow
     assert "type=ref,event=tag" not in image_workflow
-    assert "DB_PATH=/app/data/debridpulse.db" in image_workflow
+    assert "DB_PATH=/app/data/downloadpulse.db" in image_workflow
     version = (REPO_ROOT / "VERSION").read_text().strip()
     parsed = Version(version)
     assert parsed.release[:2] == (1, 0)
@@ -204,11 +201,11 @@ def test_operator_tab_title_uses_short_active_identity_and_queue_average():
     frontend = (REPO_ROOT / "frontend/static/app.js").read_text()
     routes = (REPO_ROOT / "backend/api/routes.py").read_text()
 
-    assert "document.title = 'DebridPulse';" in frontend
+    assert "document.title = 'DownloadPulse';" in frontend
     from i18n_node import english
     assert "document.title = DPI18n.t('operator_title.active', {speed, percent: DPI18n.number(_operatorTitleState.progress)});" in frontend
     assert english("operator_title.active") == "DP | {speed} ({percent}%)"
-    assert "document.title = `DebridPulse | (${active} Active)" not in frontend
+    assert "document.title = `DownloadPulse | (${active} Active)" not in frontend
     assert "renderOperatorTitle();" in frontend
 
     assert "AVG(CASE WHEN status='downloading' THEN COALESCE(progress, 0)" in routes

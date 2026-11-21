@@ -1,15 +1,15 @@
 # Desktop notices
 
-The licence and notice texts of components every DebridPulse desktop
+The licence and notice texts of components every DownloadPulse desktop
 application carries, beyond those in `licenses/`, `LICENSES/` and each bundled
 tool's own `tools/copyright/`. `packaging/desktop/assemble.py` installs this
 directory as `licenses/desktop/` in every desktop layout. Each file below is
 byte-for-byte what its source states, fetched from the pinned origin shown.
-Nothing here is a DebridPulse licence.
+Nothing here is a DownloadPulse licence.
 
 ## python-build-standalone 20260901 (the bundled CPython 3.12.14 runtime)
 
-The runtime archives DebridPulse installs (`install_only_stripped`) carry only
+The runtime archives DownloadPulse installs (`install_only_stripped`) carry only
 CPython's own licence. python-build-standalone ships the licences of
 everything it builds into the runtime (OpenSSL, libffi, SQLite, XZ, bzip2,
 zlib, mpdecimal, expat, Tcl/Tk, ncurses, libedit, libuuid, Berkeley DB, ...)
@@ -45,7 +45,7 @@ apply to which platform's runtime is recorded in that release's `PYTHON.json`.
 
 ## Neutralino v6.10.0 (the native shell, `desktop/shell/`)
 
-The release zip DebridPulse installs (`neutralinojs-v6.10.0.zip`) carries no
+The release zip DownloadPulse installs (`neutralinojs-v6.10.0.zip`) carries no
 licence file. These are Neutralino's own licence and those of the libraries
 built into its executable, from the source at tag `v6.10.0` (commit
 `4361b63eb1157fc7dedb29b92815a08ec0002767`). Where a library states its licence only in its source header, that

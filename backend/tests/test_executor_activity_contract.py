@@ -117,7 +117,7 @@ def _starts(core):
 
 
 async def test_native_quiesce_is_used_only_when_the_current_observation_advertises_pause(tmp_path, monkeypatch):
-    """DP 1.0.13: the writer is fenced by DebridPulse Pause either way; a
+    """DP 1.0.13: the writer is fenced by DownloadPulse Pause either way; a
     native pause is only the optional graceful quiesce before it, invoked
     only while the current observation offers it."""
     core = await ledger_core(tmp_path, monkeypatch, executors=lambda authorize: (

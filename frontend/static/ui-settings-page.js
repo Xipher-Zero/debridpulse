@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 clean-room Settings page.
+/* DownloadPulse v1.0.11 clean-room Settings page.
  *
  * This runtime owns the Settings shell, forms, serialization, authentication
  * presentation/resilience, OIDC verification, and Settings interaction lifecycle.
@@ -451,7 +451,7 @@
     if (typeof toast === 'function') {
       toast(String(message), kind);
     } else {
-      console[kind === 'error' ? 'error' : 'log']('[DebridPulse Settings]', message);
+      console[kind === 'error' ? 'error' : 'log']('[DownloadPulse Settings]', message);
     }
   }
 
@@ -1503,7 +1503,7 @@
     renderApiKeyAccount(id);
   }
 
-  document.addEventListener('debridpulse:provider-status', event => {
+  document.addEventListener('downloadpulse:provider-status', event => {
     for (const id of Object.keys(API_KEY_ACCOUNT_LINES)) {
       const status = (event.detail?.entries || []).find(candidate => candidate.id === id)?.status;
       if (status?.state === 'healthy') apiKeyAccounts[id] = status;
@@ -2169,7 +2169,7 @@
   function usenetBody(s, entry) {
     const options = usenetOf(s);
     const servers = Array.isArray(options.servers) ? options.servers : [];
-    // Usenet acquisition runs inside DebridPulse, so there is no service
+    // Usenet acquisition runs inside DownloadPulse, so there is no service
     // address or key to configure -- only the news servers to acquire from.
     return `<div class="dp-settings-help-slot dp-settings-help-slot--row"></div>
       <div class="dp-usenet-servers" data-usenet-collection>
@@ -2191,7 +2191,7 @@
   /* The premium-provider account connection: the card's main body, for every
    * provider that connects through its own device authorization.
    *
-   * The operator approves DebridPulse on the provider's own site, opened in
+   * The operator approves DownloadPulse on the provider's own site, opened in
    * their own browser, and types nothing here. The browser holds only what it
    * shows: the code to enter and where to enter it. The device code and every
    * credential stay on the server, which polls no faster than the provider
@@ -2468,7 +2468,7 @@
   // The account line shows what the provider-status owner established; a
   // card never probes its provider on its own. A disabled provider is not
   // probed at all, so it neither confirms nor retracts the last known account.
-  document.addEventListener('debridpulse:provider-status', event => {
+  document.addEventListener('downloadpulse:provider-status', event => {
     for (const id of Object.keys(DEVICE_ACCOUNTS)) {
       const status = (event.detail?.entries || []).find(candidate => candidate.id === id)?.status;
       if (status?.state === 'healthy') deviceConnections[id].account = status;
@@ -2892,7 +2892,7 @@
   }
 
   function webdavTuning(s) {
-    // One relationship: the three answers to "what does DebridPulse collect
+    // One relationship: the three answers to "what does DownloadPulse collect
     // from one WebDAV folder" -- how deep it looks, how many files it accepts
     // and how long the listing may take.
     const options = webdavOf(s);
@@ -3052,7 +3052,7 @@
   function mediaTuning(s) {
     // Acquisition preferences only. Everything else about a media download --
     // one final file with its subtitle and metadata, no transcoding -- is
-    // DebridPulse policy, not a setting. The two video preferences are one
+    // DownloadPulse policy, not a setting. The two video preferences are one
     // related group; the subtitle language is the global settings-document
     // preference, whose one control is here. YouTube Player Client leads the
     // one set, so where two cells fit a row the six form 2 x 3.
@@ -3214,7 +3214,7 @@
     // Executor-wide acquisition behaviour only. Global admission (Maximum
     // Concurrent Downloads) and the global download speed cap stay where they
     // already live -- neither is duplicated here -- and nothing about unpacking
-    // or folder layout belongs here at all: DebridPulse owns both.
+    // or folder layout belongs here at all: DownloadPulse owns both.
     const options = usenetOf(s);
     // Retries and timeout are the two halves of one question -- what happens to
     // a single article request -- so they stay adjacent; Direct Write and the
@@ -3341,7 +3341,7 @@
       + (omitted('download-engine-activity') ? '' : executorWorkCard());
   }
 
-  /* Download Behavior & Limits -> Advanced Settings: DebridPulse-owned
+  /* Download Behavior & Limits -> Advanced Settings: DownloadPulse-owned
    * continuation, local-network and provider-resolution policy, in the one
    * tuning grammar. Collapsed by default; expansion is presentation only. The
    * provider intervals and the resolution retries apply to every service, so
@@ -3588,8 +3588,8 @@
   function notificationsPanel(s, own = false) {
     const discord = card(say('settings.notifications.webhook_title'), `
       <div class="dp-settings-notifications-identity-row dp-settings-help-slot">
-        ${input('discord_username', say('settings.notifications.display_name'), own ? s.discord_username || '' : s.discord_username || 'DebridPulse', {
-          placeholder: own ? 'DebridPulse' : '',
+        ${input('discord_username', say('settings.notifications.display_name'), own ? s.discord_username || '' : s.discord_username || 'DownloadPulse', {
+          placeholder: own ? 'DownloadPulse' : '',
           hint: say('settings.notifications.display_name_hint'),
           inline: true,
         })}
@@ -4018,7 +4018,7 @@
 
   /* The ONE open-mode gate.
    *
-   * Turning off the last interactive mechanism intentionally opens DebridPulse
+   * Turning off the last interactive mechanism intentionally opens DownloadPulse
    * and its API to anyone who can reach it. That is a property of the ACT, not
    * of the page or of any one control, so every act that can perform it -- the
    * two Enable toggles and the confirmed password clear alike -- asks here.
@@ -4448,7 +4448,7 @@
 
     const issuerField = input('oidc_issuer_url', say('settings.oidc.issuer'), a.oidc_issuer_url || '', {
       inline: true,
-      placeholder: 'https://id.example/application/o/debridpulse',
+      placeholder: 'https://id.example/application/o/downloadpulse',
       hint: say('settings.oidc.issuer_hint'),
       className: 'dp-settings-oidc-issuer-field',
     });
@@ -4577,7 +4577,7 @@
 
   const liveAccount = account => !account.deleted_at && !account.merged_into;
   const isIntegration = account => account.role === 'integration';
-  const selfId = () => text(window.debridPulseAuth?.authority?.account_id);
+  const selfId = () => text(window.downloadPulseAuth?.authority?.account_id);
   const accountName = account => text(account?.display_name || account?.username || '') || say('settings.users.unnamed');
 
   function signInMethodList(account) {
@@ -4843,7 +4843,7 @@
     // its title over its hint, the port field beside them, centred against them.
     // Its value arrives from its own read (loadLocalPort), as the default language's does.
     const localPortHint = localPortHints(LOCAL_PORT_DEFAULT)[0];
-    const localPort = window.debridPulseDesktop !== true ? '' : `
+    const localPort = window.downloadPulseDesktop !== true ? '' : `
       <div class="dp-settings-local-port" data-local-port data-local-port-fit="0">
         <span class="dp-settings-local-port-copy">
           <span class="form-label"${keyed(say('settings.local_port.title'))}>${html(t('settings.local_port.title'))}</span>
@@ -4855,7 +4855,7 @@
       </div>`;
     // The installed desktop application is always Standalone (core.config
     // _desktop_is_standalone): it has no Deployment Type to show or switch.
-    const deployment = window.debridPulseDesktop === true ? '' : `
+    const deployment = window.downloadPulseDesktop === true ? '' : `
       <div class="dp-settings-deployment" data-deployment-type="${current}" data-deployment-fit="0">
         <div class="dp-settings-deployment-reading">
           <span class="dp-settings-deployment-copy">
@@ -4884,7 +4884,7 @@
       titleLines: 1,
       titlePrefix: familyIcon('users', 'settings-users'),
       // Its line is about the Deployment Type, which the desktop application has none of.
-      headerCenter: window.debridPulseDesktop === true ? null : say('settings.deployment.copy'),
+      headerCenter: window.downloadPulseDesktop === true ? null : say('settings.deployment.copy'),
       headerCenterClass: 'dp-settings-auth-header-copy',
       hinted: true,
       headerFit: 'wrap',
@@ -5046,7 +5046,7 @@
 
   /* Local Port (the desktop application's; application.desktop_listener):
    * where external clients -- the download-client dialects, the native
-   * external API -- reach DebridPulse on this computer. Read from the server
+   * external API -- reach DownloadPulse on this computer. Read from the server
    * each time the card is drawn (GET /settings/local-port), with the clients
    * that connected in the past week; changed at once (PUT): a change that
    * would cut such clients off asks first (the settings confirmation, Yes /
@@ -7349,7 +7349,7 @@
     // Whatever was just rendered FROM canonical state IS the accepted baseline.
     window.DPSettingsPersistence.adopt(view);
     restoreDrafts(view);
-    document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
+    document.dispatchEvent(new CustomEvent('downloadpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
 
   // Every fitter that measures the page's words: after a render, and after a
@@ -7375,7 +7375,7 @@
    * list of this installation's deployment type (auth.js owns the lists and
    * the choice). Role and deployment type have already decided what this
    * page may hold; Easy only omits from that, and Advanced omits nothing. */
-  const omitted = part => window.debridPulseAuth?.presentation?.omits(part, state.settings?.deployment_type) === true;
+  const omitted = part => window.downloadPulseAuth?.presentation?.omits(part, state.settings?.deployment_type) === true;
 
   /* Unsaved edits across a change of presentation. Composing for Easy or
    * Advanced rebuilds the page from canonical state, so what the operator
@@ -7432,7 +7432,7 @@
   // is composed again for it, from canonical state, with every unsaved edit
   // carried across. Shown later, it is composed by its entry, which -- as
   // every entry -- starts from canonical state (load, loadOwnNotifications).
-  document.addEventListener('debridpulse:presentation-changed', () => {
+  document.addEventListener('downloadpulse:presentation-changed', () => {
     const view = root();
     if (!view || !state.settings || !settingsActive() || !view.querySelector('.dp-settings-master-card')) return;
     keepDrafts(view);
@@ -8089,7 +8089,7 @@
   }
 
   /* Before a tuning change is saved: running downloads will reconnect, so the
-   * operator confirms it first. The count is DebridPulse's own downloads that
+   * operator confirms it first. The count is DownloadPulse's own downloads that
    * aria2 reports running right now (``/aria2/downloads`` lists only owned
    * ones) -- a snapshot: the save itself decides which downloads it reaches.
    * When that cannot be read, nothing is assumed idle. */
@@ -8941,7 +8941,7 @@
     clearOidcResources();
 
     try {
-      if (window.debridPulseAuth) await window.debridPulseAuth.refreshSession({force: true});
+      if (window.downloadPulseAuth) await window.downloadPulseAuth.refreshSession({force: true});
       const auth = await request('GET', '/auth/config', undefined, 7000);
       const generation = acceptAuth(auth, {probe: false});
       state.activeTab = 'authentication';
@@ -8969,9 +8969,9 @@
 
     if ('BroadcastChannel' in window) {
       try {
-        oidc.channel = new BroadcastChannel('debridpulse-oidc-verification');
+        oidc.channel = new BroadcastChannel('downloadpulse-oidc-verification');
         oidc.channel.onmessage = event => {
-          if (event?.data?.type === 'debridpulse-oidc-verification') finishOidc(event.data);
+          if (event?.data?.type === 'downloadpulse-oidc-verification') finishOidc(event.data);
         };
       } catch (_) {
         oidc.channel = null;
@@ -8980,7 +8980,7 @@
 
     oidc.messageHandler = event => {
       if (event.origin !== window.location.origin) return;
-      if (event?.data?.type === 'debridpulse-oidc-verification') finishOidc(event.data);
+      if (event?.data?.type === 'downloadpulse-oidc-verification') finishOidc(event.data);
     };
     window.addEventListener('message', oidc.messageHandler);
 
@@ -9017,7 +9017,7 @@
     const height = 680;
     const left = Math.max(0, Math.round((window.screenX || 0) + ((window.outerWidth || screen.width) - width) / 2));
     const top = Math.max(0, Math.round((window.screenY || 0) + ((window.outerHeight || screen.height) - height) / 2));
-    const popup = window.open('', 'debridpulse-oidc-verification', `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    const popup = window.open('', 'downloadpulse-oidc-verification', `popup=yes,width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`);
     if (!popup) {
       notify(t('settings.oidc.popup_blocked'), 'error');
       return;
@@ -9066,8 +9066,8 @@
   async function logoutSession(button) {
     setBusy(button, true, say('settings.auth.logging_out'));
     try {
-      if (!window.debridPulseAuth) throw new Error(t('settings.auth.no_session'));
-      await window.debridPulseAuth.logout();
+      if (!window.downloadPulseAuth) throw new Error(t('settings.auth.no_session'));
+      await window.downloadPulseAuth.logout();
     } catch (error) {
       notify(error.message, 'error');
       setBusy(button, false);
@@ -9225,11 +9225,11 @@
     const identity = String(result?.integration_id || '');
     const integration = result?.integration;
     if (!identity || !integration) return;
-    document.dispatchEvent(new CustomEvent('debridpulse:integration-accepted',
+    document.dispatchEvent(new CustomEvent('downloadpulse:integration-accepted',
       {detail: {integration_id: identity, integration}}));
   }
 
-  document.addEventListener('debridpulse:integration-accepted', event => {
+  document.addEventListener('downloadpulse:integration-accepted', event => {
     const identity = String(event.detail?.integration_id || '');
     const projection = event.detail?.integration;
     if (!identity || !projection || !state.settings) return;
@@ -9260,7 +9260,7 @@
    * account owner, the subtitle languages Intl names, the Authentication
    * Status values (their painter's text), and the fitters, which
    * measure words. Nothing is read from the server and nothing is written. */
-  document.addEventListener('debridpulse:locale-changed', () => {
+  document.addEventListener('downloadpulse:locale-changed', () => {
     const view = root();
     if (!view || !view.querySelector('.dp-settings-master-card')) return;
     view.querySelectorAll('[data-dp-busy-key]').forEach(button => { button.textContent = t(button.dataset.dpBusyKey); });
@@ -9295,7 +9295,7 @@
     const entries = Array.from(document.querySelectorAll('.nav-item[data-view="settings"]'));
     const entry = entries.find(item => item.getClientRects().length) || entries[0];
     if (!entry || typeof window.nav !== 'function') return;
-    document.addEventListener('debridpulse:settings-rendered', () => activateTab(name), {once: true});
+    document.addEventListener('downloadpulse:settings-rendered', () => activateTab(name), {once: true});
     window.nav(entry);
   }
 

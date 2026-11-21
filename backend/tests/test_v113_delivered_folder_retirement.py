@@ -1,11 +1,11 @@
 """DP 1.0.13: an acknowledged delivery's empty collection folder is retired.
 
-Radarr imported transfer 639's MKV by moving it, leaving DebridPulse's empty
+Radarr imported transfer 639's MKV by moving it, leaving DownloadPulse's empty
 collection folder behind. Acknowledging a delivery never touched the folder.
 Now, when an external client acknowledges its CURRENT delivery generation
 and every outstanding claim on that transfer is such an acknowledged
 delivery, the core removes each completed collection artifact's folder that
-DebridPulse durably owns -- only if it is empty at that instant, through
+DownloadPulse durably owns -- only if it is empty at that instant, through
 ``filesystem.remove_empty_directory`` (descriptor-relative, ``O_NOFOLLOW``,
 ``rmdir`` only) inside one transaction that re-checks the claims. A copy-style
 import, any leftover, another claimant, a live writer or any doubt keeps it.

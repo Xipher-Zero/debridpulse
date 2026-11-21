@@ -252,7 +252,7 @@ def test_maximum_retries_is_labelled_as_acquisition_retry_not_transfer_retry():
     # 1.0.14: what the block says is its source and the English of the keys it names.
     lowered = (block + " ".join(english(key) for key in re.findall(r"say\('([a-z0-9_.]+)'", block))).lower()
     assert "news server" in lowered
-    assert "not the debridpulse download retry" in lowered
+    assert "not the downloadpulse download retry" in lowered
 
 
 def test_per_server_advanced_disclosure_holds_the_four_approved_controls():
@@ -278,7 +278,7 @@ def test_the_normal_server_card_stays_compact():
 def test_no_implementation_name_reaches_the_tuning_copy():
     block = _usenet_tuning_block() + _usenet_server_card_block()
     # Native keys never surface. (``direct_write`` is absent from this list on
-    # purpose: it is a DebridPulse CANONICAL field name that happens to share a
+    # purpose: it is a DownloadPulse CANONICAL field name that happens to share a
     # spelling with the native key, and the operator-facing label is the plain
     # semantic "Direct Write".)
     for name in ("SABnzbd", "sabnzbd", "NNTP", "nntp", "cache_limit", "max_art_tries",

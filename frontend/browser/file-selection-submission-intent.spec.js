@@ -379,7 +379,7 @@ test('in one paste, a cancelled scope dialog and a cancelled collection selector
   // Lines 2 and 3 were admitted as their own collections (21, 22). Cancelling
   // 21 from its selector cancels 21 alone; 22 is still offered and decidable.
   const offer = id => page.evaluate(transferId => document.dispatchEvent(new CustomEvent(
-    'debridpulse:file-selection-available', {detail: {transfer_id: transferId}})), id);
+    'downloadpulse:file-selection-available', {detail: {transfer_id: transferId}})), id);
   await offer(21);
   await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toBeVisible();
   await page.locator('#modal-footer .dp-fs-cancel').click();

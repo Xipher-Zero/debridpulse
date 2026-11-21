@@ -18,7 +18,7 @@ from executors.aria2.translation import material_ranges
 
 
 def _oracle(native):
-    """The conversion as it stood before (DebridPulse 1.0.14, 523d3c7b), verbatim."""
+    """The conversion as it stood before (DownloadPulse 1.0.14, 523d3c7b), verbatim."""
     bitfield = str(getattr(native, "bitfield", "") or "")
     piece = int(getattr(native, "piece_length", 0) or 0)
     pieces = int(getattr(native, "num_pieces", 0) or 0)

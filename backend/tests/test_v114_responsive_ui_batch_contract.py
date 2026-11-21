@@ -79,7 +79,7 @@ def test_the_locked_tunable_orders():
 
 def test_retry_delay_keeps_every_fact_in_fewer_words():
     # Item 6: one description, about a third shorter.
-    old = ("How long DebridPulse waits before checking or re-resolving a download after an error, and before trying a "
+    old = ("How long DownloadPulse waits before checking or re-resolving a download after an error, and before trying a "
            "provider again after a temporary failure. A plain retry doubles the wait after each failure but never waits "
            "more than 5 minutes. Set to 0 to retry immediately.")
     new = ("Wait before checking or re-resolving a download after an error, or retrying a temporarily failed provider. "
@@ -117,11 +117,11 @@ def test_download_engine_activity_follows_the_one_stream_by_admission():
     assert "const administers = () => typeof dpCan === 'function' && dpCan('administer');" in WORK
     assert "const REFRESH_SPACING_MS = 2000, REFRESH_SPACING_MAX_MS = 10000, LATENCY_SPACING_FACTOR = 5;" in WORK
     assert "if (mine === generation && shown()) {" in WORK
-    for signal in ("'debridpulse:execution-activity-changed', invalidated", "'debridpulse:pulse-connected', invalidated",
-                   "'debridpulse:pulse-heartbeat'"):
+    for signal in ("'downloadpulse:execution-activity-changed', invalidated", "'downloadpulse:pulse-connected', invalidated",
+                   "'downloadpulse:pulse-heartbeat'"):
         assert f"document.addEventListener({signal}" in WORK, signal
     # The bridge: one payload-free document event from signals every connection
     # already receives; the application still opens exactly one EventSource.
     assert APP.count("new EventSource(") == 1
     assert APP.count("executionActivityChanged();") == 2
-    assert "document.dispatchEvent(new CustomEvent('debridpulse:execution-activity-changed'));" in APP
+    assert "document.dispatchEvent(new CustomEvent('downloadpulse:execution-activity-changed'));" in APP

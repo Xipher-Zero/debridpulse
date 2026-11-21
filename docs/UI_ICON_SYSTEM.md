@@ -1,12 +1,12 @@
-# DebridPulse UI Icon System
+# DownloadPulse UI Icon System
 
-This document is the source of truth for icon use in the v1.0.11 UI overhaul.
+This document is the source of truth for icon use in the UI.
 
 ## Decision
 
-DebridPulse uses a two-layer icon system:
+DownloadPulse uses a two-layer icon system:
 
-1. **Custom DebridPulse semantic SVG assets** for visually prominent/status-bearing concepts from the approved mockups.
+1. **Custom DownloadPulse semantic SVG assets** for visually prominent/status-bearing concepts from the approved mockups.
 2. **Lucide** for ordinary navigation, controls, form adornments, and utility actions.
 
 Do not replace custom semantic icons with generic line icons merely for implementation convenience. Do not create custom artwork for ordinary controls that Lucide already covers.
@@ -108,11 +108,11 @@ Lucide is the canonical utility/navigation family. Use it for ordinary interface
 
 Lucide utility glyphs should use `currentColor` so navigation, hover, active, disabled, light-theme, and dark-theme states remain CSS-driven.
 
-DebridPulse is a self-contained server UI. Vendor only the required Lucide glyph geometry locally rather than depending on a runtime CDN. The v1.0.11 shell subset is pinned to `lucide-icons/lucide` commit `23f9abc4ed0146cffededd3d7f94c1018bfdf693`. Lucide's current upstream license is ISC, while its Feather-derived icon subset retains the upstream Feather MIT notice; both are bundled in `licenses/Lucide-ISC-MIT.txt` and recorded in `docs/DEPENDENCY_LICENSES.md`.
+DownloadPulse is a self-contained server UI. Vendor only the required Lucide glyph geometry locally rather than depending on a runtime CDN. The shell subset is pinned to `lucide-icons/lucide` commit `23f9abc4ed0146cffededd3d7f94c1018bfdf693`. Lucide's current upstream license is ISC, while its Feather-derived icon subset retains the upstream Feather MIT notice; both are bundled in `licenses/Lucide-ISC-MIT.txt` and recorded in `docs/DEPENDENCY_LICENSES.md`.
 
 ## Semantic color language
 
-- **Purple / lavender:** DebridPulse identity, downloads, links, primary app actions.
+- **Purple / lavender:** DownloadPulse identity, downloads, links, primary app actions.
 - **Green:** completed, successful, healthy.
 - **Blue:** active, files, download/network activity.
 - **Cyan:** connectivity and externally controlled state.
@@ -202,4 +202,4 @@ The current Tier-1 card assets are dark-theme-oriented self-contained SVGs. Duri
 
 ## Implementation boundary
 
-This icon system is presentation-only. It must not alter v1.0.10 backend lifecycle/state semantics. UI mapping should translate existing backend states into the approved operator-facing presentation rather than changing backend behavior to simplify icon selection.
+This icon system is presentation-only. It must not alter backend lifecycle/state semantics. UI mapping should translate existing backend states into the approved operator-facing presentation rather than changing backend behavior to simplify icon selection.

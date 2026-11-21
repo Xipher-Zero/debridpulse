@@ -259,7 +259,7 @@ _NOT_COMMITTED_ERROR = {
 
 class DiscardConfirmationRequired(Exception):
     """The requested source cannot reuse part of the artifact's existing
-    DebridPulse-valid material (a capability limitation of the executor that
+    DownloadPulse-valid material (a capability limitation of the executor that
     would write it: ``unusable_bytes``) and would rewrite it: switching would
     discard ``discarded_bytes``. Nothing was changed; the operator must
     confirm before the rollback. ``abandoned_bytes`` is the current writer's

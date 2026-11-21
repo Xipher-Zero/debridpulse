@@ -7,7 +7,7 @@ them, at response time only, so an external reader that still expects
 
 It is compatibility *output*, not an authority: nothing here is persisted,
 nothing reads it back, ``PUT /settings`` ignores the names it emits, and the
-DebridPulse frontend never consumes it. The name tables are the migration-input
+DownloadPulse frontend never consumes it. The name tables are the migration-input
 tables themselves, so the two directions cannot drift apart.
 """
 from transfers.runtime_limits import LEGACY_INPUT_FIELDS as RUNTIME_LIMIT_FIELDS

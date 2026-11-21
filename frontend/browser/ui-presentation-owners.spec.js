@@ -99,7 +99,7 @@ test('Recent Activity Date Added shares the Downloads date preference, formatter
  const row=(id,created_at)=>({id,name:`Dated ${id}`,status:'completed',presentation_status:'completed',progress:100,size_bytes:1,created_at,current_source_identity:{kind:'link'},providers:[],historical_providers:[],delivering_provider_ids:[]});
  const items=[row(7703,'2026-03-04T05:06:00Z'),row(7701,'2025-12-31T23:59:00Z'),row(7702,'2024-07-08T12:30:00Z')];
  await page.route(url=>url.pathname==='/api/torrents',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})}));
- await ready(page);await page.evaluate(()=>localStorage.removeItem('debridpulse.downloads.date-presentation.v1'));await ready(page);
+ await ready(page);await page.evaluate(()=>localStorage.removeItem('downloadpulse.downloads.date-presentation.v1'));await ready(page);
  const recent=page.locator('#view-dashboard .dash-activity-table-wrap');
  await expect(recent.locator('#dash-tbody tr[data-torrent-id="7702"]')).toBeVisible();
  const heading=recent.locator('thead th:has(.dp-date-menu-trigger)');
@@ -128,7 +128,7 @@ test('Recent Activity Date Added shares the Downloads date preference, formatter
  expect(iso.map(c=>c.exact)).toEqual(before.map(c=>c.exact));
  expect(Object.fromEntries((await cells('#t-tbody')).map(c=>[c.id,c.text]))).toEqual(Object.fromEntries(iso.map(c=>[c.id,c.text])));
  await expect(page.locator('#view-torrents .dp-date-menu [data-date-format="iso"]')).toHaveAttribute('aria-checked','true');
- expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('debridpulse.downloads.date-presentation.v1')))).toEqual({format:'iso',hour12:false});
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('downloadpulse.downloads.date-presentation.v1')))).toEqual({format:'iso',hour12:false});
  // It persists across a reload, in both lists.
  await ready(page);await expect(page.locator('#dash-tbody tr[data-torrent-id="7702"]')).toBeVisible();
  expect((await cells('#dash-tbody')).map(c=>c.text)).toEqual(iso.map(c=>c.text));
@@ -284,7 +284,7 @@ test('Archive Password owner uses click reveal and line-aware editing',async({pa
 });
 
 test('toast bridge preserves reviewed copy and automatic lifetime',async({page})=>{
- await ready(page);expect(await page.evaluate(()=>DPToastDuration('DebridPulse stared at that for a moment. It is not a link, magnet, or torrent.'))).toBe(3750);await page.evaluate(()=>toast('Line 1: enter an HTTP(S) link or magnet URI','info'));const node=page.locator('#toasts .toast').last();await expect(node).toContainText('DebridPulse stared at that for a moment. It is not a link, magnet, or torrent.');await expect(node.locator('button,.dp-toast-close,.dp-toast-dismiss')).toHaveCount(0);
+ await ready(page);expect(await page.evaluate(()=>DPToastDuration('DownloadPulse stared at that for a moment. It is not a link, magnet, or torrent.'))).toBe(3750);await page.evaluate(()=>toast('Line 1: enter an HTTP(S) link or magnet URI','info'));const node=page.locator('#toasts .toast').last();await expect(node).toContainText('DownloadPulse stared at that for a moment. It is not a link, magnet, or torrent.');await expect(node.locator('button,.dp-toast-close,.dp-toast-dismiss')).toHaveCount(0);
 });
 
 test('Activity Log has one owner: explicit API, no compatibility globals, controls bound once',async({page})=>{
@@ -307,7 +307,7 @@ test('Activity Log refresh, empty state and single render; Search alone is not a
  await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
  await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(2);
  expect(requests.at(-1)).toEqual({limit:'100',timeframe:'all'});
- await page.evaluate(()=>{window.__renders=0;document.addEventListener('debridpulse:activity-rendered',()=>window.__renders++);});
+ await page.evaluate(()=>{window.__renders=0;document.addEventListener('downloadpulse:activity-rendered',()=>window.__renders++);});
  await page.locator('.dp-activity-refresh').click();
  await expect.poll(()=>page.evaluate(()=>window.__renders)).toBe(1);
  await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(2);

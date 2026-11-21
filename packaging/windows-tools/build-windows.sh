@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# DebridPulse's archive and Usenet helper tools for Windows x64:
+# DownloadPulse's archive and Usenet helper tools for Windows x64:
 #   par2 (par2cmdline-turbo, pinned upstream source) and zstd (Debian's signed
 #     source package), built static
 #     with Debian's mingw-w64 toolchain (only system DLLs);
-#   7-Zip (7z.exe + 7z.dll, whose RAR decoder DebridPulse's extraction uses;
+#   7-Zip (7z.exe + 7z.dll, whose RAR decoder DownloadPulse's extraction uses;
 #     the standalone 7za.exe, which SABnzbd runs) and
 #     RARLAB UnRAR -- the official releases, unmodified, refused unless they
 #     match official.sha256.
@@ -58,10 +58,10 @@ install -m 0755 "$tree/programs/zstd.exe" "$out/bin/zstd.exe"
 cp "$tree/debian/copyright" "$out/copyright/zstd"
 versions+=("zstd $(cd "$tree" && dpkg-parsechangelog -SVersion)")
 
-# netless-launcher: DebridPulse's own "#!" stand-in for the Media Downloads
+# netless-launcher: DownloadPulse's own "#!" stand-in for the Media Downloads
 # helper wrappers (its source says why), static, kernel32 only.
 $HOST-gcc -O2 -Wall -Werror -municode -static -o "$out/bin/netless-launcher.exe" "$here/netless-launcher.c"
-versions+=("netless-launcher $(sha256sum "$here/netless-launcher.c" | cut -c1-16) (DebridPulse source)")
+versions+=("netless-launcher $(sha256sum "$here/netless-launcher.c" | cut -c1-16) (DownloadPulse source)")
 
 for exe in "$out/bin/par2.exe" "$out/bin/zstd.exe" "$out/bin/netless-launcher.exe"; do $HOST-strip --strip-unneeded "$exe"; done
 
@@ -83,7 +83,7 @@ for exe in "$out/bin/"*.exe "$out/bin/"*.dll; do
 done > "$out/imports.txt"
 cat "$out/imports.txt"
 if grep -E '^(par2|zstd|netless-launcher)\.exe:' "$out/imports.txt" | grep -viE '^[a-z0-9-]+\.exe: ((KERNEL32|USER32|ADVAPI32|SHELL32|msvcrt|api-ms-win-[a-z0-9-]+)\.dll ?)+$'; then
-  echo "a DebridPulse-built tool imports a non-system DLL" >&2
+  echo "a DownloadPulse-built tool imports a non-system DLL" >&2
   exit 1
 fi
 find "$work" -maxdepth 1 -type f \( -name '*.dsc' -o -name '*.tar.*' \) -exec cp {} "$out/source/" \;

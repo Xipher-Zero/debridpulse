@@ -258,7 +258,7 @@ class TransferRepository(_QualifiedRepository):
         """Atomically publish Pause/Resume intent and fence every older recovery owner.
 
         Every write advances the intent's ``generation`` and records its
-        ``holder``: ``None`` for an operator's or DebridPulse's own control,
+        ``holder``: ``None`` for an operator's or DownloadPulse's own control,
         or the advisory hold an external client was granted (``external``).
         ``release`` is the one fenced release of such a hold: the intent is
         lifted only while it is still exactly that hold -- paused, the same

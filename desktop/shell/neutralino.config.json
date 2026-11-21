@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/neutralinojs/neutralinojs/v6.10.0/schemas/neutralino.config.schema.json",
-  "applicationId": "org.debridpulse.desktop",
-  "version": "1.0.14",
+  "applicationId": "net.downloadpulse.desktop",
+  "version": "1.0.0",
   "defaultMode": "window",
   "port": 0,
   "documentRoot": "/resources/",
@@ -18,7 +18,7 @@
                       "window.setFrameTheme"],
   "modes": {
     "window": {
-      "title": "DebridPulse",
+      "title": "DownloadPulse",
       "width": 1280,
       "height": 820,
       "minWidth": 360,

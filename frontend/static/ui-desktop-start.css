@@ -1,7 +1,7 @@
 /* The desktop application's starting cover (ui-desktop-start.js, the one owner;
    markup: index.html #dp-desktop-start). The sign-in page's composition -- its
    glowing field, dust and waves, and a frosted card with the pulse strip, the
-   mark and the title -- carrying only "Starting DebridPulse". It is the
+   mark and the title -- carrying only "Starting DownloadPulse". It is the
    application's own surface: every colour is the theme in force (mode and
    palette), from the application's tokens; nothing is shared with the sign-in
    page's own stylesheet.

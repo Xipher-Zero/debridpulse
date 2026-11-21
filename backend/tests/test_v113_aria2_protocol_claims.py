@@ -359,7 +359,7 @@ async def test_guard_forecloses_every_per_protocol_proxy_override(scheme) -> Non
         assert options["all-proxy"] == proxy
         for family in ("all", "http", "https", "ftp"):
             assert options[f"{family}-proxy"] == proxy
-            assert options[f"{family}-proxy-user"] == "debridpulse"
+            assert options[f"{family}-proxy-user"] == "downloadpulse"
             assert options[f"{family}-proxy-passwd"] == options["all-proxy-passwd"]
         assert options["no-proxy"] == ""
         assert options["proxy-method"] == "tunnel"

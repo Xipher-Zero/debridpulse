@@ -58,7 +58,7 @@ test('passing over neighbouring targets shows each at once, one tooltip at a tim
 for (const theme of ['dark', 'light']) {
   test(`theme ${theme}: the tooltip is the theme's own floating surface, readable, and clear of the viewport's edges`, async ({page}) => {
     await boot(page, {width: 1280, height: 800});
-    await page.evaluate(light => { document.body.classList.toggle('light', light); document.dispatchEvent(new CustomEvent('debridpulse:theme-changed')); }, theme === 'light');
+    await page.evaluate(light => { document.body.classList.toggle('light', light); document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed')); }, theme === 'light');
     const toggle = page.locator('#theme-toggle');                                         // the top right corner
     await toggle.hover();
     await expect.poll(() => shown(page), {timeout: 1500}).toBe(true);

@@ -6,7 +6,7 @@ settled history by completion. An operator move goes through the one priority
 endpoint (``PATCH /torrents/{id}/priority``) and may displace lower-ranked
 running work once the real admission proves the promoted transfer waits only
 for a slot -- whenever that happens, from the move itself onwards: a
-writer whose progress is DebridPulse material it can continue from is retired
+writer whose progress is DownloadPulse material it can continue from is retired
 through the one writer retirement (quiesce, checkpoint, fence) and readmitted
 later from that material; a writer that would lose its acquired progress is
 interrupted only after the operator confirmed exactly that attempt. A new

@@ -8,7 +8,7 @@ candidate health. The extraction-password route is a narrow Settings read
 surface for the operator-maintained archive-password list; operational
 credentials remain write-only through the normal public Settings payload.
 Bundled legal/reference documents are exposed from a fixed allowlist so the UI
-can display the exact files shipped with the installed DebridPulse build
+can display the exact files shipped with the installed DownloadPulse build
 without depending on GitHub or other external network access.
 """
 from __future__ import annotations
@@ -62,27 +62,27 @@ _LEGAL_DOCUMENTS = {
     "gpl": {
         "title": "GNU General Public License v2.0",
         "path": ("LICENSE",),
-        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSE",
+        "latest_url": "https://github.com/Xipher-Zero/downloadpulse/blob/main/LICENSE",
     },
     "notice": {
-        "title": "DebridPulse Attribution Notice",
+        "title": "DownloadPulse Attribution Notice",
         "path": ("NOTICE",),
-        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/NOTICE",
+        "latest_url": "https://github.com/Xipher-Zero/downloadpulse/blob/main/NOTICE",
     },
     "upstream-mit": {
         "title": "Upstream MIT License",
         "path": ("LICENSES", "MIT.txt"),
-        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSES/MIT.txt",
+        "latest_url": "https://github.com/Xipher-Zero/downloadpulse/blob/main/LICENSES/MIT.txt",
     },
     "source-offer": {
         "title": "Corresponding Source Offer",
         "path": ("SOURCE_OFFER.md",),
-        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/SOURCE_OFFER.md",
+        "latest_url": "https://github.com/Xipher-Zero/downloadpulse/blob/main/SOURCE_OFFER.md",
     },
     "third-party": {
         "title": "Third-Party Dependency Licenses",
         "path": ("docs", "DEPENDENCY_LICENSES.md"),
-        "latest_url": "https://github.com/Xipher-Zero/debridpulse/blob/main/docs/DEPENDENCY_LICENSES.md",
+        "latest_url": "https://github.com/Xipher-Zero/downloadpulse/blob/main/docs/DEPENDENCY_LICENSES.md",
     },
 }
 
@@ -134,7 +134,7 @@ def _resolve_repository_root() -> Path:
     for candidate in (here.parents[2], here.parents[1], Path("/app")):
         if (candidate / "LICENSE").is_file() and (candidate / "NOTICE").is_file():
             return candidate
-    raise RuntimeError("Bundled DebridPulse legal documents are unavailable")
+    raise RuntimeError("Bundled DownloadPulse legal documents are unavailable")
 
 
 def _legal_document_payload(document_id: str) -> dict[str, str]:
@@ -347,7 +347,7 @@ def _backup_directory_probe(path: Path) -> tuple[Path, bool]:
     destination. `backend/services/backup.py::run_backup()` already creates
     the configured folder on demand (`mkdir(parents=True, exist_ok=True)`)
     and tolerates it not existing yet (`list_backups()`), so this probe only
-    ever answers "does this directory exist, and can DebridPulse write into
+    ever answers "does this directory exist, and can DownloadPulse write into
     it" -- never a capacity/space judgment, and never a second validator for
     the Save path (Save persists the typed/selected string exactly as today).
     """
@@ -636,7 +636,7 @@ async def validate_alldebrid(payload: AllDebridValidationRequest,
 # --- Real-Debrid --------------------------------------------------------------
 #
 # The connection is Real-Debrid's open-source device authorization: the operator
-# approves DebridPulse on Real-Debrid's own site and no token is ever typed or
+# approves DownloadPulse on Real-Debrid's own site and no token is ever typed or
 # shown. Every write of the resulting credential goes through the one canonical
 # integration-configuration mutation, with its admission, lock and ownership
 # fence; nothing here saves configuration of its own.
@@ -775,7 +775,7 @@ async def disconnect_realdebrid(application: ApplicationService = Depends(get_ap
 # --- TorBox -------------------------------------------------------------------
 #
 # The connection is TorBox's device authorization: the operator approves
-# DebridPulse on TorBox's own site and no token is ever typed or shown. Every
+# DownloadPulse on TorBox's own site and no token is ever typed or shown. Every
 # write of the resulting token goes through the one canonical
 # integration-configuration mutation, exactly as for Real-Debrid.
 
@@ -1055,7 +1055,7 @@ async def send_statistics_report():
 # enable state.
 
 
-# DebridPulse's own connection bounds; the floor is 1, not SAB's 0 (see
+# DownloadPulse's own connection bounds; the floor is 1, not SAB's 0 (see
 # integrations/usenet/definition.py).
 from integrations.usenet.definition import MAX_CONNECTIONS, MIN_CONNECTIONS
 
@@ -1239,7 +1239,7 @@ async def test_usenet_integration(application: ApplicationService = Depends(get_
 async def get_usenet_configuration_drift(application: ApplicationService = Depends(get_application)):
     """Report SAB-side configuration drift. Detection only.
 
-    Nothing here imports SAB state as canonical DebridPulse configuration and
+    Nothing here imports SAB state as canonical DownloadPulse configuration and
     nothing reconciles continuously; a drifted field is reported by name so the
     operator can decide to re-apply.
     """

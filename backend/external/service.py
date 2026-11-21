@@ -47,12 +47,12 @@ from transfers.filesystem import member_payload
 from transfers.models import SubmissionDemand
 from transfers.runtime_telemetry import acquisition_eta_payload
 
-logger = logging.getLogger("debridpulse.external")
+logger = logging.getLogger("downloadpulse.external")
 # Who withdrew a job's demand when an Admin retired a delivery profile (or the
 # clients) it served: the durable record of that authorization, per job.
 PROFILE_RETIRED = "administrator:profile_retired"
 
-PROTOCOL = "debridpulse.external/1"
+PROTOCOL = "downloadpulse.external/1"
 MAX_ACTIVE_JOBS_PER_CLIENT = 2000
 MAX_CONTROLS_PER_JOB = 64
 MAX_PAGE = 200
@@ -118,7 +118,7 @@ def _lock(table, key) -> asyncio.Lock:
 # delivery. Everything else (identity, idempotency, listing, isolation,
 # withdrawal, advisory controls, limits) is one and the same for both.
 BROWSER = "browser"
-# What a browser may submit: every kind DebridPulse's own Quick Add takes.
+# What a browser may submit: every kind DownloadPulse's own Quick Add takes.
 BROWSER_SOURCE_KINDS = frozenset({"links", "magnet", "nzb_link", "nzb", "torrent", "metalink"})
 
 
@@ -586,7 +586,7 @@ class ExternalClients:
         """Apply retired jobs' withdrawn demand through the canonical owner
         (``ApplicationService.withdraw_demand``, exactly a download client's
         "remove"): work nobody else needs is cancelled -- its writers stopped,
-        DebridPulse's own provider resources given back -- and leaves the
+        DownloadPulse's own provider resources given back -- and leaves the
         ordinary lists; shared work and completed material stay. Idempotent;
         a job whose demand does not exist yet (an admission still in flight)
         is retired when it is accepted. Returns how many were settled."""
@@ -878,7 +878,7 @@ class ExternalClients:
 
     async def _adjudicate(self, job: dict, principal: Principal, request_key: str, kind: str,
                           control_id: str) -> dict:
-        """DebridPulse's decision on one advisory request, made and applied
+        """DownloadPulse's decision on one advisory request, made and applied
         on the operator-control boundary so no operator control interleaves
         between what it read and what it did. A pause is applied as this
         control's own hold (``holder``); a resume releases only that exact
@@ -1407,7 +1407,7 @@ class ExternalClients:
                                       "percent": None if transfer is None or status == "consolidated"
                                       else round(float(transfer["progress"] or 0), 1)}
             if transfer is not None and status != "consolidated":
-                # The figure DebridPulse itself shows as the primary bar
+                # The figure DownloadPulse itself shows as the primary bar
                 # (``percent`` stays verified material alone).
                 projection["progress"]["effective"] = await self._effective_progress(transfer)
         if status in {"completed", "consolidated"}:

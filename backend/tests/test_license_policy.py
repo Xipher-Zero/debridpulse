@@ -70,7 +70,7 @@ def test_human_runtime_license_inventory_covers_machine_manifest_exact_versions(
 # exact licence expression it was inventoried under. asyncssh (DP 1.0.13 SFTP
 # evidence) is dual-licensed and used under GPL-2.0-or-later, the project's own
 # licence. sabctools, hachoir and guessit arrive with the bundled Usenet
-# acquisition service (SABnzbd, itself GPL-2.0-or-later): DebridPulse imports
+# acquisition service (SABnzbd, itself GPL-2.0-or-later): DownloadPulse imports
 # none of them and reaches that service over a private loopback HTTP API.
 #
 # This list is an inventory control, NOT a legal conclusion: it records what
@@ -145,17 +145,17 @@ def test_installed_runtime_packages_retain_license_or_notice_files():
         assert license_files, f"{item['name']} {item['version']} has no packaged license notice"
 
 
-def test_current_project_surfaces_state_the_debridpulse_gpl_identity():
+def test_current_project_surfaces_state_the_downloadpulse_gpl_identity():
     readme = (REPO_ROOT / "README.md").read_text()
     landing_page = (REPO_ROOT / "index.html").read_text()
     notice = (REPO_ROOT / "NOTICE").read_text()
     source_offer = (REPO_ROOT / "SOURCE_OFFER.md").read_text()
 
-    assert "DebridPulse" in readme
+    assert "DownloadPulse" in readme
     assert "GPL-2.0-or-later" in readme
-    assert "DebridPulse · GPL-2.0-or-later" in landing_page
+    assert "DownloadPulse · GPL-2.0-or-later" in landing_page
     assert "MIT License" not in landing_page
-    assert notice.startswith("DebridPulse — Universal Transfer Manager")
+    assert notice.startswith("DownloadPulse — Universal Transfer Manager")
     assert "GNU General Public License" in notice
     assert "issues/new?template=source_request.yml" in source_offer
 
@@ -185,20 +185,20 @@ def test_container_runtime_declares_trixie_and_rar_codec_notices():
     # by verified manifest digest (docs/SUPPLY_CHAIN_POLICY.md), so the tag
     # is followed by "@sha256:..." rather than ending the line outright.
     # The runtime stage is the pinned Trixie base; the stages before it are
-    # DebridPulse's aria2 and FFmpeg package artifacts (``AS aria2-packages``,
+    # DownloadPulse's aria2 and FFmpeg package artifacts (``AS aria2-packages``,
     # ``AS ffmpeg-packages``), each consumed by its multi-arch manifest digest,
     # never by a tag (SUPPLY_CHAIN_POLICY 4a, 4b).
     stages = re.findall(r"^FROM (\S+)(?: AS (\S+))?$", dockerfile, re.M)
     assert len(stages) == 3
-    assert re.fullmatch(r"ghcr\.io/xipher-zero/debridpulse-aria2@sha256:[0-9a-f]{64}", stages[0][0])
+    assert re.fullmatch(r"ghcr\.io/xipher-zero/(?:downloadpulse|debridpulse)-aria2@sha256:[0-9a-f]{64}", stages[0][0])
     assert stages[0][1] == "aria2-packages"
-    assert re.fullmatch(r"ghcr\.io/xipher-zero/debridpulse-ffmpeg@sha256:[0-9a-f]{64}", stages[1][0])
+    assert re.fullmatch(r"ghcr\.io/xipher-zero/(?:downloadpulse|debridpulse)-ffmpeg@sha256:[0-9a-f]{64}", stages[1][0])
     assert stages[1][1] == "ffmpeg-packages"
     assert re.fullmatch(r"python:3\.12\.14-slim-trixie@sha256:[0-9a-f]{64}", stages[2][0])
     assert stages[2][1] == ""
     # FFmpeg ships only as that package, verified where it is installed.
     assert "/tmp/ffmpeg/ffmpeg_*.deb" in dockerfile and "mkvtoolnix" not in dockerfile
-    assert 'bash /usr/share/debridpulse/ffmpeg/verify-features.sh "${FFMPEG_PACKAGE_VERSION}"' in dockerfile
+    assert 'bash /usr/share/downloadpulse/ffmpeg/verify-features.sh "${FFMPEG_PACKAGE_VERSION}"' in dockerfile
     assert "Components: main non-free" in dockerfile
     assert "    7zip" in dockerfile
     assert "    7zip-rar" in dockerfile
@@ -215,7 +215,7 @@ def test_every_directly_installed_debian_package_is_in_the_inventory():
     dockerfile = (REPO_ROOT / "Dockerfile").read_text()
     dependency_licenses = (REPO_ROOT / "docs/DEPENDENCY_LICENSES.md").read_text()
     installs = re.findall(r"apt-get install -y --no-install-recommends \\\n((?:[^\n]*\\\n)+)", dockerfile)
-    # The direct install is the one that also installs DebridPulse's own
+    # The direct install is the one that also installs DownloadPulse's own
     # aria2 and FFmpeg packages; the other only upgrades base packages.
     direct = next(block for block in installs if "/tmp/aria2/" in block).split("&&", 1)[0]
     named = {word for line in direct.splitlines() for word in line.replace("\\", " ").split()

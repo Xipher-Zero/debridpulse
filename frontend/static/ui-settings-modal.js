@@ -1,4 +1,4 @@
-/* DebridPulse canonical application-dialog owner.
+/* DownloadPulse canonical application-dialog owner.
  *
  * This module is the ONE physical owner of the shared dialog shell used by
  * Settings confirmations, Settings directory browsing, and the Downloads

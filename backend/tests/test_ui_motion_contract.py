@@ -100,7 +100,7 @@ def test_only_the_operators_own_navigation_moves_anything() -> None:
     nav = app[app.index("function nav(el, event) {"):app.index("function navigateTo(el, {heading = true} = {}) {")]
     assert "const chosen = event?.type === 'click' && from >= 0 && to >= 0 && !sameView;" in nav
     assert "direction: chosen ? Math.sign(to - from) : 0" in nav
-    assert "debridpulse:navigation-settled" in nav
+    assert "downloadpulse:navigation-settled" in nav
     # The page heading moves with the region: the slide runs showPageHeading
     # as its companion's commit; the region's commit leaves the heading to it.
     assert "companion: {element: document.querySelector('#topbar .dp-page-heading')," in nav

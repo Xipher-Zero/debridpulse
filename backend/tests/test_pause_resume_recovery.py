@@ -154,7 +154,7 @@ async def test_pause_leaves_durable_intent_material_and_no_writer(convergence):
     before = (await convergence.repository.artifacts(transfer.id))[0].execution
     await convergence.engine.pause(transfer.id)
     artifact = (await convergence.repository.artifacts(transfer.id))[0]
-    # DebridPulse owns pause: durable intent, the writer fenced, no writer
+    # DownloadPulse owns pause: durable intent, the writer fenced, no writer
     # authorized to make progress -- not "the executor says paused".
     assert (await convergence.repository.get(transfer.id)).paused
     assert artifact.execution is None and artifact.state == "paused"
@@ -178,7 +178,7 @@ async def test_scheduler_and_explicit_resume_admit_exactly_one_writer(convergenc
     await asyncio.gather(scheduler, explicit)
     await convergence.engine.reconcile_executions()
 
-    # Resume is a new writer planned from DebridPulse material, never a
+    # Resume is a new writer planned from DownloadPulse material, never a
     # native resume of the fenced one; one owner admits exactly one writer.
     assert convergence.executor.native_resume_calls == 0
     assert len(convergence.executor.starts()) == starts + 1

@@ -784,7 +784,7 @@ def test_a_remote_403_is_the_origins_refusal_only_while_fetching_planned_media()
     assert decision.action == RecoveryAction.BACKOFF and decision.retry_at > 1000.0
     # The guard's own refusals keep their meaning: a plain-HTTP answer says
     # so (Proxy-Status), an HTTPS refusal is the CONNECT tunnel's.
-    guarded = _http_error(403, {"Proxy-Status": "debridpulse; error=destination_ip_prohibited"})
+    guarded = _http_error(403, {"Proxy-Status": "downloadpulse; error=destination_ip_prohibited"})
     assert worker.classify(guarded, acquire=True, phase="component").code == "egress_refused"
     tunnel = ProxyError("Tunnel connection failed: 403 Forbidden")
     assert worker.classify(tunnel, acquire=True, phase="subtitle").code == "egress_refused"
@@ -1889,7 +1889,7 @@ def test_the_offered_player_clients_are_the_packaged_yt_dlps_own_unauthenticated
     assert set(offered) == {name for name, entry in INNERTUBE_CLIENTS.items()
                             if not name.startswith("_") and not entry.get("REQUIRE_AUTH")}
     # yt-dlp's own unauthenticated defaults are all offered; a sign-in-only
-    # client never is (DebridPulse never signs in).
+    # client never is (DownloadPulse never signs in).
     assert set(YoutubeIE._DEFAULT_CLIENTS) <= set(offered)
     assert not {name for name, entry in INNERTUBE_CLIENTS.items() if entry.get("REQUIRE_AUTH")} & set(offered)
 
@@ -1919,7 +1919,7 @@ def test_an_explicit_ordered_choice_reaches_only_yt_dlps_youtube_video_extractor
     with YoutubeDL({**chosen, "logger": None}) as ydl:
         assert youtube(ydl)._configuration_arg("player_client") == ["tv", "web_safari"]
         # yt-dlp asks exactly those clients, in that order -- one extraction,
-        # not a DebridPulse rotation.
+        # not a DownloadPulse rotation.
         assert list(youtube(ydl)._get_requested_clients(VIDEO, {}, False)) == ["tv", "web_safari"]
         # Other extractors -- YouTube's own playlist/tab reader included --
         # never see it.
@@ -2140,7 +2140,7 @@ def test_typed_guard_proxy_and_http_failures_keep_their_priority_over_a_challeng
         return DownloadError(f"ERROR: [youtube] x: {bot}", (type(item), item, None))
 
     assert worker.classify(carrying(_http_error(429)), acquire=False).code == "rate_limited"
-    assert worker.classify(carrying(_http_error(403, {"Proxy-Status": "debridpulse; error=destination_ip_prohibited"})),
+    assert worker.classify(carrying(_http_error(403, {"Proxy-Status": "downloadpulse; error=destination_ip_prohibited"})),
                            acquire=True, phase="component").code == "egress_refused"
     assert worker.classify(carrying(_http_error(403)), acquire=True, phase="component").code == "source_refused"
     assert worker.classify(carrying(_http_error(407)), acquire=False).code == "route_revoked"

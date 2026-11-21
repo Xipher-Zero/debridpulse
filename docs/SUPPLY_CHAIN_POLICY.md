@@ -1,8 +1,7 @@
 # Supply-Chain / Release Artifact Policy
 
-DP 1.0.12 leveling remediation, DEP-001. This document is the explicit
-artifact-authority and build-input-hardening policy the audit found missing.
-It makes the release contract precise, and it deliberately does **not**
+This document is the explicit artifact-authority and build-input-hardening
+policy. It makes the release contract precise, and it deliberately does **not**
 claim bit-identical rebuilds.
 
 ## 1. Authoritative release artifact
@@ -17,16 +16,16 @@ claim bit-identical rebuilds.
 The rule, exactly as implemented:
 
 - **The source commit identifies one candidate.** The full 40-character Git
-  SHA on `1.0.12` is the only authoritative description of "what changed."
+  SHA of the pushed commit is the only authoritative description of "what changed."
   A branch name, tag, or file diff is a pointer to a SHA, never a substitute
   for it. No short-SHA identity is used anywhere in the publication,
   qualification, or promotion chain.
-- **The source-SHA tag is write-once.** `Fork Image`'s `publish` job (a push,
+- **The source-SHA tag is write-once.** `Image`'s `publish` job (a push,
   or an authorized publishing dispatch) first runs the same build and smoke
   qualification as `build-and-smoke-test` -- the same steps, by YAML alias, on
   its own runner -- and fails before any registry login if it does not pass.
   It then derives exactly one tag,
-  `ghcr.io/xipher-zero/debridpulse:sha-<full-git-sha>`, and before building
+  `ghcr.io/xipher-zero/downloadpulse:sha-<full-git-sha>`, and before building
   anything to publish it checks whether that tag already exists:
   - **absent** — the job builds and pushes the multi-architecture image once;
   - **present, recorded `org.opencontainers.image.revision` equals the exact
@@ -39,7 +38,7 @@ The rule, exactly as implemented:
 
   The check happens *before* publication; the job does not push first and
   detect replacement afterwards.
-- **Runs for one source SHA are serialized.** `Fork Image` declares a
+- **Runs for one source SHA are serialized.** `Image` declares a
   workflow-level concurrency group keyed on the full `github.sha` with
   `cancel-in-progress: false`, so two runs for the same commit (for example a
   branch push and a tag push at one commit) cannot race through the
@@ -47,7 +46,7 @@ The rule, exactly as implemented:
   only after the first has finished, finds a valid candidate, and reuses it.
   GHCR offers no conditional tag write, so this serialization plus the
   pre-publish check is the enforcement mechanism for write-once.
-- **A rerun is idempotent.** Re-running `Fork Image` for a SHA that already
+- **A rerun is idempotent.** Re-running `Image` for a SHA that already
   has a candidate reuses that candidate and reports its existing digest.
 - **A new candidate requires a new source SHA.** A change that should
   produce a different image — a base-image refresh (§3), a package-set change
@@ -66,7 +65,7 @@ The rule, exactly as implemented:
   each child individually by digest (vulnerability scan, non-root runtime,
   health, integration behavior, archive round-trip). A candidate is not
   qualified until both children pass.
-- **SBOM / provenance / attestation.** `Fork Image` publishes with
+- **SBOM / provenance / attestation.** `Image` publishes with
   `provenance: mode=max` and an SBOM; `Container Security` and `Candidate
   Runtime Qualification` each write and sign an in-registry attestation
   (`container-security/v1`, `candidate-runtime/v1`) bound to the exact
@@ -130,7 +129,8 @@ or an equivalent registry API query. Never hand-type or guess a digest.
    (`python:3.12.14-slim-trixie`, or a newer patch/minor tag when
    deliberately upgrading Python).
 2. Update the `FROM` line's digest.
-3. Push to `1.0.12`. This produces a new source SHA and therefore a new
+3. Push to a branch the `Image` workflow publishes (`main` or `1.0.0`).
+   This produces a new source SHA and therefore a new
    candidate, which must clear every required qualification gate (§1) before
    any promotion.
 4. Never edit only the digest without also expecting and running full
@@ -158,12 +158,12 @@ Security freshness for the apt-installed layer (`aria2` -- see §4a --, `curl`, 
 
 There is no separate "pin exact apt package versions" mechanism in this
 policy; that would require vendoring or mirroring Debian's package pool,
-which is out of scope for this remediation. If a specific package needs an
+which is out of scope for this policy. If a specific package needs an
 explicit floor (a CVE fix not yet in the pinned base's repository snapshot),
-address it as its own scoped change, not as an DEP-001-wide requirement.
+address it as its own scoped change, not as a policy-wide requirement.
 
 **Observed in practice:** the first exact-SHA `Container Security` run after
-removing the blanket `apt-get upgrade` (this remediation) found the pinned
+removing the blanket `apt-get upgrade` found the pinned
 base digest already carried fixable HIGH/CRITICAL CVEs in base-layer packages
 this Dockerfile never explicitly installs (`gzip`, `libpcre2-8-0`,
 `libsqlite3-0`, `perl-base`) — re-querying the registry confirmed no newer
@@ -192,7 +192,7 @@ packaging/aria2/  (Debian source version, patch, build configuration, base)
 ghcr.io/xipher-zero/debridpulse-aria2@sha256:<multi-arch manifest digest>
         |  application Dockerfile: FROM ...@sha256 AS aria2-packages
         v
-DebridPulse image digest  (Fork Image -> Container Security -> Candidate
+DownloadPulse image digest  (Image -> Container Security -> Candidate
                            Runtime Qualification -> Release Promotion)
 ```
 
@@ -213,7 +213,7 @@ DebridPulse image digest  (Fork Image -> Container Security -> Candidate
     further than its header; ordinary HTTP responses are read exactly as
     before.
   - `disable-bittorrent.rules.patch`, applied to Debian's `debian/rules`
-    with fuzz 0: aria2 is configured `--disable-bittorrent`. DebridPulse
+    with fuzz 0: aria2 is configured `--disable-bittorrent`. DownloadPulse
     resolves magnets and `.torrent` files through providers; its aria2
     executor fetches only HTTP(S), FTP and SFTP and is never a BitTorrent
     client. Upstream's switch removes the BitTorrent implementation (peer
@@ -234,28 +234,28 @@ DebridPulse image digest  (Fork Image -> Container Security -> Candidate
   rather than the build command: the exact package version, BitTorrent not
   an enabled feature and no BitTorrent option defined, and HTTPS, SFTP and
   Metalink enabled. It runs in the package build, in the application
-  image build, in the Fork Image smoke test, in Candidate Runtime
+  image build, in the Image smoke test, in Candidate Runtime
   Qualification (both architectures) and in the hosted runtime test layer.
-  The real-runtime suite additionally proves the daemon options DebridPulse
+  The real-runtime suite additionally proves the daemon options DownloadPulse
   passes start the binary, every BitTorrent input (magnet, `.torrent`,
   `aria2.addTorrent`) is refused, and the CONNECT same-read FTP greeting and
   SSH banner cases pass.
 - **Artifact:** `packaging/aria2/Dockerfile` builds the packages on the
   pinned Trixie base and publishes a `scratch` package carrier -- not an
   aria2 runtime -- holding `/packages/` (the two `.deb` files), `/source/`
-  (Debian's source package as fetched plus both DebridPulse patches: the
+  (Debian's source package as fetched plus both DownloadPulse patches: the
   complete corresponding source of the shipped binaries), `/VERSION`,
   `/SHA256SUMS`, `/aria2c-version.txt` and `/verify-features.sh`. The aria2
   Package workflow builds it natively on `ubuntu-24.04` and
   `ubuntu-24.04-arm` (no emulation) with provenance and SBOM, and publishes
   the multi-arch manifest write-once as
-  `ghcr.io/xipher-zero/debridpulse-aria2:<version with + as ->`, annotated
+  `ghcr.io/xipher-zero/downloadpulse-aria2:<version with + as ->`, annotated
   with a hash of every tracked file under `packaging/aria2/`. A published
   version is never rebuilt: changed inputs without a version bump fail
   closed, and the publish job refuses to create over an existing tag.
 - **Consumption:** the application Dockerfile names the artifact by its
   manifest DIGEST, never its tag, copies only the two packages, `VERSION`
-  and the verifier (to `/usr/share/debridpulse/aria2/`), installs the
+  and the verifier (to `/usr/share/downloadpulse/aria2/`), installs the
   packages in its single apt transaction -- so their runtime dependencies
   resolve from the Debian archive exactly as the archive package's would --
   and runs the verifier. No compiler, build dependency or aria2 source tree
@@ -272,7 +272,7 @@ DebridPulse image digest  (Fork Image -> Container Security -> Candidate
   let the aria2 Package workflow publish the new artifact, pin its new
   digest in the application Dockerfile, and requalify the new image digest
   (§6). Drop the rebuild entirely once the archive package carries an
-  equivalent CONNECT fix and DebridPulse no longer needs BitTorrent removed
+  equivalent CONNECT fix and DownloadPulse no longer needs BitTorrent removed
   at build time.
 
 ## 4b. Rebuilt Debian package: FFmpeg
@@ -282,7 +282,7 @@ finalizer: it copies already-acquired native streams into the one planned
 container and never acquires, decodes for output or encodes anything. Debian's
 own `ffmpeg` binary package also carries `ffplay`, links every encoder,
 filter, device and GPU library, and pulls a ~420 MB closure (LLVM and Mesa
-through SDL2 among it). DebridPulse therefore rebuilds it, like aria2 (§4a),
+through SDL2 among it). DownloadPulse therefore rebuilds it, like aria2 (§4a),
 as its own immutable supply-chain artifact:
 
 ```
@@ -292,7 +292,7 @@ packaging/ffmpeg/  (Debian source version, build configuration, base)
 ghcr.io/xipher-zero/debridpulse-ffmpeg@sha256:<multi-arch manifest digest>
         |  application Dockerfile: FROM ...@sha256 AS ffmpeg-packages
         v
-DebridPulse image digest  (Fork Image -> Container Security -> Candidate
+DownloadPulse image digest  (Image -> Container Security -> Candidate
                            Runtime Qualification -> Release Promotion)
 ```
 
@@ -302,7 +302,7 @@ DebridPulse image digest  (Fork Image -> Container Security -> Candidate
   fetched with `apt-get source` from the signed Debian repository
   configuration the base image uses; apt verifies the `.dsc`, orig and
   debian tarballs against the signed Sources index. Debian's own patches
-  are applied by `apt-get source`; DebridPulse adds none.
+  are applied by `apt-get source`; DownloadPulse adds none.
 - **Configuration (one build script):** `packaging/ffmpeg/build-package.sh`
   owns the configuration and the `+dpN` suffix: `--disable-everything`, then
   only the local `file` and `pipe` protocols (`--disable-network`: no network
@@ -334,7 +334,7 @@ DebridPulse image digest  (Fork Image -> Container Security -> Candidate
   `/VERSION`, `/SHA256SUMS`, `/ffmpeg-version.txt` and `/verify-features.sh`,
   built natively on `ubuntu-24.04` and `ubuntu-24.04-arm` with provenance and
   SBOM, published write-once as
-  `ghcr.io/xipher-zero/debridpulse-ffmpeg:<version without epoch, + as ->`
+  `ghcr.io/xipher-zero/downloadpulse-ffmpeg:<version without epoch, + as ->`
   annotated with a hash of every tracked file under `packaging/ffmpeg/`, and
   consumed by the application Dockerfile by manifest DIGEST.
 - **Licensing:** LGPL-2.1-or-later; the package ships Debian's `copyright`
@@ -360,7 +360,7 @@ it is removed from this list once the image ships the fix.
 - **What:** a heap buffer overflow in 7-Zip's XZ decompression, reachable with
   a crafted archive (ZDI-26-444; fixed upstream in 7-Zip 26.02). CVSS vector
   `AV:L/AC:H/PR:N/UI:R`. The image carries Debian's `25.01+dfsg-1~deb13u2`.
-- **How DebridPulse reaches 7-Zip:** only through archive extraction, which
+- **How DownloadPulse reaches 7-Zip:** only through archive extraction, which
   is off by default (`extract_enabled: false`). 7-Zip is never reachable
   over the network: it has no listener, is not exposed through the API, and
   only runs as a child of the extractor, against files that have already been
@@ -372,9 +372,9 @@ it is removed from this list once the image ships the fix.
     `lzma`, then read by Python's validated TAR path
     (`postprocessors/archive/secure.py`), never by 7-Zip;
   - 7-Zip receives only `.7z`, pinned to its 7z parser (`-t7z`), and RAR whose
-    signature DebridPulse has already verified. Neither format uses the XZ
+    signature DownloadPulse has already verified. Neither format uses the XZ
     container, and the parser policy keeps the XZ handler out
-    (`_seven_zip_type_switches`, `-stxxz` on the composite path; v1.0.6).
+    (`_seven_zip_type_switches`, `-stxxz` on the composite path).
 - **Residual risk:** the public advisory does not say whether the faulty
   routine is shared with the LZMA2 decoder that `.7z` archives use. Until
   that is known, a crafted `.7z` should be assumed able to reach it. 7-Zip

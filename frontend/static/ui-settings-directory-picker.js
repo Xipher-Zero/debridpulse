@@ -269,7 +269,7 @@
       if (focusedPath != null) Array.from(view.list.querySelectorAll('[data-directory-row]')).find(row => row.dataset.path === focusedPath)?.focus({preventScroll: true});
       else if (upFocused) view.up.focus({preventScroll: true});
     };
-    document.addEventListener('debridpulse:locale-changed', relabel);
+    document.addEventListener('downloadpulse:locale-changed', relabel);
 
     if (startPath.length) void loadDirectory(startPath, {fallbackOnFailure: true});
     else void loadDirectory(null);
@@ -279,7 +279,7 @@
       release() {
         if (!live) return;
         live = false;
-        document.removeEventListener('debridpulse:locale-changed', relabel);
+        document.removeEventListener('downloadpulse:locale-changed', relabel);
         generation += 1;
         if (controller) controller.abort();
         controller = null;

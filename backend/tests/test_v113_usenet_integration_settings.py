@@ -67,7 +67,7 @@ def test_server_bounds_are_the_native_ones_except_a_deliberate_connection_floor(
     """Priority matches SABnzbd 5.1.3 exactly; connections deliberately do not.
 
     SAB allows 0 connections because that is how SAB switches a server off.
-    DebridPulse has its own per-server Enable control, so 0 would only produce
+    DownloadPulse has its own per-server Enable control, so 0 would only produce
     a server that reads as on while being unable to open a single connection --
     configured, testable, and incapable of acquiring. The floor is therefore 1.
     """

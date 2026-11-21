@@ -174,7 +174,7 @@ def test_profile_roots_keep_their_codes_on_each_host_rule():
 
 
 def test_an_import_root_is_judged_in_the_external_clients_namespace():
-    # A Linux or container client's root is a POSIX path wherever DebridPulse runs.
+    # A Linux or container client's root is a POSIX path wherever DownloadPulse runs.
     assert profiles.client_flavor("/imports/tv") is posixpath
     assert profiles.client_flavor("C:\\Imports") is os.path
     assert profiles._absolute("/imports/tv", "import_root", profiles.client_flavor("/imports/tv")) == "/imports/tv"
@@ -198,7 +198,7 @@ def test_windows_reserved_names(name, reserved):
     assert windows_reserved_name(name) is reserved
 
 
-# ── File names DebridPulse writes ─────────────────────────────────────────────
+# ── File names DownloadPulse writes ─────────────────────────────────────────────
 
 @pytest.mark.parametrize("value,windows,posix", [
     ("NUL", "_NUL", "NUL"), ("con.txt", "_con.txt", "con.txt"), ("Episode.", "Episode", "Episode."),
@@ -366,7 +366,7 @@ def test_data_folders_default_beside_the_database(tmp_path):
     data = tmp_path / "Data Root"
     expected = [str(data / "backups"), str(data / "db-backups"),
                 str(data / "aria2" / "aria2.log"), str(data / "aria2" / "aria2.session")]
-    assert _defaults(str(data / "debridpulse.db")) == expected
+    assert _defaults(str(data / "downloadpulse.db")) == expected
     # Each is a folder value the Settings write rule and the aria2 schema accept.
     for value in expected[:2]:
         AbsolutePath().check(value)
@@ -377,5 +377,5 @@ def test_data_folders_default_beside_the_database(tmp_path):
 def test_the_container_defaults_are_unchanged():
     container = ["/app/data/backups", "/app/data/db-backups", "/app/data/aria2/aria2.log",
                  "/app/data/aria2/aria2.session"]
-    observed = _defaults("/app/data/debridpulse.db")
+    observed = _defaults("/app/data/downloadpulse.db")
     assert observed == ([str(Path(value)) for value in container] if WINDOWS else container)

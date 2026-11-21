@@ -4,10 +4,7 @@ on:
   push:
     branches:
       - main
-      - '1.0.11'
-      - '1.0.12'
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
       - 'audit/**'
     tags:
@@ -16,10 +13,7 @@ on:
   pull_request:
     branches:
       - main
-      - '1.0.11'
-      - '1.0.12'
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
   workflow_dispatch:
     inputs:
@@ -51,7 +45,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       PW_SHARD: ${{ matrix.shard }}
       SHARD_ID: shard-${{ strategy.job-index }}
-      IMAGE: debridpulse-browser:${{ github.sha }}
+      IMAGE: downloadpulse-browser:${{ github.sha }}
       DP_BASE_URL: http://127.0.0.1:8080
       DP_AUTH_BASE_URL: http://127.0.0.1:8081
       # The candidate image serving the real application with the test-only
@@ -404,7 +398,7 @@ jobs:
             # Anchor: its own tree, its own image, its own locked browser dependencies and
             # specs, on separate ports. Nothing from the candidate is mixed in.
             anchor_infra() { printf '%s\n' "$1" > "$anch/isolated/infrastructure_failure.txt"; }
-            anchor_image="debridpulse-browser-anchor:$QUALIFICATION_ANCHOR_SHA"
+            anchor_image="downloadpulse-browser-anchor:$QUALIFICATION_ANCHOR_SHA"
             build_budget=$(( deadline - $(date +%s) ))
             [ "$build_budget" -ge 1 ] || build_budget=1
             if ! git -C "$GITHUB_WORKSPACE" archive "$QUALIFICATION_ANCHOR_SHA" | tar -x -C "$anchor_src"; then

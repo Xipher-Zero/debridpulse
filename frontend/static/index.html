@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
-<title>DebridPulse</title>
+<title>DownloadPulse</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css?v=49">
@@ -58,17 +58,17 @@
       <path class="pulse-right" d="M300 60 H402 C406 60 408 51 412 51 C416 51 418 60 422 60 H430 L434 66 L441 24 L448 84 L453 60 H464 C470 60 473 46 480 46 C487 46 490 60 496 60 H600"/>
     </svg>
     <dp-logo class="dp-desktop-start-mark" aria-hidden="true"></dp-logo>
-    <div class="dp-desktop-start-brand" aria-hidden="true">Debrid<span>Pulse</span></div>
-    <div class="dp-desktop-start-text" data-i18n="desktop.starting">Starting DebridPulse…</div>
+    <div class="dp-desktop-start-brand" aria-hidden="true">Download<span>Pulse</span></div>
+    <div class="dp-desktop-start-text" data-i18n="desktop.starting">Starting DownloadPulse…</div>
   </div>
 </div>
 
 <aside id="sidebar">
   <dp-signal-field class="dp-signal-field" aria-hidden="true"></dp-signal-field>
   <div class="logo" onclick="nav(document.querySelector('#sidebar .nav-item[data-view=dashboard]'), event)">
-    <dp-logo class="logo-icon" role="img" aria-label="DebridPulse logo" data-i18n-attr="aria-label:shell.logo_label"></dp-logo>
+    <dp-logo class="logo-icon" role="img" aria-label="DownloadPulse logo" data-i18n-attr="aria-label:shell.logo_label"></dp-logo>
     <div class="logo-text">
-      <div class="logo-name logo-name-full" data-tooltip="DebridPulse">Debrid<span>Pulse</span></div>
+      <div class="logo-name logo-name-full" data-tooltip="DownloadPulse">Download<span>Pulse</span></div>
     </div>
   </div>
   <nav>
@@ -138,10 +138,10 @@
       <h1 id="page-title" data-i18n="shell.page.dashboard.title">Dashboard</h1>
       <p id="page-subtitle" class="dp-page-subtitle" data-i18n="shell.page.dashboard.subtitle">Download activity and system status.</p>
     </div>
-    <a id="update-badge" href="https://github.com/Xipher-Zero/debridpulse/blob/main/CHANGELOG.md"
-       target="_blank" rel="noopener" aria-label="Open the DebridPulse changelog"
+    <a id="update-badge" href="https://github.com/Xipher-Zero/downloadpulse/blob/main/CHANGELOG.md"
+       target="_blank" rel="noopener" aria-label="Open the DownloadPulse changelog"
        style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--accent);border-radius:20px;padding:3px 12px;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:none"
-       data-tooltip="Open the DebridPulse changelog">&#128230; <span id="update-badge-version"></span> available</a>
+       data-tooltip="Open the DownloadPulse changelog">&#128230; <span id="update-badge-version"></span> available</a>
     <template data-requires="administer"><div id="topbar-actions"></div></template>
     <div id="runtime-speed-badge" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:default" data-tooltip="Active / max — live speed — download speed cap" data-i18n-attr="data-tooltip:runtime_badge.tooltip_admin">
       <span style="color:var(--green)">&#9660;</span><template data-requires="administer"><span id="runtime-badge-active">0</span><span style="color:var(--text3)">/</span><span id="runtime-badge-max">0</span>
@@ -451,7 +451,7 @@
     <div class="view" id="view-events" data-presentation="activity-log">
       <div class="card dp-activity-card">
         <div class="card-header">
-          <span class="card-title dp-activity-card-title" data-dp-structural-title="1"><img src="/icons/dp/document.svg" alt="" aria-hidden="true" class="dp-icon dp-activity-title-icon"><span class="dp-activity-heading-copy"><span class="dp-activity-heading" data-i18n="activity.title">For the Record</span><span class="dp-activity-subtitle" data-i18n="activity.subtitle">Everything DebridPulse thought was worth mentioning.</span></span></span>
+          <span class="card-title dp-activity-card-title" data-dp-structural-title="1"><img src="/icons/dp/document.svg" alt="" aria-hidden="true" class="dp-icon dp-activity-title-icon"><span class="dp-activity-heading-copy"><span class="dp-activity-heading" data-i18n="activity.title">For the Record</span><span class="dp-activity-subtitle" data-i18n="activity.subtitle">Everything DownloadPulse thought was worth mentioning.</span></span></span>
           <div class="dp-activity-header-actions">
             <label class="dp-activity-live" for="ev-live" data-state="off">
               <span class="dp-activity-live-label" data-i18n="activity.live.label">Auto Refresh</span>
@@ -587,7 +587,7 @@
     </template>
 
     <!-- The one version datum: just below the active page's master surface. -->
-    <div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DebridPulse version" data-i18n-attr="aria-label:shell.version_label">v…</div>
+    <div class="logo-ver dp-app-version" id="sidebar-version" aria-label="DownloadPulse version" data-i18n-attr="aria-label:shell.version_label">v…</div>
   </div>
   <!-- The handheld dock (below 780px): app.js renders it from the authorized
        sidebar entries above, in their data-dock order; More holds the rest. -->
@@ -623,7 +623,7 @@
 <!-- Localization: the formatter (a module, in document order with the deferred scripts) and the
      canonical English catalog, both in place before the application script. -->
 <script type="module" src="/ui-i18n-formatter.js?v=1"></script>
-<script src="/i18n/en.js?v=14cc85b7b718dadf" defer></script>
+<script src="/i18n/en.js?v=ec5edf4d27fe5b74" defer></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>
 <script src="/operator-title.js?v=29" defer></script>
 <script src="/app.js?v=37" defer></script>

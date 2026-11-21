@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>DebridPulse</title>
-<meta name="description" content="DebridPulse is a self-hosted transfer manager for debrid services, Usenet, network sources and media pages: direct links, magnets, torrents and NZBs.">
+<title>DownloadPulse</title>
+<meta name="description" content="DownloadPulse is a self-hosted transfer manager for debrid services, Usenet, network sources and media pages: direct links, magnets, torrents and NZBs.">
 <link rel="icon" type="image/svg+xml" href="./frontend/static/favicon.svg">
 <link rel="apple-touch-icon" href="./docs/logo.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -151,14 +151,14 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
 <!-- NAV -->
 <nav>
   <a href="#" class="nav-logo">
-    <img src="./docs/logo.svg" alt="DebridPulse logo">
-    <span class="nav-logo-text">Debrid<span>Pulse</span></span>
+    <img src="./docs/logo.svg" alt="DownloadPulse logo">
+    <span class="nav-logo-text">Download<span>Pulse</span></span>
   </a>
   <ul class="nav-links">
     <li><a href="#features">Features</a></li>
     <li><a href="#pipeline">How it works</a></li>
     <li><a href="#install">Install</a></li>
-    <li><a href="https://github.com/Xipher-Zero/debridpulse" target="_blank" class="nav-cta">GitHub ↗</a></li>
+    <li><a href="https://github.com/Xipher-Zero/downloadpulse" target="_blank" class="nav-cta">GitHub ↗</a></li>
   </ul>
   <div class="hamburger" id="hamburger" onclick="toggleNav()">
     <span></span><span></span><span></span>
@@ -168,7 +168,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
   <a href="#features" onclick="toggleNav()">Features</a>
   <a href="#pipeline" onclick="toggleNav()">How it works</a>
   <a href="#install" onclick="toggleNav()">Install</a>
-  <a href="https://github.com/Xipher-Zero/debridpulse" target="_blank">GitHub ↗</a>
+  <a href="https://github.com/Xipher-Zero/downloadpulse" target="_blank">GitHub ↗</a>
 </div>
 
 <!-- HERO -->
@@ -178,16 +178,16 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
     v<span id="version-num">latest</span>&nbsp;·&nbsp;open source
   </div>
   <h1 class="hero-title">Debrid downloads,<br><span>in motion.</span></h1>
-  <p class="hero-sub">Submit direct links, magnets, or torrent files through one self-hosted manager. DebridPulse handles the full lifecycle — submit, process, unlock, download, track, and recover.</p>
+  <p class="hero-sub">Submit direct links, magnets, or torrent files through one self-hosted manager. DownloadPulse handles the full lifecycle — submit, process, unlock, download, track, and recover.</p>
   <div class="hero-ctas">
     <a href="#install" class="btn btn-primary">⚡ Get started</a>
-    <a href="https://github.com/Xipher-Zero/debridpulse" target="_blank" class="btn btn-ghost">
+    <a href="https://github.com/Xipher-Zero/downloadpulse" target="_blank" class="btn btn-ghost">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.374 0 0 5.373 0 12c0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23A11.509 11.509 0 0112 5.803c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576C20.566 21.797 24 17.3 24 12c0-6.627-5.373-12-12-12z"/></svg>
       GitHub
     </a>
-    <a href="https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse" target="_blank" class="btn btn-ghost">🐳 GHCR</a>
+    <a href="https://github.com/Xipher-Zero/downloadpulse/pkgs/container/downloadpulse" target="_blank" class="btn btn-ghost">🐳 GHCR</a>
   </div>
-  <p class="hero-license">GPL-2.0-or-later · DebridPulse © 2026 Chris Moore</p>
+  <p class="hero-license">GPL-2.0-or-later · DownloadPulse © 2026 Chris Moore</p>
   <div class="hero-stats">
     <div class="hero-stat"><div class="hero-stat-num">3</div><div class="hero-stat-label">Input types</div></div>
     <div class="hero-stat"><div class="hero-stat-num">Bundled</div><div class="hero-stat-label">aria2 engine</div></div>
@@ -256,7 +256,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
           <div class="step-num">1</div>
           <div class="step-body">
             <strong>Copy the compose file</strong>
-            <p>Adjust volume paths for your setup. The download folder is where DebridPulse and its aria2 engine write files.</p>
+            <p>Adjust volume paths for your setup. The download folder is where DownloadPulse and its aria2 engine write files.</p>
           </div>
         </div>
         <div class="install-step reveal">
@@ -277,7 +277,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
           <div class="step-num">4</div>
           <div class="step-body">
             <strong>Unraid App Store</strong>
-            <p>Use the fork's versioned GHCR image and preserve the existing config, data and download mounts.</p>
+            <p>Use the versioned GHCR image and preserve the existing config, data and download mounts.</p>
           </div>
         </div>
       </div>
@@ -289,18 +289,18 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
           <button class="copy-btn" onclick="copyCode('cc1',this)">copy</button>
         </div>
         <pre id="cc1"><span class="kw">services</span>:
-  <span class="kw">debridpulse</span>:
-    <span class="cm">image</span>: <span class="str">ghcr.io/xipher-zero/debridpulse:v1.0.13</span>
-    <span class="cm">container_name</span>: <span class="str">debridpulse</span>
+  <span class="kw">downloadpulse</span>:
+    <span class="cm">image</span>: <span class="str">ghcr.io/xipher-zero/downloadpulse:v1.0.0</span>
+    <span class="cm">container_name</span>: <span class="str">downloadpulse</span>
     <span class="cm">restart</span>: <span class="str">unless-stopped</span>
     <span class="cm">ports</span>: <span class="str">["8095:8095"]</span>
     <span class="cm">environment</span>:
       - <span class="str">TZ=Europe/Berlin</span>
       - <span class="str">LOG_LEVEL=INFO</span>
     <span class="cm">volumes</span>:
-      - <span class="str">/mnt/appdata/debridpulse/config:/app/config</span>
-      - <span class="str">/mnt/appdata/debridpulse/data:/app/data</span>
-      - <span class="str">/mnt/downloads/debridpulse:/download</span></pre>
+      - <span class="str">/mnt/appdata/downloadpulse/config:/app/config</span>
+      - <span class="str">/mnt/appdata/downloadpulse/data:/app/data</span>
+      - <span class="str">/mnt/downloads/downloadpulse:/download</span></pre>
       </div>
       <div class="code-block reveal">
         <div class="code-header">
@@ -308,16 +308,16 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
           <button class="copy-btn" onclick="copyCode('cc2',this)">copy</button>
         </div>
         <pre id="cc2"><span class="str">docker run -d \
-  --name debridpulse \
+  --name downloadpulse \
   --restart unless-stopped \
   -p 8095:8095 \
   -e TZ=Europe/Berlin \
   -e CONFIG_PATH=/app/config/config.json \
-  -e DB_PATH=/app/data/debridpulse.db \
-  -v /mnt/appdata/debridpulse/config:/app/config \
-  -v /mnt/appdata/debridpulse/data:/app/data \
-  -v /mnt/downloads/debridpulse:/download \
-  ghcr.io/xipher-zero/debridpulse:v1.0.13</span></pre>
+  -e DB_PATH=/app/data/downloadpulse.db \
+  -v /mnt/appdata/downloadpulse/config:/app/config \
+  -v /mnt/appdata/downloadpulse/data:/app/data \
+  -v /mnt/downloads/downloadpulse:/download \
+  ghcr.io/xipher-zero/downloadpulse:v1.0.0</span></pre>
       </div>
     </div>
   </div>
@@ -349,7 +349,7 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
 <!-- WHY -->
 <div style="background:var(--bg2);border-top:1px solid var(--brd);padding:100px 5vw">
 <div id="why" style="max-width:1100px;margin:0 auto">
-  <div class="section-label reveal">Why DebridPulse</div>
+  <div class="section-label reveal">Why DownloadPulse</div>
   <h2 class="section-title reveal">Built for reliability.</h2>
   <p class="section-sub reveal">Designed to run unattended for weeks. Every edge case is handled.</p>
   <div class="why-grid">
@@ -384,21 +384,21 @@ footer{padding:48px 5vw;border-top:1px solid var(--brd);display:flex;align-items
 
 <!-- FOOTER -->
 <footer>
-  <a href="#" class="footer-logo">Debrid<span>Pulse</span></a>
-  <div class="footer-copy">DebridPulse · GPL-2.0-or-later · © 2026 Chris Moore</div>
+  <a href="#" class="footer-logo">Download<span>Pulse</span></a>
+  <div class="footer-copy">DownloadPulse · GPL-2.0-or-later · © 2026 Chris Moore</div>
   <div class="footer-links">
-    <a href="https://github.com/Xipher-Zero/debridpulse" target="_blank">GitHub</a>
-    <a href="https://github.com/Xipher-Zero/debridpulse/pkgs/container/debridpulse" target="_blank">GHCR</a>
-    <a href="https://github.com/Xipher-Zero/debridpulse/blob/main/CHANGELOG.md" target="_blank">Changelog</a>
-    <a href="https://github.com/Xipher-Zero/debridpulse/blob/main/LICENSE" target="_blank">License</a>
+    <a href="https://github.com/Xipher-Zero/downloadpulse" target="_blank">GitHub</a>
+    <a href="https://github.com/Xipher-Zero/downloadpulse/pkgs/container/downloadpulse" target="_blank">GHCR</a>
+    <a href="https://github.com/Xipher-Zero/downloadpulse/blob/main/CHANGELOG.md" target="_blank">Changelog</a>
+    <a href="https://github.com/Xipher-Zero/downloadpulse/blob/main/LICENSE" target="_blank">License</a>
   </div>
 </footer>
 
 <script>
-// Version from the fork's canonical VERSION file
+// Version from the canonical VERSION file
 (async()=>{
   try{
-    const r=await fetch('https://raw.githubusercontent.com/Xipher-Zero/debridpulse/main/VERSION');
+    const r=await fetch('https://raw.githubusercontent.com/Xipher-Zero/downloadpulse/main/VERSION');
     if(r.ok){const v=(await r.text()).trim();if(v)document.getElementById('version-num').textContent=v;}
   }catch(e){}
 })();

@@ -197,7 +197,7 @@ class AccountEntitlementMaintenance:
         """Fetch authoritative account truth now -- the explicit operator mode.
 
         Bypasses passive freshness (a still-fresh last-known-good) and the
-        background retry delay, because the operator asked DebridPulse to check
+        background retry delay, because the operator asked DownloadPulse to check
         now; works while the integration is administratively disabled, because
         reading account truth is proof, not participation. Persistence,
         derivation, contraction and announcement are exactly the ordinary

@@ -61,7 +61,7 @@ def test_transfer_status_badges_restore_theme_aware_semantic_states() -> None:
     )
     missing = [fragment for fragment in required if fragment not in css]
     assert not missing, f"transfer status contract is missing: {missing}"
-    # Its values are the native accent's, per mode, so DebridPulse renders as before.
+    # Its values are the native accent's, per mode, so DownloadPulse renders as before.
     tokens = (TRANSFER.parent / "design-tokens.css").read_text(encoding="utf-8")
     assert "--dp-state-processing-badge: #b45cff;" in tokens
     assert "--dp-state-processing-badge: #9637f5;" in tokens

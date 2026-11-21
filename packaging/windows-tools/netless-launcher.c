@@ -1,8 +1,8 @@
-/* netless-launcher.exe -- DebridPulse's Windows stand-in for a script's "#!".
+/* netless-launcher.exe -- DownloadPulse's Windows stand-in for a script's "#!".
  *
  * Windows starts only executables, and yt-dlp starts every Media Downloads
  * helper (ffmpeg, ffprobe, deno) from one executable path. On POSIX that path
- * is DebridPulse's wrapper script, whose "#!" line makes the kernel run the
+ * is DownloadPulse's wrapper script, whose "#!" line makes the kernel run the
  * network-confinement shim (backend/executors/media/netless.py) before the
  * real tool. On Windows the media sandbox puts a copy of this launcher beside
  * each wrapper script, as <script>.exe; it does exactly what the kernel does

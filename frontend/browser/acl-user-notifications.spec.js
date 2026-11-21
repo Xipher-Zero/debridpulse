@@ -23,7 +23,7 @@ async function signIn(browser, {username, password}, viewport = {width: 1440, he
   // The application's own live pulse: a role change reaches an open page as
   // its account_changed event, so a test that awaits that reset first waits
   // for the page's pulse to be connected (pulseConnected below).
-  await context.addInitScript(() => document.addEventListener('debridpulse:pulse-connected', () => {
+  await context.addInitScript(() => document.addEventListener('downloadpulse:pulse-connected', () => {
     window.__dpPulseConnected = true;
   }));
   const page = await context.newPage();
@@ -50,7 +50,7 @@ async function signIn(browser, {username, password}, viewport = {width: 1440, he
 const pulseConnected = page => expect.poll(() => page.evaluate(() => window.__dpPulseConnected === true)).toBe(true);
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);

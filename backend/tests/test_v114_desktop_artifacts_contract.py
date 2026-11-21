@@ -61,7 +61,7 @@ def test_the_build_carries_only_microsofts_signed_unmodified_redistributable():
     assert '-notmatch "O=Microsoft Corporation"' in build and '[version]"14.51"' in build
     assert build.index("Get-AuthenticodeSignature") < build.index("bash packaging/desktop/windows/build-installer.sh")
     licences = (ROOT / "docs" / "DEPENDENCY_LICENSES.md").read_text(encoding="utf-8")
-    assert "**Bundled, unmodified, as Distributable Code.**" in licences and "not covered by DebridPulse's GPL" in licences
+    assert "**Bundled, unmodified, as Distributable Code.**" in licences and "not covered by DownloadPulse's GPL" in licences
 
 
 def _windows_step(prefix: str) -> dict:
@@ -81,7 +81,7 @@ def test_windows_builds_its_installer_with_the_pinned_nsis_and_install_tests_tha
     names = [step.get("name", "") for step in _steps("desktop")]
     assert names.index(build["name"]) < names.index(install["name"])           # one job, one runner
     run = install["run"]
-    assert "desktop-build\\windows\\DebridPulse-*-windows-x64.exe" in run       # the EXE built just above
+    assert "desktop-build\\windows\\DownloadPulse-*-windows-x64.exe" in run       # the EXE built just above
     assert "https://aka.ms/vc14/vc_redist.x64.exe" in run and "$env:RUNNER_TEMP\\vc_redist.x64.exe" in run
     assert run.index("$refused.ExitCode -ne 3") < run.index("Invoke-WebRequest") < run.index(
         "$install = Start-Process -FilePath $exe")
@@ -208,7 +208,7 @@ def test_the_handover_checks_each_installer_against_its_builders_line_in_either_
         pytest.skip("needs bash and GNU sha256sum")
     step = next(s for s in _steps("handover") if s.get("name", "").startswith("The installers -- exactly one of each"))
     line = next(row.strip() for row in step["run"].splitlines() if "sha256sum -c -" in row)
-    expected = "DebridPulse-1.0.14-windows-x64.exe"
+    expected = "DownloadPulse-1.0.14-windows-x64.exe"
     payload = b"installer bytes"
     digest = hashlib.sha256(payload).hexdigest()
     other = hashlib.sha256(b"other").hexdigest()
@@ -232,7 +232,7 @@ def test_the_handover_checks_each_installer_against_its_builders_line_in_either_
 
 def _dmg_settings() -> dict:
     """dmg-settings.py as dmgbuild executes it, with dmgbuild's ``defines``."""
-    values = {"defines": {"app": "/build/DebridPulse.app", "background": "/build/dmg-background.tiff"}}
+    values = {"defines": {"app": "/build/DownloadPulse.app", "background": "/build/dmg-background.tiff"}}
     exec((ROOT / "packaging/desktop/macos/dmg-settings.py").read_text(encoding="utf-8"), values)
     return values
 
@@ -242,13 +242,13 @@ def test_the_dmg_window_puts_the_application_beside_an_applications_link_on_its_
     sys.path.insert(0, str(ROOT / "packaging" / "desktop"))
     import assemble
     settings = _dmg_settings()
-    assert settings["files"] == ["/build/DebridPulse.app"]
+    assert settings["files"] == ["/build/DownloadPulse.app"]
     assert settings["symlinks"] == {"Applications": "/Applications"}
     assert settings["background"] == "/build/dmg-background.tiff"
-    assert settings["icon"] == "/build/DebridPulse.app/Contents/Resources/DebridPulse.icns"
-    assert settings["format"] == "UDZO" and settings["volume_name"] == "DebridPulse"
+    assert settings["icon"] == "/build/DownloadPulse.app/Contents/Resources/DownloadPulse.icns"
+    assert settings["format"] == "UDZO" and settings["volume_name"] == "DownloadPulse"
     # Each icon in the slot the derived background draws for it, in a window of its size.
-    assert settings["icon_locations"] == {"DebridPulse.app": assemble.DMG_APP, "Applications": assemble.DMG_APPLICATIONS}
+    assert settings["icon_locations"] == {"DownloadPulse.app": assemble.DMG_APP, "Applications": assemble.DMG_APPLICATIONS}
     assert settings["window_rect"][1] == assemble.DMG_WINDOW
     assert settings["default_view"] == "icon-view" and settings["icon_size"] == 128
     assert not any(settings[key] for key in ("show_toolbar", "show_sidebar", "show_status_bar", "show_pathbar",
@@ -277,7 +277,7 @@ def test_the_dmg_is_built_by_dmgbuild_from_a_hash_locked_build_only_lock():
     assert "--require-hashes --no-deps \\\n            -r packaging/desktop/macos/dmg-requirements.txt" in workflow
     assert 'DMGBUILD="$RUNNER_TEMP/dmg-tools/bin/dmgbuild" bash packaging/desktop/macos/build-app.sh' in workflow
     assert '[ "$(readlink "$mnt/Applications")" = /Applications ]' in workflow
-    assert 'assert places == {"DebridPulse.app": (170, 190), "Applications": (490, 190)}' in workflow
+    assert 'assert places == {"DownloadPulse.app": (170, 190), "Applications": (490, 190)}' in workflow
 
 
 # ── The native shell: Neutralino 6.10.0 from its pinned source, patched ────
@@ -286,7 +286,7 @@ NEUTRALINO_COMMIT = "4361b63eb1157fc7dedb29b92815a08ec0002767"
 
 
 def test_the_flatpak_builds_the_shell_from_the_pinned_commit_with_the_linux_patch():
-    manifest = yaml.safe_load((ROOT / "packaging/desktop/flatpak/org.debridpulse.desktop.yml").read_text(encoding="utf-8"))
+    manifest = yaml.safe_load((ROOT / "packaging/desktop/flatpak/net.downloadpulse.desktop.yml").read_text(encoding="utf-8"))
     modules = {module["name"]: module for module in manifest["modules"]}
     assert next(iter(modules)) == "neutralino"                 # built first, before the tools and the application
     sources = modules["neutralino"]["sources"]
@@ -298,15 +298,15 @@ def test_the_flatpak_builds_the_shell_from_the_pinned_commit_with_the_linux_patc
     # only once the installed executable is the binary it names.
     provenance = modules["neutralino"]["build-commands"][-1]
     assert f'"commit": "{NEUTRALINO_COMMIT}"' in provenance and "sha256sum linux-gtk-main-thread.patch" in provenance
-    assert "sha256sum /app/lib/neutralino/debridpulse-shell" in provenance
-    record = next(c for c in modules["debridpulse"]["build-commands"] if "BUILD-INFO.json" in c)
-    commands = modules["debridpulse"]["build-commands"]
+    assert "sha256sum /app/lib/neutralino/downloadpulse-shell" in provenance
+    record = next(c for c in modules["downloadpulse"]["build-commands"] if "BUILD-INFO.json" in c)
+    commands = modules["downloadpulse"]["build-commands"]
     assert commands.index(record) == commands.index(
-        "install -m755 /app/lib/neutralino/debridpulse-shell /app/lib/debridpulse/desktop/shell/debridpulse-shell") + 1
+        "install -m755 /app/lib/neutralino/downloadpulse-shell /app/lib/downloadpulse/desktop/shell/downloadpulse-shell") + 1
     assert 'installed == shell["binary_sha256"] or sys.exit(' in record and 'info["shell"] = shell' in record
     script = (ROOT / "packaging/desktop/flatpak/ci-build.sh").read_text(encoding="utf-8")
     assert "zstd git >/dev/null" in script                     # flatpak-builder's git source
-    assert 'echo "shell: $shell (/app/lib/debridpulse/desktop/shell/debridpulse-shell)"' in script
+    assert 'echo "shell: $shell (/app/lib/downloadpulse/desktop/shell/downloadpulse-shell)"' in script
     assert '[ "${recorded%% *}" = "$shell" ] || { echo "BUILD-INFO.json names another shell' in script
 
 

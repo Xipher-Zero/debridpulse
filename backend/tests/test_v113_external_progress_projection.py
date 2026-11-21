@@ -1,5 +1,5 @@
 """External download-client progress: the qBittorrent dialect carries the
-progress DebridPulse itself shows (1.0.13, Sonarr BitTorrent qualification).
+progress DownloadPulse itself shows (1.0.13, Sonarr BitTorrent qualification).
 
 Sonarr and Radarr read a qBittorrent torrent as ``TotalSize = size`` and
 ``RemainingSize = size * (1 - progress)``; ``RemainingTime`` from ``eta``

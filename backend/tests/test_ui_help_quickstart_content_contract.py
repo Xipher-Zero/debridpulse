@@ -19,8 +19,8 @@ def test_quick_start_needs_no_premium_account_to_reach_a_first_download():
     quick = _quick_start_source()
 
     for phrase in (
-        "Getting started with DebridPulse",
-        "DebridPulse is the application you use to submit, route, track, and manage downloads.",
+        "Getting started with DownloadPulse",
+        "DownloadPulse is the application you use to submit, route, track, and manage downloads.",
         "You do not need a paid account to start.",
         "Ordinary web (HTTP and HTTPS), FTP, SFTP, SCP, rsync and WebDAV links",
         "is switched on in a new installation, so ordinary links work straight away",

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# THE one feature-set invariant of DebridPulse's aria2, checked against the
+# THE one feature-set invariant of DownloadPulse's aria2, checked against the
 # INSTALLED binary (aria2 reports its compiled features itself), so the build
 # command is never merely trusted:
 #   - BitTorrent is NOT an enabled feature, and no BitTorrent option exists;

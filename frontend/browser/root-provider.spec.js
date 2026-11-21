@@ -288,7 +288,7 @@ test('an open picker follows the surface refresh: a backup that becomes ready sa
   const before = reads;
 
   state.status.providers.find(item => item.provider_id === 'realdebrid').status = 'prepared';
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:dashboard-recent-rendered')));
   await expect(realdebrid.locator('.dp-root-provider-status')).toHaveText('Ready');
   await expect(menu.locator('.dp-root-provider-row', { hasText: 'Debrid-Link' }).locator('button')).toBeFocused();
   expect(reads - before).toBeGreaterThanOrEqual(1);                 // read on the refresh itself, no poller of its own
@@ -297,7 +297,7 @@ test('an open picker follows the surface refresh: a backup that becomes ready sa
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
   const closed = reads;
-  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered')));
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('downloadpulse:dashboard-recent-rendered')));
   await page.waitForTimeout(200);
   expect(reads).toBe(closed);
 });

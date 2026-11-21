@@ -1,5 +1,5 @@
-/* Executor Work: the operational view of what DebridPulse's executors are
-   doing with the work DebridPulse gave them.
+/* Executor Work: the operational view of what DownloadPulse's executors are
+   doing with the work DownloadPulse gave them.
 
    Nothing in this file is named after an executor, because nothing about the
    surface is: one row grammar serves every executor there is or will be. */
@@ -144,7 +144,7 @@
   white-space: nowrap;
 }
 
-/* Which executor holds this work -- a DebridPulse display identity, never a
+/* Which executor holds this work -- a DownloadPulse display identity, never a
    native job reference. */
 .dp-executor-work-owner {
   margin-top: 3px;

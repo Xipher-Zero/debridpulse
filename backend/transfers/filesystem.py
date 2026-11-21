@@ -323,7 +323,7 @@ async def adoptable_material(plan: MaterializationPlan, footprint: ExecutionFoot
                              integrity=(), *, delay=3.25) -> bool:
     """Pre-dispatch possession: an already stable FILE payload that STRONG
     integrity evidence verifies needs no execution. File length alone never
-    proves possession (DebridPulse material truth is the other proof, owned by
+    proves possession (DownloadPulse material truth is the other proof, owned by
     the engine). A collection is never adopted without a verified execution
     result naming its members."""
     if plan.kind != MaterializationKind.FILE or not integrity:
@@ -403,7 +403,7 @@ def observe_path(path: str) -> dict:
 @dataclass(frozen=True)
 class PayloadFacts:
     """Observable physical facts about one FILE payload, for reconciliation of
-    DebridPulse material truth. Evidence only: nothing here ever makes a byte
+    DownloadPulse material truth. Evidence only: nothing here ever makes a byte
     valid. ``available`` is False when the observation itself failed, which
     proves nothing either way. ``identity`` is ``"<st_dev>:<st_ino>"``;
     ``holes`` are unallocated ranges the filesystem reports inside the probed
@@ -692,7 +692,7 @@ def _prune_empty_parents(base: Path, target: Path) -> None:
 def retire_native_state(root: str, plan: MaterializationPlan, footprint: ExecutionFootprint) -> None:
     """Discard an execution's private native transient state (a resume/control
     file or partial tree) while leaving its materialization boundary -- the
-    payload DebridPulse material truth describes -- untouched. The caller has
+    payload DownloadPulse material truth describes -- untouched. The caller has
     already proven the execution owns it. Never follows a symlink."""
     base = Path(root).resolve()
     transient = tuple(str(item) for item in footprint.transient_paths)
@@ -760,7 +760,7 @@ DIRECTORY_REFUSED = "refused"
 
 def remove_empty_directory(root: str, target: str) -> str:
     """Remove ``target`` if, at that instant, it is an empty directory
-    DebridPulse owns beneath ``root`` -- never anything else.
+    DownloadPulse owns beneath ``root`` -- never anything else.
 
     Every component below ``root`` is opened relative to its parent's open
     descriptor with ``O_DIRECTORY | O_NOFOLLOW``, so no symlink anywhere on

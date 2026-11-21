@@ -1,6 +1,6 @@
 """A Usenet server Test works whether or not Usenet is enabled.
 
-The Test is a real NNTP check made through DebridPulse's own acquisition
+The Test is a real NNTP check made through DownloadPulse's own acquisition
 service, which runs only while Usenet is required (enabled, or owning work).
 So a Test with Usenet disabled brings the service up for itself, and afterwards
 leaves it exactly as the lifecycle decides: stopped again while Usenet is still

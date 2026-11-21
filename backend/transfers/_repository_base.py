@@ -562,7 +562,7 @@ def active_execution_bytes(row, prefix: str = "") -> tuple[int, int] | None:
 
 def effective_progress(status, verified, active_percent, active_basis, active_bytes=None,
                        verified_bytes=None) -> dict:
-    """THE primary progress figure of an unfinished transfer, as DebridPulse
+    """THE primary progress figure of an unfinished transfer, as DownloadPulse
     shows it (``frontend/static/app.js`` ``progress()``): while the transfer
     is downloading or paused and nothing is verified yet (no verified percentage, or
     exactly 0), the current in-flight execution figure; otherwise verified
@@ -1201,16 +1201,16 @@ class DemandChanged(Exception):
 
 class KnownProviderResource(Exception):
     """An inventory observation was refused admission, nothing changed: the
-    provider resource it observes is one some DebridPulse transfer has durably
+    provider resource it observes is one some DownloadPulse transfer has durably
     bound (``provider_resources.resource_key``) -- live or retired. Inventory
     is evidence that the resource exists, never new demand for work
-    DebridPulse already holds or retired."""
+    DownloadPulse already holds or retired."""
 
 
 # What ``torrents.delete_remote`` records about a deleted transfer's remote
 # resources (an existing INTEGER column): kept as they are; removed because
 # the operator asked Delete to (any resource it knows, observed ones too); or
-# retired with the final external demand (only what DebridPulse itself
+# retired with the final external demand (only what DownloadPulse itself
 # created or adopted).
 DELETE_REMOTE_KEEP, DELETE_REMOTE_USER_REQUEST, DELETE_REMOTE_OWNED = 0, 1, 2
 
@@ -1219,7 +1219,7 @@ def terminal_cleanup_authority(status: str, delete_remote) -> str | None:
     """THE cleanup a resource bound to a transfer that is no longer live is
     owed: a deleted transfer's by what its Delete recorded
     (``DELETE_REMOTE_*``); any other ended transfer's (finished, cancelled,
-    consolidated) is surplus DebridPulse owns."""
+    consolidated) is surplus DownloadPulse owns."""
     if str(status) == "deleted":
         mode = int(delete_remote or 0)
         if mode == DELETE_REMOTE_USER_REQUEST:
@@ -2116,7 +2116,7 @@ class TransferRepository:
                     WHERE id=? AND status NOT IN ('deleted','consolidated')""",
                 (total, local_path, int(size_known), transfer_id),
             )
-            # Completion is DebridPulse-valid material, never an executor's
+            # Completion is DownloadPulse-valid material, never an executor's
             # own percentage: a handoff that keeps all material keeps the
             # figure, and a real rollback lowers it by exactly what was lost.
             measure = verified_material_measure(
@@ -3125,7 +3125,7 @@ class TransferRepository:
         the same way whether or not another provider remains. In one
         transaction: the route's latest attempt records the exhaustion and its
         normalized error (so route history explains it); the provider resource
-        it bound, when DebridPulse owns its cleanup (``CREATED``/``ADOPTED``,
+        it bound, when DownloadPulse owns its cleanup (``CREATED``/``ADOPTED``,
         not already absent), gets the ordinary owned cleanup intent the one
         cleanup cadence then drains; and the route ends -- the request holds
         no resource. A transient provider failure ends the route the same
@@ -3704,11 +3704,11 @@ class TransferRepository:
                               cleanup: str | None = None) -> str:
         """Settle an owed reconciliation, atomically. Without ``resource``:
         proven absent (or nothing to own). With it: the creation found --
-        bound to the transfer as DebridPulse's ordinary resource and, with
+        bound to the transfer as DownloadPulse's ordinary resource and, with
         ``cleanup``, given that cleanup intent so the one cleanup cadence
         removes it. A resource this transfer already binds keeps its own
         lifecycle (``"known"``); one another live transfer holds is not
-        DebridPulse's to take (``"foreign"``). ``"bound"`` / ``"settled"``
+        DownloadPulse's to take (``"foreign"``). ``"bound"`` / ``"settled"``
         otherwise."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -3726,7 +3726,7 @@ class TransferRepository:
         (``settle_creation``), or one a late answer named after its route
         was released (``resolution``). A resource this transfer already
         binds keeps its own lifecycle (``"known"``); one another live
-        transfer holds is not DebridPulse's to take (``"foreign"``); otherwise
+        transfer holds is not DownloadPulse's to take (``"foreign"``); otherwise
         it is bound to the transfer as an ordinary resource and, with
         ``cleanup``, given that cleanup intent (``"bound"``)."""
         known = await db.fetchone(
@@ -4564,7 +4564,7 @@ class TransferRepository:
         # Material ownership is explicit and durable: established when the
         # boundary was absent at this admission, or carried forward from
         # this artifact's immediately preceding attempt when THAT attempt
-        # owned it (the present material is DebridPulse's own lineage).
+        # owned it (the present material is DownloadPulse's own lineage).
         # Anything else -- pre-existing material, or no observation -- is
         # unowned, and no cleanup may delete it.
         owner = None
@@ -4846,7 +4846,7 @@ class TransferRepository:
 
     async def reconcile_material(self, artifact_id: int, target: str, facts,
                                  member_facts=None) -> mat.MaterialState | None:
-        """Reconcile DebridPulse material truth with observed payload facts.
+        """Reconcile DownloadPulse material truth with observed payload facts.
 
         Conservative in one direction only: missing, truncated, replaced or
         hole-bearing payload removes affected VALID ranges and advances the
@@ -4898,7 +4898,7 @@ class TransferRepository:
         return self._material(row)
 
     async def previous_writer(self, artifact_id: int):
-        """The artifact's most recent execution attempt and whether DebridPulse
+        """The artifact's most recent execution attempt and whether DownloadPulse
         durably owns the material it wrote (``None`` when it never had one)."""
         async with get_db() as db:
             row = await db.fetchone("SELECT * FROM execution_attempts WHERE artifact_id=? ORDER BY rowid DESC LIMIT 1",
@@ -5923,7 +5923,7 @@ class TransferRepository:
         transfer's remote resources -- now and for any found later
         (``terminal_cleanup_authority``): ``remote`` (the operator's
         "remove from the provider"), else ``owned_cleanup`` (a retirement by
-        the final external demand: what DebridPulse created or adopted), else
+        the final external demand: what DownloadPulse created or adopted), else
         nothing.
         """
         mode = (DELETE_REMOTE_USER_REQUEST if remote else
@@ -6006,7 +6006,7 @@ class TransferRepository:
         live, finished, cancelled or deleted -- with its transfer's lifecycle:
         ``binding_id``, ``transfer_id``, ``status``, ``delete_remote``,
         ``cleanup_authority``, ``cleanup_abandoned``, ``state``, ``payload``.
-        ``None`` when DebridPulse never bound it."""
+        ``None`` when DownloadPulse never bound it."""
         async with get_db() as db:
             row = await db.fetchone(
                 """SELECT r.id AS binding_id,r.transfer_id,r.state,r.cleanup_authority,
@@ -6038,7 +6038,7 @@ class TransferRepository:
 
     async def standby_fenced_providers(self, transfer_id: int, request_id: str) -> set[str]:
         """The providers that must not prepare a NEW backup of this root now:
-        one whose route of the root DebridPulse released (an operator switch
+        one whose route of the root DownloadPulse released (an operator switch
         or a readiness yield), and one whose resource on this transfer still
         owes cleanup (a backup bound to it would be deleted, or overwrite the
         removal). A released route's resource kept as that provider's backup

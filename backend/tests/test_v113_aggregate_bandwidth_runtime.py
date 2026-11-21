@@ -3,7 +3,7 @@
 ``execution_runtime_limits.max_download_bytes_per_second`` has one owner --
 ``transfers.runtime_coordination`` -- which allocates it across the executors
 holding a bandwidth reservation and tells each only its own share. aria2 and
-rsync each enforce their share on the one DebridPulse download budget every
+rsync each enforce their share on the one DownloadPulse download budget every
 one of their connections draws on in the egress guard (aria2's daemon-wide
 limit keeps headroom over it), so their concurrent transfers together --
 never each -- stay within it, whatever the server does.
@@ -39,7 +39,7 @@ SLACK_BYTES = 256 * 1024
 
 
 class Meter:
-    """What DebridPulse has downloaded, over time.
+    """What DownloadPulse has downloaded, over time.
 
     The aggregate is every byte the executors' download budgets delivered --
     all aria2 and rsync traffic crosses them, and they are read at the moment

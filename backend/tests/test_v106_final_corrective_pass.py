@@ -21,14 +21,14 @@ def test_aria2_success_logging_never_formats_request_uri():
 def test_dockerfile_uses_current_v1_oci_identity():
     root = Path(__file__).parents[2]
     dockerfile = (root / "Dockerfile").read_text()
-    workflow = (root / ".github" / "workflows" / "fork-image.yml").read_text()
-    expected_title = "DebridPulse: Universal Transfer Manager"
+    workflow = (root / ".github" / "workflows" / "image.yml").read_text()
+    expected_title = "DownloadPulse: Universal Transfer Manager"
 
     assert f'org.opencontainers.image.title="{expected_title}"' in dockerfile
     assert "org.opencontainers.image.title=" + expected_title in workflow
     assert f'expected_title="{expected_title}"' in workflow
-    assert "DebridPulse \u2014 AllDebrid + aria2 Download Manager" not in dockerfile
-    assert "DebridPulse \u2014 AllDebrid + aria2 Download Manager" not in workflow
+    assert "DownloadPulse \u2014 AllDebrid + aria2 Download Manager" not in dockerfile
+    assert "DownloadPulse \u2014 AllDebrid + aria2 Download Manager" not in workflow
     assert 'org.opencontainers.image.description="Universal transfer orchestration for debrid services and Usenet plus direct network and media sources with managed download engines"' in dockerfile
     assert "Multi-provider Debrid Download Manager" not in dockerfile
     assert "Multi-provider debrid download manager" not in dockerfile

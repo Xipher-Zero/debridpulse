@@ -18,7 +18,7 @@ from db import event_journal
 from db.database import get_db
 from core.localization import CodedRuntimeError
 
-logger = logging.getLogger("debridpulse.db_maintenance")
+logger = logging.getLogger("downloadpulse.db_maintenance")
 
 TABLES = [
     "torrents",

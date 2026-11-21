@@ -8,7 +8,7 @@ Description: Read a CONNECT response no further than its header
  for them. A CONNECT response is now read byte by byte until its header is
  complete, leaving every following byte on the socket for whatever reads the
  tunnel next. Ordinary HTTP responses are read exactly as before.
-Author: DebridPulse <https://github.com/Xipher-Zero/debridpulse>
+Author: DownloadPulse <https://github.com/Xipher-Zero/downloadpulse>
 Forwarded: no
 Last-Update: 2026-10-03
 ---

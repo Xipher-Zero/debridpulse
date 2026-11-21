@@ -1,17 +1,17 @@
-/* DebridPulse application-session bootstrap and owner. Loaded before app.js.
+/* DownloadPulse application-session bootstrap and owner. Loaded before app.js.
  *
  * Owns the browser session and the authenticated same-origin request path.
- * It publishes that path as debridPulseAuth.fetch (session cookie, CSRF header
+ * It publishes that path as downloadPulseAuth.fetch (session cookie, CSRF header
  * on mutations, session revalidation on 401 and 403); it does not replace the
- * native fetch. Every application HTTP call goes through debridPulseAuth.fetch.
+ * native fetch. Every application HTTP call goes through downloadPulseAuth.fetch.
  *
  * It is also the interface's ONE source of authority. The server prepends the
- * caller's authority to this bundle (window.debridPulseAuthority: role,
+ * caller's authority to this bundle (window.downloadPulseAuthority: role,
  * capabilities, account generation, display timezone -- the projection
  * /api/auth/session serves), and before any later script runs this owner
  * mounts every shell part declared as <template data-requires="capability">
  * whose capability the caller holds; every other one is discarded, never
- * constructed. Other owners ask debridPulseAuth.can(capability). Whenever the
+ * constructed. Other owners ask downloadPulseAuth.can(capability). Whenever the
  * session's role or generation stops matching it (an account_changed event, a
  * (re)connected live pulse, a 403, the periodic check) the page reloads under
  * the server's current authority. The server enforces every action regardless. */
@@ -24,7 +24,7 @@
   let sessionState = null;
   let sessionRequest = null;
   let redirecting = false;
-  const granted = window.debridPulseAuthority || {};
+  const granted = window.downloadPulseAuthority || {};
   const held = new Set(granted.capabilities || []);
   const authority = Object.freeze({...granted, capabilities: Object.freeze([...held])});
 
@@ -318,7 +318,7 @@
 
   async function readProfile() {
     try {
-      const response = await debridPulseFetch('/api/account', {headers: {'Accept': 'application/json'}});
+      const response = await downloadPulseFetch('/api/account', {headers: {'Accept': 'application/json'}});
       return response.ok ? await response.json() : null;
     } catch (_) {
       return null;
@@ -329,7 +329,7 @@
    * preference, default}; Candidate A's contract), or null when unread. */
   async function readAccountLocale() {
     try {
-      const response = await debridPulseFetch('/api/account/locale', {headers: {'Accept': 'application/json'}});
+      const response = await downloadPulseFetch('/api/account/locale', {headers: {'Accept': 'application/json'}});
       return response.ok ? await response.json() : null;
     } catch (_) {
       return null;
@@ -337,7 +337,7 @@
   }
 
   async function sendJson(method, url, body) {
-    const response = await debridPulseFetch(url, {
+    const response = await downloadPulseFetch(url, {
       method, headers: {'Content-Type': 'application/json', 'Accept': 'application/json'}, body: JSON.stringify(body),
     });
     if (response.ok) return null;
@@ -408,7 +408,7 @@
     // The language belongs to the same account the presentation does (the
     // server says so before first paint); unread, no language is offered.
     const languages = window.DPLanguagePicker;
-    const languageOwned = window.debridPulseLocale?.owned === true && Boolean(languages);
+    const languageOwned = window.downloadPulseLocale?.owned === true && Boolean(languages);
     const localeReading = languageOwned ? readAccountLocale() : Promise.resolve(null);
     const own = await readProfile();
     let localeState = await localeReading;
@@ -515,10 +515,10 @@
         this.button.addEventListener('click', () => show('language', handle));
         // A language change re-says the button's name (its face is the language's own).
         this.relabel = () => { void this.paint(); };
-        document.addEventListener('debridpulse:locale-changed', this.relabel);
+        document.addEventListener('downloadpulse:locale-changed', this.relabel);
       },
       release() {
-        if (this.relabel) document.removeEventListener('debridpulse:locale-changed', this.relabel);
+        if (this.relabel) document.removeEventListener('downloadpulse:locale-changed', this.relabel);
       },
       async open() {
         this.error.hidden = true;
@@ -545,7 +545,7 @@
         this.handle.setBusy(true);
         let next = null;
         try {
-          const response = await debridPulseFetch('/api/account/locale', {method: 'PUT',
+          const response = await downloadPulseFetch('/api/account/locale', {method: 'PUT',
             headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
             body: JSON.stringify({locale: value})});
           next = response.ok ? await response.json() : null;
@@ -581,7 +581,7 @@
       },
       async read() {
         try {
-          const response = await debridPulseFetch('/api/account/browsers', {headers: {'Accept': 'application/json'}});
+          const response = await downloadPulseFetch('/api/account/browsers', {headers: {'Accept': 'application/json'}});
           const data = response.ok ? await response.json() : null;
           return Array.isArray(data?.browsers) ? data.browsers : null;
         } catch (_) {
@@ -631,7 +631,7 @@
         if (!confirmed) return;
         let ok = false;
         try {
-          const response = await debridPulseFetch(`/api/account/browsers/${encodeURIComponent(item.id)}`,
+          const response = await downloadPulseFetch(`/api/account/browsers/${encodeURIComponent(item.id)}`,
             {method: 'DELETE', headers: {'Accept': 'application/json'}});
           ok = response.ok;
         } catch (_) {
@@ -857,7 +857,7 @@
         csrfToken = '';
         sessionState = null;
         syncSidebarSessionUi(null);
-        document.dispatchEvent(new CustomEvent('debridpulse:session-changed'));
+        document.dispatchEvent(new CustomEvent('downloadpulse:session-changed'));
         redirectToLogin();
         return null;
       }
@@ -870,7 +870,7 @@
       sessionState = data;
       csrfToken = String(data && data.csrf_token || '');
       syncSidebarSessionUi(data);
-      document.dispatchEvent(new CustomEvent('debridpulse:session-changed'));
+      document.dispatchEvent(new CustomEvent('downloadpulse:session-changed'));
       return data;
     }).catch(() => sessionState).finally(() => {
       sessionRequest = null;
@@ -878,7 +878,7 @@
     return sessionRequest;
   }
 
-  async function debridPulseFetch(input, init) {
+  async function downloadPulseFetch(input, init) {
     const options = {...(init || {})};
     const requestMethod = input instanceof Request ? input.method : 'GET';
     const method = String(options.method || requestMethod || 'GET').toUpperCase();
@@ -901,7 +901,7 @@
     const response = await nativeFetch(input, options);
     if (sameOrigin && (response.status === 401 || response.status === 403) && window.location.pathname !== '/login') {
       // A 401 from an application endpoint is not, by itself, proof that the
-      // DebridPulse browser session expired, nor a 403 that the account's role
+      // DownloadPulse browser session expired, nor a 403 that the account's role
       // changed. Confirm against the canonical session endpoint: it signs out
       // an ended session and reloads under a changed authority.
       await refreshSession({force: true});
@@ -910,7 +910,7 @@
   }
 
   async function logoutSession() {
-    const response = await debridPulseFetch('/api/auth/logout', {method: 'POST'});
+    const response = await downloadPulseFetch('/api/auth/logout', {method: 'POST'});
     if (response.ok) {
       csrfToken = '';
       sessionState = null;
@@ -926,7 +926,7 @@
    * interface without the parts the Easy list of that deployment type names.
    * It changes what is shown, never what the account may do: the server
    * enforces that either way. The server states it before this bundle runs
-   * (window.debridPulsePresentation: whether the request has an account to
+   * (window.downloadPulsePresentation: whether the request has an account to
    * own one, and that account's saved choice, null when it could not be read
    * in time), so an Easy page never shows an Advanced-only part first; an
    * unread choice is Advanced until it is read. The choice is the account's
@@ -950,7 +950,7 @@
     standalone: Object.freeze([...EASY_PASS_1]),
   });
   const PRESENTATION_MODES = ['easy', 'advanced'];
-  const stated = window.debridPulsePresentation || {};
+  const stated = window.downloadPulsePresentation || {};
   const presentation = {
     owned: stated.owned === true,
     // The last choice the server confirmed (null: not read), and the one shown.
@@ -995,7 +995,7 @@
     if (mode === presentation.mode) return;
     presentation.mode = mode;
     const withdrawn = composePresented();
-    document.dispatchEvent(new CustomEvent('debridpulse:presentation-changed', {detail: {mode, withdrawn}}));
+    document.dispatchEvent(new CustomEvent('downloadpulse:presentation-changed', {detail: {mode, withdrawn}}));
   }
 
   async function savePresentation() {
@@ -1006,7 +1006,7 @@
       let accepted = null;
       let message = DPI18n.t('presentation.failed');
       try {
-        const response = await debridPulseFetch('/api/account/presentation', {
+        const response = await downloadPulseFetch('/api/account/presentation', {
           method: 'PUT', headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
           body: JSON.stringify({presentation_mode: mode}),
         });
@@ -1044,7 +1044,7 @@
   async function readPresentation() {
     if (!presentation.owned || presentation.saved || presentation.writing) return;
     try {
-      const response = await debridPulseFetch('/api/account/presentation', {headers: {'Accept': 'application/json'}});
+      const response = await downloadPulseFetch('/api/account/presentation', {headers: {'Accept': 'application/json'}});
       const payload = response.ok ? await response.json() : null;
       if (PRESENTATION_MODES.includes(payload?.presentation_mode) && !presentation.saved && !presentation.writing) {
         presentation.saved = payload.presentation_mode;
@@ -1103,8 +1103,8 @@
     return {element: group, release: () => presentation.listeners.delete(paint)};
   }
 
-  window.debridPulseAuth = Object.freeze({
-    fetch: debridPulseFetch,
+  window.downloadPulseAuth = Object.freeze({
+    fetch: downloadPulseFetch,
     refreshSession,
     session: () => sessionState,
     logout: logoutSession,
@@ -1124,10 +1124,10 @@
         deployment: authority.deployment_type === 'standalone' ? 'standalone' : 'server',
         standalone: authority.deployment_type === 'standalone',
         server: authority.deployment_type !== 'standalone',
-        // The installed desktop application (window.debridPulseDesktop): an
+        // The installed desktop application (window.downloadPulseDesktop): an
         // installation fact, not a role or deployment -- what only it has
         // (Local Port) is explained only there.
-        desktop: window.debridPulseDesktop === true,
+        desktop: window.downloadPulseDesktop === true,
         mode: presentation.mode,
         easy: presentation.mode === 'easy',
         advanced: presentation.mode !== 'easy',
@@ -1156,13 +1156,13 @@
   // no record.
   window.DPTheme?.connect({
     save: changes => sendJson('PATCH', '/api/account/appearance', changes).then(failure => !failure),
-    read: () => debridPulseFetch('/api/account/appearance', {headers: {'Accept': 'application/json'}})
+    read: () => downloadPulseFetch('/api/account/appearance', {headers: {'Accept': 'application/json'}})
       .then(response => (response.ok ? response.json() : null)),
   });
 
   // The page's language changed (ui-i18n.js): the session's own controls are
   // built again, from the same session answer, in that language.
-  document.addEventListener('debridpulse:locale-changed', () => {
+  document.addEventListener('downloadpulse:locale-changed', () => {
     document.getElementById('sidebar-auth-mount')?.replaceChildren();
     document.getElementById('topbar-account-mount')?.replaceChildren();
     syncSidebarSessionUi(sessionState);
@@ -1175,7 +1175,7 @@
   // (before its stream subscribed) or while a dropped stream was reconnecting
   // reached nobody: re-read the session now, which resets the page only if its
   // authority moved.
-  document.addEventListener('debridpulse:pulse-connected', () => {
+  document.addEventListener('downloadpulse:pulse-connected', () => {
     refreshSession({force: true}).catch(() => {});
   });
 })();

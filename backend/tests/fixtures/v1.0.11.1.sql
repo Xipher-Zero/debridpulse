@@ -1,7 +1,7 @@
--- DebridPulse v1.0.11.1 exact predecessor schema fixture
+-- DownloadPulse v1.0.11.1 exact predecessor schema fixture
 -- source commit: f06742847f60b5924e4584714055d0a311172158
 BEGIN TRANSACTION;
-CREATE TABLE debridpulse_aria2_owned_gids (
+CREATE TABLE downloadpulse_aria2_owned_gids (
                 gid TEXT PRIMARY KEY,
                 download_file_id INTEGER,
                 torrent_id INTEGER,

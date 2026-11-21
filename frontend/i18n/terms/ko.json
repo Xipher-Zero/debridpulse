@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "ko",
  "register": "Korean. Help prose and messages use the formal polite 합니다체 (…합니다, …하십시오/…하세요 consistently: choose …하세요 for instructions); buttons and menu commands use the short noun forms standard in Korean software (저장, 취소, 삭제, 다시 시도); headings and labels use nouns. Standard Korean spacing (띄어쓰기) between words; Korean typography with ‘ ’ or “ ” quotes. Particles after a {placeholder} or Latin text whose final sound is unknown use the dual form (을(를), 이(가), 은(는), (으)로, 과(와)) or the sentence is rebuilt so no particle attaches. Established loan words where Korean IT usage is settled (서버, 토큰, 대시보드).",
  "terms": {

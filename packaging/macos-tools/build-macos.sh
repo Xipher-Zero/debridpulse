@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# DebridPulse's archive, Usenet and rsync helper tools for macOS (arm64):
+# DownloadPulse's archive, Usenet and rsync helper tools for macOS (arm64):
 #   par2 (par2cmdline) and zstd -- Debian's source packages (prepared by
 #     prepare-sources.sh), built natively with Apple's Command Line Tools;
 #   GNU rsync 3.5.2 -- upstream's source, built natively (macOS's own
-#     /usr/bin/rsync is openrsync, "2.6.9 compatible", below DebridPulse's 3.4);
+#     /usr/bin/rsync is openrsync, "2.6.9 compatible", below DownloadPulse's 3.4);
 #   7-Zip 7zz and RARLAB unrar -- the official releases, unmodified.
 # Every download is refused unless it matches official.sha256.
 # Usage: build-macos.sh <sources-dir> <work-dir> <out-dir>

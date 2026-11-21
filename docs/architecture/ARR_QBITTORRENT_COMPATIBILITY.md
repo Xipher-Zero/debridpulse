@@ -1,14 +1,14 @@
 # *arr Compatibility: the qBittorrent Dialect (Bearer only)
 
-Sonarr and Radarr can use DebridPulse as a **qBittorrent download client**, with
-a DebridPulse Integration token as qBittorrent's **API Key**. The dialect is a
+Sonarr and Radarr can use DownloadPulse as a **qBittorrent download client**, with
+a DownloadPulse Integration token as qBittorrent's **API Key**. The dialect is a
 translation over the native external-client contract
 (`EXTERNAL_CLIENT_PROTOCOL.md`), sharing the *arr translation with the SABnzbd
-dialect (`ARR_SABNZBD_COMPATIBILITY.md`). DebridPulse is not a torrent client:
+dialect (`ARR_SABNZBD_COMPATIBILITY.md`). DownloadPulse is not a torrent client:
 it does not seed, announce or hold a swarm.
 
 > *arr owns its submissions and its interest in the result.
-> DebridPulse owns acquisition, transfers, execution and files.
+> DownloadPulse owns acquisition, transfers, execution and files.
 
 Owners in the code:
 
@@ -29,7 +29,7 @@ source of each.
 | **Radarr** | **SUPPORTED** | **v6.2.1.10461** (stable, 2026-06-09, commit `4dcc7c78`) | `eec3efdb` ("API key support for qBittorrent", 2026-05-05) is in every release from v6.2.1.10437 (prerelease). v6.2.1.10461 is the first stable one, and v6.4.4.10685 (latest stable) is identical on this path. |
 
 **Older releases are not supported.** They have only username and password and
-log in through `/api/v2/auth/login` with a cookie. DebridPulse provides no such
+log in through `/api/v2/auth/login` with a cookie. DownloadPulse provides no such
 login, so their Test fails at authentication. Upgrade, or use the SABnzbd
 dialect for NZBs.
 
@@ -43,7 +43,7 @@ When **API Key** is filled in, both applications behave as follows
 - They require **Username and Password to be empty**.
 - They report a `401`/`403` as an API-key failure.
 
-On the DebridPulse side:
+On the DownloadPulse side:
 
 - The token is verified by the existing authentication boundary, as every
   Bearer token is.
@@ -69,9 +69,9 @@ On the DebridPulse side:
    - `local_root`: beneath the download folder.
    - `import_root`: where *arr sees `local_root`, if it mounts it elsewhere.
 3. ***arr** → Settings → Download Clients → **qBittorrent**:
-   - **Host / Port**: DebridPulse.
+   - **Host / Port**: DownloadPulse.
    - **URL Base**: blank. *arr then calls qBittorrent's own `/api/v2/…`, which
-     DebridPulse answers. `/api/qbittorrent` still works as URL Base, for
+     DownloadPulse answers. `/api/qbittorrent` still works as URL Base, for
      installations configured that way; it reaches the same endpoint.
    - **API Key**: the token, which *arr sends as `Authorization: Bearer`.
    - **Username / Password**: empty.
@@ -80,9 +80,9 @@ On the DebridPulse side:
    - **Recent/Older Priority**: Last.
    - **Initial State**: Started.
 4. **Filesystem.** *arr must read `import_root`. Remote Path Mapping is *arr's
-   own setting. DebridPulse copies, links and moves nothing.
+   own setting. DownloadPulse copies, links and moves nothing.
 
-*arr's **Test** calls these, and DebridPulse answers each:
+*arr's **Test** calls these, and DownloadPulse answers each:
 
 | Call | Answer |
 |---|---|
@@ -93,14 +93,14 @@ On the DebridPulse side:
 | `torrents/info` | the client's torrents |
 
 - **`dht: true`** is the signal *arr uses to decide whether a magnet without
-  trackers can be resolved. DebridPulse's providers resolve such magnets.
-- **`queueing_enabled: false`** is truthful: DebridPulse owns queue order. As a
+  trackers can be resolved. DownloadPulse's providers resolve such magnets.
+- **`queueing_enabled: false`** is truthful: DownloadPulse owns queue order. As a
   result, a **First** priority fails *arr's Test.
 
 ### Not Found until it is usable
 
 Both paths of this dialect answer `404 Not Found` — to every caller, with or
-without a key — until DebridPulse has at least one usable qBittorrent integration:
+without a key — until DownloadPulse has at least one usable qBittorrent integration:
 a delivery profile with a category, permitting `magnet` or `torrent` (`links` and `nzb` do not count), that lists a client
 holding an active Integration token (not revoked, of an enabled Integration
 account). There is no switch: an Admin configures Integration Accounts and
@@ -108,7 +108,7 @@ Integration Delivery Profiles in Settings → Users & Access, and the dialect
 appears or disappears with them on the next request — issuing, rotating or
 revoking a token, disabling an account, or editing or removing a profile.
 
-- A `404` here does not mean DebridPulse is down. *arr's Test reports it as a
+- A `404` here does not mean DownloadPulse is down. *arr's Test reports it as a
   failed connection; check the profile and token first.
 - The SABnzbd dialect is exposed or hidden on its own, by its own source kinds.
 - Exposure authenticates nobody: every request still needs its own token, and
@@ -121,7 +121,7 @@ All are under `/api/v2/` (and, identically, `/api/qbittorrent/api/v2/`).
 
 | Call | Behavior |
 |---|---|
-| `POST torrents/add` | One magnet (`urls`) or one `.torrent` (multipart `torrents`, ≤ 16 MB, DebridPulse's own torrent upload ceiling), with `category`. Answer: `{"success_count":1,"failure_count":0,"pending_count":0,"added_torrent_ids":["<hash>"]}`, given only once the job and its one demand are durable. |
+| `POST torrents/add` | One magnet (`urls`) or one `.torrent` (multipart `torrents`, ≤ 16 MB, DownloadPulse's own torrent upload ceiling), with `category`. Answer: `{"success_count":1,"failure_count":0,"pending_count":0,"added_torrent_ids":["<hash>"]}`, given only once the job and its one demand are durable. |
 | `GET torrents/info?category=&hashes=` | One item per info-hash (§5) |
 | `GET torrents/properties?hash=` | `{hash, save_path, seeding_time: 0}`; unknown: `404` |
 | `POST torrents/delete hashes=…&deleteFiles=…` | §6 |
@@ -135,13 +135,13 @@ Refusals are qBittorrent-style status codes with a text body; every one admits
 nothing:
 
 - **415** (Unsupported Media Type):
-  - an `http(s)` URL (DebridPulse fetches no URL here);
+  - an `http(s)` URL (DownloadPulse fetches no URL here);
   - an invalid or non-canonical `.torrent`;
   - a v2-only torrent.
 - **400** (Bad Request): more than one source in one add.
 - **409** (Conflict):
   - `savepath` or `downloadPath`;
-  - `stopped`, `paused`, `useDownloadPath` or `autoTMM` set to `true` (DebridPulse
+  - `stopped`, `paused`, `useDownloadPath` or `autoTMM` set to `true` (DownloadPulse
     holds no client-paused or client-placed work);
   - an unknown category, or one this client may not use (indistinguishable).
 
@@ -150,7 +150,7 @@ nothing:
 ### Accepted settings that do nothing
 
 `sequentialDownload`, `firstLastPiecePrio`, `contentLayout`, `ratioLimit` and
-`seedingTimeLimit` are accepted and have **no effect**: DebridPulse owns file
+`seedingTimeLimit` are accepted and have **no effect**: DownloadPulse owns file
 layout and never seeds. Nothing is granted.
 
 ## 4. Identity
@@ -193,7 +193,7 @@ States come from the native job, not from an executor.
 | downloading, served by shared work | `downloading` | Downloading |
 | verifying, material not yet verifiable after a restart | `checkingDL` | Queued |
 | finalizing (extraction) | `moving` | Downloading |
-| paused by DebridPulse | `stoppedDL` | Paused |
+| paused by DownloadPulse | `stoppedDL` | Paused |
 | completed, with a delivery available now | **`stoppedUP`**: `progress` 1, `content_path` = its location, `save_path` = the import root, `ratio` 0, `ratio_limit` 0 | Completed, importable |
 | completed, not importable now | `checkingUP` | Queued, never Completed |
 | failed (any failure) | `error` | Warning: *arr never blocklists it automatically, so an operator-clearable failure is safe; the qBittorrent protocol has no state *arr reads as a final failure, so a release-invalidating one is a Warning too |
@@ -206,7 +206,7 @@ download, the same hash returns to the unfinished states above and is
 Notes on the values:
 
 - **`stoppedUP` is a presentation.** It means "downloaded, and not transferring".
-  DebridPulse does not seed: it reports no upload, swarm or tracker figure. Its
+  DownloadPulse does not seed: it reports no upload, swarm or tracker figure. Its
   share limit of 0 is therefore already met, which is what *arr needs before it
   may remove a completed torrent after import.
 - **Failures are a Warning, by *arr's design.** *arr maps no qBittorrent state to
@@ -215,7 +215,7 @@ Notes on the values:
 - **Progress.** *arr reads a torrent as `TotalSize = size` and
   `RemainingSize = size × (1 − progress)`, and draws its queue bar from those two
   (`QBittorrent.cs` `GetItems`). It never reads `amount_left` or `completed`. A
-  bar therefore exists only when `size` is known. The figure is DebridPulse's own
+  bar therefore exists only when `size` is known. The figure is DownloadPulse's own
   primary progress, the external job's `progress.effective`: the in-flight
   execution while nothing is verified yet, otherwise verified material. It is the
   same figure the SABnzbd dialect reports. Each kind of figure carries only its
@@ -228,7 +228,7 @@ Notes on the values:
     in-flight figure. `size` is the transfer's canonical artifacts' total size
     and `completed` their DP-valid material: a completed artifact counts its
     whole size, any other its valid material up to its size. This is the
-    measurement DebridPulse's own verified percentage is computed from
+    measurement DownloadPulse's own verified percentage is computed from
     (`verified_material_measure`, read at the poll). It is never combined with an
     executor's counter: downloaded but not yet checkpointed bytes are not in it,
     so it can trail the executor by up to one checkpoint interval. It holds while
@@ -236,7 +236,7 @@ Notes on the values:
   - **Exact in-flight bytes**, present only when the canonical projection attaches
     one exact byte scope while nothing is verified yet: `size` is that total,
     `progress` is `completed / total`, and `amount_left` and `completed` are the
-    executor's counters. *arr's bar and remaining size equal DebridPulse's.
+    executor's counters. *arr's bar and remaining size equal DownloadPulse's.
   - **A percentage without exact bytes** (a best-effort estimate or a unit
     count): `progress` carries it, and `size` stays `0`. No total is ever derived
     from a percentage, so *arr shows no bar: the most it can truthfully be given.
@@ -247,7 +247,7 @@ Notes on the values:
     writer whose work is not DP material may have acquired much of it.
   - **Completed:** `size` is the committed delivery's, `progress` `1`,
     `amount_left` `0`. No in-flight counter outlives acquisition.
-- **Time left.** `eta` is the job's `estimate` in seconds: DebridPulse's own
+- **Time left.** `eta` is the job's `estimate` in seconds: DownloadPulse's own
   figure from its one estimate owner, never computed here. With no number it is
   qBittorrent's unknown value `8640000`, which *arr reads as no time left known.
   No speed, peer or tracker figure is invented.
@@ -259,14 +259,14 @@ Notes on the values:
 ## 6. Removal and `deleteFiles`
 
 Removal is decided by the item's condition, through `external.arr.remove`, for
-every visible job of the hash. `deleteFiles=true` never authorizes DebridPulse to
+every visible job of the hash. `deleteFiles=true` never authorizes DownloadPulse to
 delete anything.
 
 | Item | Effect |
 |---|---|
-| Unfinished, only this client needs the work | Its demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed. At a provider, every resource DebridPulse created or adopted for the transfer -- its route's and each prepared backup's -- is removed by a durable, retryable cleanup; a resource it only observed, or one another transfer still holds, is kept. A provider inventory that still lists a removed resource never brings the work back. |
+| Unfinished, only this client needs the work | Its demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DownloadPulse's own incomplete material is reclaimed. At a provider, every resource DownloadPulse created or adopted for the transfer -- its route's and each prepared backup's -- is removed by a durable, retryable cleanup; a resource it only observed, or one another transfer still holds, is kept. A provider inventory that still lists a removed resource never brings the work back. |
 | Unfinished, others need the work | Only this client's demand is withdrawn. |
-| Completed, or completed and since retried by an operator | The delivery is acknowledged. The transfer and its history stay; once every claim on the transfer is acknowledged, an empty folder DebridPulse created for it is removed, never its contents (`ARR_SABNZBD_COMPATIBILITY.md`, "After the import"). |
+| Completed, or completed and since retried by an operator | The delivery is acknowledged. The transfer and its history stay; once every claim on the transfer is acknowledged, an empty folder DownloadPulse created for it is removed, never its contents (`ARR_SABNZBD_COMPATIBILITY.md`, "After the import"). |
 | Failed | Withdrawn; the core's failure policy applies. |
 | Unknown, or another client's | Skipped silently: the answer is the same either way. |
 
@@ -278,9 +278,9 @@ delete anything.
 ## 7. Limits
 
 - Not supported: login or cookie authentication; any URL fetch.
-- `.torrent` over 16 MB (DebridPulse's canonical torrent upload ceiling); v2-only
-  torrents (DebridPulse's canonical torrent identity is v1). Both are current
-  DebridPulse-wide limits, not adapter ones.
+- `.torrent` over 16 MB (DownloadPulse's canonical torrent upload ceiling); v2-only
+  torrents (DownloadPulse's canonical torrent identity is v1). Both are current
+  DownloadPulse-wide limits, not adapter ones.
 - Client-chosen save path, start state, priority or category changes.
 - Seeding, ratio and seeding time.
 - No qBittorrent state maps to Failed in *arr (see §5).
@@ -291,7 +291,7 @@ The deterministic suite (`backend/tests/test_arr_qbittorrent_adapter.py`)
 checks every response against *arr's parsing rules, restated from the pinned
 source above. It does not run Sonarr or Radarr. After deployment:
 
-1. Sonarr ≥ v4.0.18.2971: add DebridPulse as a qBittorrent client per §2, then
+1. Sonarr ≥ v4.0.18.2971: add DownloadPulse as a qBittorrent client per §2, then
    run **Test**.
    - It must pass.
    - A wrong key must report an API-key failure.
@@ -300,7 +300,7 @@ source above. It does not run Sonarr or Radarr. After deployment:
    - each appears in Activity → Queue under its info-hash;
    - each is imported from `import_root` on completion;
    - with Remove Completed on, each disappears.
-   DebridPulse's transfer stays completed.
-3. Remove a queued item. DebridPulse cancels it only when no other client needs
+   DownloadPulse's transfer stays completed.
+3. Remove a queued item. DownloadPulse cancels it only when no other client needs
    it.
 4. Repeat with Radarr ≥ v6.2.1.10461.

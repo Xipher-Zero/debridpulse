@@ -10,7 +10,7 @@ in the very commit that changes the catalog, exactly those jobs are retired
 -- each one's demand withdrawn by ``administrator:profile_retired`` (the
 durable, per-job record) -- and then settled through the canonical owner
 (``ApplicationService.withdraw_demand``, a download client's "remove"): work
-nobody else needs is cancelled and its DebridPulse-owned resources given
+nobody else needs is cancelled and its DownloadPulse-owned resources given
 back; shared work, other profiles' and native claims, and completed files
 stay. A reservation in flight is retired when accepted; maintenance finishes
 a settlement that never ran.

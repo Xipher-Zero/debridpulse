@@ -322,7 +322,7 @@ class DebridLinkService:
 
     async def add_torrent(self, *, magnet: str = "", metainfo: bytes | None = None, name: str = "") -> dict:
         """Add a torrent. It always starts with every file wanted
-        (``wait`` false): DebridPulse's own file selection decides what it
+        (``wait`` false): DownloadPulse's own file selection decides what it
         materializes and is never pushed back. seedbox/add takes form fields
         -- a magnet as an ordinary form, a torrent file as multipart -- never
         JSON."""

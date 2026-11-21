@@ -1,4 +1,4 @@
-/* DebridPulse Backups manager: the ONE backup-manager state owner.
+/* DownloadPulse Backups manager: the ONE backup-manager state owner.
  *
  * It owns the manager dialog's lifetime, the backup inventory it shows, the
  * single selected backup, action enablement, and the Add / Save / Restore /
@@ -6,9 +6,9 @@
  * one `load()` and nothing else. The Settings page only opens it (after
  * settling its own pending writes); Run Backup stays on the card.
  *
- * A backup is one DebridPulse restore point. Its member files are the backend
+ * A backup is one DownloadPulse restore point. Its member files are the backend
  * owner's (services.backup) business and never appear here. Add and Save move
- * that one portable unit between DebridPulse and the operator's filesystem;
+ * that one portable unit between DownloadPulse and the operator's filesystem;
  * the words are filesystem words, whatever wraps the page.
  *
  * Selection is the single-checkmark idiom: every row carries a checkbox, at
@@ -232,7 +232,7 @@
   }
 
   function packageName(id) {
-    return `debridpulse-backup-${id}.zip`;
+    return `downloadpulse-backup-${id}.zip`;
   }
 
   async function saveBackup() {
@@ -264,7 +264,7 @@
       if (handle) {
         await run(async () => {
           try {
-            const response = await window.debridPulseAuth.fetch(API + packagePath(id));
+            const response = await window.downloadPulseAuth.fetch(API + packagePath(id));
             if (!response.ok || !response.body) throw new Error('save');
             const writable = await handle.createWritable();
             await response.body.pipeTo(writable);
@@ -456,7 +456,7 @@
   /* A language change: an open manager draws its inventory again, its dates
    * formatted in the shown language. Its selection, busy state and the focused
    * control (by what it is) are kept; nothing is read or sent. */
-  document.addEventListener('debridpulse:locale-changed', () => {
+  document.addEventListener('downloadpulse:locale-changed', () => {
     // An open restore or remove confirmation: its date, formatted again from
     // the stored timestamp (the authority); a keyed sentence keeps its key.
     document.querySelectorAll('.dp-modal-dialog [data-backup-when]').forEach(node => {

@@ -1,6 +1,6 @@
-# Universal Torrent File-Selection / Manifest Overlay (v1.0.12)
+# Universal Torrent File-Selection / Manifest Overlay
 
-DebridPulse can let a user acquire an explicit subset of a multi-file
+DownloadPulse can let a user acquire an explicit subset of a multi-file
 torrent/magnet resource instead of the whole thing. The capability is
 **provider-neutral**: AllDebrid is the first provider to implement it, but no
 selection policy lives in any provider or executor. The Universal Transfer Core
@@ -19,7 +19,7 @@ continues acquisition alone     owns durable provenance            candidates
 
 Default acquisition policy is always **ALL FILES**. Interactive file selection
 is an explicit opt-in (`selection_mode=interactive`). If no explicit subset is
-confirmed, DebridPulse processes the full torrent exactly as before.
+confirmed, DownloadPulse processes the full torrent exactly as before.
 
 **Provider preparation, user file-selection authorization, and executor dispatch
 are three separate lifecycle dimensions.** Provider preparation is eager and
@@ -59,9 +59,7 @@ imports neither `time` nor `datetime`.
   a grace: it runs solely after an interactive `FILE_MANIFEST`-capable resource
   is observed executable/`AVAILABLE` while a usable manifest is still
   unobtainable. It never runs while the provider is `PREPARING`, and it is never
-  submission-relative or resource-creation-relative. (Was
-  `AUTO_MANIFEST_WINDOW_SECONDS`; renamed with the Torrent/Magnet File-Selection
-  Lifecycle Correction.)
+  submission-relative or resource-creation-relative.
 * `IMMEDIATE_DECISION_HOLD_SECONDS = 120.0` — the maximum unanswered
   user-decision time. Anchored exactly once to the first actionable multi-file
   manifest, `PREPARING` or `AVAILABLE`. Never a provider-preparation timeout, a
@@ -98,7 +96,7 @@ resetting or extending.
 | User-decision hold | 120 s | the **first actionable multi-file manifest**, whether the resource is `PREPARING` or `AVAILABLE` at that moment | modal closes, draft discarded, default ALL wins (`decision_reason = decision_timeout`), local materialization proceeds |
 | Post-`AVAILABLE` manifest grace | 60 s | the **first `AVAILABLE`-without-usable-manifest observation** (`available_at`) | default ALL wins (`decision_reason = manifest_timeout`), local materialization proceeds |
 
-Key statements (Torrent/Magnet File-Selection Lifecycle Correction §25):
+Key statements:
 
 * File selection is an interactive pre-execution authorization dimension.
   Provider preparation is eager and independent of executor capacity.
@@ -126,7 +124,7 @@ reproducer (a torrent that stays `PREPARING` for minutes, then becomes
 decision window.
 
 `initially_available` is persisted only as an immutable provenance/diagnostic
-fact; it no longer decides any timing. The gate reads the live
+fact; it decides no timing. The gate reads the live
 `resource_available` fact plus `available_at` (the durable first-`AVAILABLE`
 anchor). While `PREPARING` with no manifest, the gate `WAIT_FOR_MANIFEST`s with
 **no** countdown of any kind. Once `AVAILABLE` without a manifest, the 60-second
@@ -135,7 +133,7 @@ hold from that arrival, and grace expiry settles `manifest_timeout`.
 
 The settle reason is deterministic: `decision_timeout` **only** when a persisted
 `hold_until` actually expired while still pending; `manifest_timeout` **only**
-when the post-`AVAILABLE` grace expired. `default_materialization` is no longer
+when the post-`AVAILABLE` grace expired. `default_materialization` is not
 emitted by `evaluate_gate` (it survives only as the `commit_selected_manifest`
 fallback reason for a straight ALL commit).
 
@@ -169,7 +167,7 @@ existing `resolution_wakeup`; no new scheduler, no new lifecycle state, no
 frontend-owned release.
 
 **Gate authority and the scheduling of the wait it produces are transactionally
-coupled** (Torrent/Magnet File-Selection Lifecycle Correction §7-8).
+coupled**.
 `repository.file_selection_gate(...)` is one `BEGIN IMMEDIATE` on the
 selection-generation row that: anchors the post-`AVAILABLE` grace once; evaluates
 the pure gate; settles a still-pending timeout/single-file decision; and — only
@@ -180,7 +178,7 @@ the decision: a concurrent settle either commits first (this transaction then
 sees `EXPLICIT`/`ALL` and schedules nothing) or blocks on the row's write lock
 until this transaction commits and then releases the wait itself. Both legal
 orders converge to `decision = explicit/all` with `retry_at <= now`. The engine
-no longer performs a separate `poll_after` after the gate.
+performs no separate `poll_after` after the gate.
 
 `decision_deadline` in the public read model is `hold_until` **only while
 `decision == "pending"`** and `null` for any settled decision. The durable
@@ -209,7 +207,7 @@ Both the release (`confirm`/`dismiss`) and the atomic gate reschedule target
 an active hold keeps its longer, legitimate `retry_at` because it recorded an
 `error`: it is never shortened to a selection cadence and never stripped of its
 failure evidence. The confirmed selection still materialises, just after that
-backoff. `poll_after()` no longer takes a `clear_error` flag (the atomic gate is
+backoff. `poll_after()` takes no `clear_error` flag (the atomic gate is
 the only remaining file-selection scheduler and it never touches an
 `error IS NOT NULL` request).
 
@@ -393,9 +391,9 @@ queries `GET /api/torrents/{id}/file-selection`.
 `frontend/static/app.js` is the sole modal coordinator (`DPModal`: `open`,
 `requestModalClose`, `finishClose`; modes `details` | `file-selection`) and the
 sole owner of `window.showDetail` / `window.closeModal`. It emits
-`debridpulse:detail-rendered` / `debridpulse:detail-closed`.
+`downloadpulse:detail-rendered` / `downloadpulse:detail-closed`.
 
-`frontend/static/ui-detail-candidates.js` no longer wraps the modal globals; it
+`frontend/static/ui-detail-candidates.js` does not wrap the modal globals; it
 listens to those lifecycle events.
 
 `frontend/static/ui-file-selection.js` (`window.DPFileSelection`, lazy-loaded via
@@ -438,9 +436,8 @@ core commits exactly 2 child requests → exactly those 2 produce candidates →
 
 `backend/tests/test_file_selection_contract.py`,
 `test_file_selection_lifecycle.py`, `test_file_selection_persistence.py`,
-`test_file_selection_api.py` (added to
-`two_provider_checkpoint_qualification.txt`); `test_alldebrid_provider_contract.py`
+`test_file_selection_api.py`; `test_alldebrid_provider_contract.py`
 (+file-manifest cases); `test_universal_contracts.py` /
 `test_universal_boundaries.py`; `test_ui_presentation_ownership_contract.py`
-(§62 modal-ownership assertions); `frontend/browser/file-selection.spec.js` and
+(modal-ownership assertions); `frontend/browser/file-selection.spec.js` and
 `frontend/browser/details-candidates.spec.js`.

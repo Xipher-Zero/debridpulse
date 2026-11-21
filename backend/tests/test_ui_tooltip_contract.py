@@ -16,8 +16,8 @@ STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 # the OIDC test popup's (written by ui-settings-page.js). 1.0.14: the latter two
 # are said from the catalog (a keyed title; the popup's written in the shown language).
 DOCUMENT_TITLES = {
-    ("index.html", "<title>DebridPulse</title>"),
-    ("oidc-verify-complete.html", '<title data-i18n="settings.oidc.complete_title">OIDC verification · DebridPulse</title>'),
+    ("index.html", "<title>DownloadPulse</title>"),
+    ("oidc-verify-complete.html", '<title data-i18n="settings.oidc.complete_title">OIDC verification · DownloadPulse</title>'),
     ("ui-settings-page.js", "<title>${html(t('settings.oidc.waiting_title'))}</title>"),
 }
 NATIVE = (
@@ -80,7 +80,7 @@ def test_the_one_tooltip_owner_presents_text_only_and_keeps_to_presentation() ->
     assert "host.hasAttribute('data-tooltip-touch')" in owner and "event.pointerType === 'touch'" in owner
     # Hidden on every lifecycle edge, and while shown its element leaving the document hides it.
     for edge in ("document.addEventListener('pointerdown', dismiss, true);", "document.addEventListener('contextmenu', dismiss, true);",
-                 "window.addEventListener('resize', hide);", "document.addEventListener('debridpulse:navigation', hide);",
+                 "window.addEventListener('resize', hide);", "document.addEventListener('downloadpulse:navigation', hide);",
                  "if (!target.isConnected || !now) return hide();"):
         assert edge in owner, edge
     # The Settings commit boundary (the bubbling focus-out) stays the persistence owner's alone.

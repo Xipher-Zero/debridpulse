@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# DebridPulse's aria2 for macOS (arm64): the same Debian aria2 source with
-# Debian's patches and DebridPulse's connect-tunnel-exact-read.patch (prepared,
+# DownloadPulse's aria2 for macOS (arm64): the same Debian aria2 source with
+# Debian's patches and DownloadPulse's connect-tunnel-exact-read.patch (prepared,
 # autoreconf'd, by packaging/macos-tools/prepare-sources.sh), configured without
 # BitTorrent. TLS is Apple's own (AppleTLS, the system trust store); SFTP is
 # Debian's libssh2 on Debian's OpenSSL libcrypto, the backend Debian's libssh2
 # uses, so aria2 verifies the same host key types (ECDSA, Ed25519, RSA) as on
 # Linux (libssh2's mbedTLS backend has no Ed25519); asynchronous DNS is Debian's
 # c-ares -- all three static. zlib and expat are the system's. sqlite3 is not built in
-# (aria2 uses it only to import a browser's cookie database, which DebridPulse
+# (aria2 uses it only to import a browser's cookie database, which DownloadPulse
 # never does). Built natively with Apple's Command Line Tools.
 # Usage: build-macos.sh <sources-dir> <work-dir> <out-dir>
 set -euo pipefail

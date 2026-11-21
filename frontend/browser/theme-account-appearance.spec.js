@@ -59,7 +59,7 @@ async function signIn(browser, {username, password}) {
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -96,7 +96,7 @@ test('each signed-in account keeps its own mode and palettes across browsers, ne
   // browser's own theme keys are not read, so they cannot leak in.
   const a = await signIn(browser, alice);
   let state = await shown(a.page);
-  expect(state).toMatchObject({mode: 'dark', dark: 'debridpulse-dark', light: 'debridpulse-light', palette: '',
+  expect(state).toMatchObject({mode: 'dark', dark: 'downloadpulse-dark', light: 'downloadpulse-light', palette: '',
     first: {light: false, palette: ''}, reads: [], writes: []});
 
   // Three independent choices, each applied at once and saved one by one.
@@ -121,9 +121,9 @@ test('each signed-in account keeps its own mode and palettes across browsers, ne
   // native appearance, and its own choice saved to its own record only.
   const b = await signIn(browser, bob);
   state = await shown(b.page);
-  expect(state).toMatchObject({mode: 'dark', dark: 'debridpulse-dark', light: 'debridpulse-light', first: {light: false}, reads: []});
+  expect(state).toMatchObject({mode: 'dark', dark: 'downloadpulse-dark', light: 'downloadpulse-light', first: {light: false}, reads: []});
   await b.page.evaluate(() => window.DPTheme.choose('kanagawa-wave'));
-  await saved(b.page, {mode: 'dark', dark_palette: 'kanagawa-wave', light_palette: 'debridpulse-light'});
+  await saved(b.page, {mode: 'dark', dark_palette: 'kanagawa-wave', light_palette: 'downloadpulse-light'});
   await saved(a.page, {mode: 'light', dark_palette: 'dracula', light_palette: 'nord-light'});
 
   // The self-scoped API refuses another account's selector and unknown values.

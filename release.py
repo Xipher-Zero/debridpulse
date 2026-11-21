@@ -76,7 +76,7 @@ def main() -> None:
         fail("GITHUB_PAT Umgebungsvariable nicht gesetzt!")
 
     headers = ["-H", f"Authorization: token {pat}", "-H", "Content-Type: application/json"]
-    repo = "https://api.github.com/repos/Xipher-Zero/debridpulse"
+    repo = "https://api.github.com/repos/Xipher-Zero/downloadpulse"
 
     # 3. Existierendes Release holen: 404 heisst "noch keines", alles andere ausser 200 ist ein Fehler
     status, existing = api("GET", f"{repo}/releases/tags/{tag}", headers)

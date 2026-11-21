@@ -32,7 +32,7 @@ from services import account_notifications
 from services import notification_service
 
 router = APIRouter()
-logger = logging.getLogger("debridpulse.auth")
+logger = logging.getLogger("downloadpulse.auth")
 
 
 def _refused(exc: AccountRefused, status: int | None = None) -> HTTPException:

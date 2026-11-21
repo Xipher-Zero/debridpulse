@@ -18,13 +18,13 @@ from core.processes import WINDOWLESS
 
 logger = logging.getLogger("alldebrid.aria2")
 
-# The daemon DebridPulse runs listens on loopback only. Its RPC endpoint and
+# The daemon DownloadPulse runs listens on loopback only. Its RPC endpoint and
 # secret are constructed here and never come from settings. The secret is
-# unpredictable and belongs to this DebridPulse process: the daemon is always
+# unpredictable and belongs to this DownloadPulse process: the daemon is always
 # this process's own child (a daemon is never adopted), so every start,
 # restart and recovery here, and every client built here, share it, while a
 # new process starts its own daemon under a new one. No other local program
-# can drive the daemon by knowing DebridPulse's source.
+# can drive the daemon by knowing DownloadPulse's source.
 # Its port is RPC_PORT when that is free, else one the operating system chooses
 # (core.ports): another program may already listen on 6800, and a taken port
 # must not stop the executor. The port is chosen again at every start; clients
@@ -60,12 +60,12 @@ def rpc_url() -> str:
 
 
 def rpc_service(options) -> Aria2Service:
-    """The RPC client for the daemon DebridPulse runs; the one construction site.
+    """The RPC client for the daemon DownloadPulse runs; the one construction site.
     It follows the daemon's current address and is identified as RPC_IDENTITY."""
     return Aria2Service(rpc_url, RPC_SECRET, options.operation_timeout_seconds, identity=RPC_IDENTITY)
 
 
-# Executor-local native queue width. DebridPulse's own global admission is the
+# Executor-local native queue width. DownloadPulse's own global admission is the
 # only concurrency policy; this value merely never undercuts any supported
 # global setting, and nothing synchronizes it to that setting.
 NATIVE_ACTIVE_DOWNLOADS = 64
@@ -99,7 +99,7 @@ def native_download_limit(share: int) -> int:
 
 def build_aria2_global_options(options, *, include_safety: bool = False, live: bool = False) -> Dict[str, str]:
     """Pure translation of aria2-owned typed tuning into the native aria2
-    global-option dict -- no settings access of any kind, and no DebridPulse
+    global-option dict -- no settings access of any kind, and no DownloadPulse
     global policy (concurrency or bandwidth) mirrored into native options. It
     is the single tuning mapping owner used by ``Aria2Runtime`` and
     ``Aria2Administration``. The download ceiling is enforced only through the
@@ -124,7 +124,7 @@ def build_aria2_global_options(options, *, include_safety: bool = False, live: b
         "lowest-speed-limit": str(options.lowest_speed_limit or "0"),
     }
     if include_safety:
-        # DebridPulse's aria2 is compiled without BitTorrent
+        # DownloadPulse's aria2 is compiled without BitTorrent
         # (docs/SUPPLY_CHAIN_POLICY.md section 4a), so it has no torrent, DHT,
         # peer-exchange, LPD or upload option to switch off -- naming one
         # makes the daemon refuse to start. A Metalink it fetches is a file,
@@ -167,7 +167,7 @@ class Aria2RuntimeConfiguration:
     """aria2-owned typed configuration: its ``integrations.aria2`` options and
     the download root. Built by the aria2 integration factory on every
     settings change; the runtime never consults global application settings
-    and carries no DebridPulse global policy."""
+    and carries no DownloadPulse global policy."""
     options: Any = field(default_factory=_default_aria2_options)
     download_root: str = "/download"
 
@@ -275,7 +275,7 @@ class Aria2Runtime:
         return log_file, session_file
 
     def _clear_session(self) -> None:
-        """Empty the saved session. DebridPulse never loads it -- the database
+        """Empty the saved session. DownloadPulse never loads it -- the database
         is the source of truth and every job is re-added from it -- so the
         credentials aria2 saved there are kept no longer than the daemon that
         saved them runs."""

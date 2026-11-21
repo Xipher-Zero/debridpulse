@@ -35,7 +35,7 @@ async function withoutOperate(page) {
     capabilities: authority.capabilities.filter(item => !['administer', 'transfers.operate'].includes(item))});
   await page.route(url => url.pathname === '/app.js', async route => {
     const body = await (await route.fetch()).text();
-    const marker = 'window.debridPulseAuthority=Object.freeze(';
+    const marker = 'window.downloadPulseAuthority=Object.freeze(';
     if (!body.includes(marker)) return route.fulfill({status: 200, contentType: 'application/javascript', body});
     const [head, rest] = body.split(marker);
     const end = rest.indexOf(');');

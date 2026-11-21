@@ -27,7 +27,7 @@ from core.logging_utils import sanitize_exception
 from core.version import read_version
 from core.localization import CodedRuntimeError
 
-logger = logging.getLogger("debridpulse.notify")
+logger = logging.getLogger("downloadpulse.notify")
 
 APP_NAME    = APP_SHORT_NAME
 APP_VERSION = read_version()
@@ -367,7 +367,7 @@ class NotificationService:
         release_url: str = "",
         release_notes: str = "",
     ) -> None:
-        """Notify that a new DebridPulse version is available."""
+        """Notify that a new DownloadPulse version is available."""
         from core.config import get_settings
         cfg = get_settings()
         if not getattr(cfg, "discord_notify_update", True):

@@ -1,21 +1,10 @@
-DebridPulse — Universal Transfer Manager
+DownloadPulse — Universal Transfer Manager
 
 Copyright (C) 2026 Chris Moore
 
-DebridPulse is free software distributed under the GNU General Public License,
+DownloadPulse is free software distributed under the GNU General Public License,
 version 2 or (at your option) any later version. See LICENSE for the complete
 license terms.
-
-Upstream provenance
--------------------
-
-Portions of this work are derived from kroeberd/alldebrid-client release
-v1.9.9, commit c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c.
-
-Copyright (c) 2026 kroeberd
-
-The upstream work was distributed under the MIT License. Its complete license
-text is preserved at LICENSES/MIT.txt.
 
 Third-party software
 --------------------
@@ -31,23 +20,27 @@ The bencode2 0.3.33 wheel omits its declared MIT license file. Its upstream
 copyright and permission notice is therefore bundled explicitly at
 licenses/bencode2-MIT.txt.
 
+Portions of this work are derived from kroeberd/alldebrid-client release
+v1.9.9, commit c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c, copyright (c) 2026
+kroeberd, distributed under the MIT License. Its complete license text is
+preserved at LICENSES/MIT.txt.
+
 Third-party trademarks and artwork
 ----------------------------------
 
-DebridPulse identifies the services it works with by name and, in its web
+DownloadPulse identifies the services it works with by name and, in its web
 interface, by small service artwork: provider marks and host icons. Those
 names, logos and icons remain the property of their respective rights holders
-and are used only to identify the service concerned. They are not DebridPulse's own work and are
+and are used only to identify the service concerned. They are not DownloadPulse's own work and are
 not covered by the GNU General Public License grant in LICENSE merely because
-they appear in this repository or in a DebridPulse container image; that grant
-covers DebridPulse's own code and artwork only. Their presence does not imply
+they appear in this repository or in a DownloadPulse container image; that grant
+covers DownloadPulse's own code and artwork only. Their presence does not imply
 any affiliation with, sponsorship by or endorsement from any service owner.
 This notice does not license that artwork to anyone and does not itself
 establish permission to redistribute it.
 
 docs/THIRD_PARTY_ARTWORK.md (in the source repository) records, for each such
-file, its rights holder where known, its origin and the open rights questions,
-which remain deferred to DebridPulse 1.0.14 as an accepted risk for 1.0.13.
+file, its rights holder where known, its origin and any open rights questions.
 Two files are copies from openly licensed icon collections; their attribution
 is given in docs/DEPENDENCY_LICENSES.md, with the licence texts at
 licenses/selfhst-icons-CC-BY-4.0.txt and

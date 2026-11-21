@@ -38,7 +38,7 @@ async def file(identity, transfer_id, root, *, status="downloading", gid="012345
             (identity, transfer_id, f"file-{identity}.bin", 4, source, address, str(root / f"file-{identity}.bin"), status, gid,
              mirror, "standby" if mirror else ""))
         if gid:
-            await db.execute("INSERT INTO debridpulse_aria2_owned_gids(gid,download_file_id,torrent_id) VALUES(?,?,?)", (gid, identity, transfer_id))
+            await db.execute("INSERT INTO downloadpulse_aria2_owned_gids(gid,download_file_id,torrent_id) VALUES(?,?,?)", (gid, identity, transfer_id))
         await db.commit()
 
 
@@ -86,11 +86,11 @@ async def test_predecessor_gid_ledger_is_inert_historical_data(legacy):
     await parent(21)
     await file(21, 21, legacy, gid="00000000000000aa")
     async with database.get_db() as db:
-        await db.execute("DELETE FROM debridpulse_aria2_owned_gids WHERE gid='00000000000000aa'")
-        await db.execute("INSERT INTO debridpulse_aria2_owned_gids(gid,download_file_id,torrent_id) VALUES('foreign-gid',999,999)")
+        await db.execute("DELETE FROM downloadpulse_aria2_owned_gids WHERE gid='00000000000000aa'")
+        await db.execute("INSERT INTO downloadpulse_aria2_owned_gids(gid,download_file_id,torrent_id) VALUES('foreign-gid',999,999)")
         await db.commit()
     with sqlite3.connect(database.DB_PATH) as conn:
-        ledger_before = conn.execute("SELECT gid,download_file_id,torrent_id FROM debridpulse_aria2_owned_gids ORDER BY gid").fetchall()
+        ledger_before = conn.execute("SELECT gid,download_file_id,torrent_id FROM downloadpulse_aria2_owned_gids ORDER BY gid").fetchall()
 
     await migrate()
     await database.init_db()
@@ -104,7 +104,7 @@ async def test_predecessor_gid_ledger_is_inert_historical_data(legacy):
     assert artifact.execution.correlation["binding"] == executor.binding
     with sqlite3.connect(database.DB_PATH) as conn:
         assert conn.execute("SELECT count(*) FROM execution_attempts").fetchone()[0] == 1
-        assert conn.execute("SELECT gid,download_file_id,torrent_id FROM debridpulse_aria2_owned_gids ORDER BY gid").fetchall() == ledger_before
+        assert conn.execute("SELECT gid,download_file_id,torrent_id FROM downloadpulse_aria2_owned_gids ORDER BY gid").fetchall() == ledger_before
 
 
 @pytest.mark.asyncio

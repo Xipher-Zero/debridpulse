@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-catalog-meta/1",
+ "schema": "downloadpulse-catalog-meta/1",
  "locale": "en",
  "meta": {
   "shell.nav.group.queue": {
@@ -384,7 +384,7 @@
   },
   "account.field.username": {
    "category": "label",
-   "context": "Read-only DebridPulse sign-in name (Server only). 'DP' is DebridPulse's abbreviation; keep it.",
+   "context": "Read-only DownloadPulse sign-in name (Server only). 'DP' is DownloadPulse's abbreviation; keep it.",
    "owner": "frontend/static/auth.js",
    "criticality": "normal"
   },
@@ -396,7 +396,7 @@
   },
   "account.field.display_name": {
    "category": "label",
-   "context": "The name DebridPulse shows for this person.",
+   "context": "The name DownloadPulse shows for this person.",
    "owner": "frontend/static/auth.js",
    "criticality": "normal"
   },
@@ -515,7 +515,7 @@
   },
   "account.clear.consequence": {
    "category": "critical-warning",
-   "context": "The consequence of Clear Password, in the view and in its confirmation. Keep every part: password sign-in turns off; anyone who can reach DebridPulse gets in; until a new password is set.",
+   "context": "The consequence of Clear Password, in the view and in its confirmation. Keep every part: password sign-in turns off; anyone who can reach DownloadPulse gets in; until a new password is set.",
    "owner": "frontend/static/auth.js",
    "criticality": "critical-warning"
   },
@@ -988,7 +988,7 @@
   },
   "login.title": {
    "category": "page-title",
-   "context": "The sign-in page's browser tab title. 'DebridPulse' is the product name. Server-rendered before sign-in: plain {name} arguments only.",
+   "context": "The sign-in page's browser tab title. 'DownloadPulse' is the product name. Server-rendered before sign-in: plain {name} arguments only.",
    "owner": "backend/api/auth_routes.py",
    "criticality": "normal"
   },
@@ -1000,13 +1000,13 @@
   },
   "login.subtitle": {
    "category": "page-title",
-   "context": "Line under the DebridPulse name on the sign-in page. Server-rendered before sign-in: plain {name} arguments only.",
+   "context": "Line under the DownloadPulse name on the sign-in page. Server-rendered before sign-in: plain {name} arguments only.",
    "owner": "backend/api/auth_routes.py",
    "criticality": "normal"
   },
   "login.unavailable": {
    "category": "page-title",
-   "context": "Line under the DebridPulse name when sign-in cannot be offered. Server-rendered before sign-in: plain {name} arguments only.",
+   "context": "Line under the DownloadPulse name when sign-in cannot be offered. Server-rendered before sign-in: plain {name} arguments only.",
    "owner": "backend/api/auth_routes.py",
    "criticality": "normal"
   },
@@ -1212,13 +1212,13 @@
   },
   "desktop.tray.open": {
    "category": "action",
-   "context": "Desktop tray menu item: shows the DebridPulse window again.",
+   "context": "Desktop tray menu item: shows the DownloadPulse window again.",
    "owner": "desktop/supervisor.py",
    "criticality": "normal"
   },
   "desktop.tray.quit": {
    "category": "action",
-   "context": "Desktop tray menu item: stops DebridPulse and its downloads and closes the application.",
+   "context": "Desktop tray menu item: stops DownloadPulse and its downloads and closes the application.",
    "owner": "desktop/supervisor.py",
    "criticality": "normal"
   },
@@ -1234,7 +1234,7 @@
   },
   "desktop.notice.accepted": {
    "category": "toast",
-   "context": "Desktop notification title when DebridPulse accepted a new transfer; the body is the transfer's name.",
+   "context": "Desktop notification title when DownloadPulse accepted a new transfer; the body is the transfer's name.",
    "owner": "desktop/supervisor.py",
    "criticality": "normal"
   },
@@ -1264,7 +1264,7 @@
   },
   "desktop.starting": {
    "category": "label",
-   "context": "Desktop application's starting screen: the one line under the DebridPulse title while the application loads. The ellipsis says it is still in progress.",
+   "context": "Desktop application's starting screen: the one line under the DownloadPulse title while the application loads. The ellipsis says it is still in progress.",
    "owner": "frontend/static/index.html",
    "criticality": "normal"
   },
@@ -1301,7 +1301,7 @@
   },
   "request.timed_out": {
    "category": "error",
-   "context": "A request to the DebridPulse server took too long; shown in the message of the action that made it. 's' = seconds.",
+   "context": "A request to the DownloadPulse server took too long; shown in the message of the action that made it. 's' = seconds.",
    "owner": "frontend/static/app.js",
    "criticality": "normal",
    "args": {
@@ -1558,7 +1558,7 @@
   },
   "transfer.progress.verified": {
    "category": "status-chip",
-   "context": "Progress of material DebridPulse has verified, shown while other work on the transfer is still in flight.",
+   "context": "Progress of material DownloadPulse has verified, shown while other work on the transfer is still in flight.",
    "owner": "frontend/static/app.js",
    "criticality": "normal",
    "args": {
@@ -1826,7 +1826,7 @@
   },
   "operator_title.active": {
    "category": "label",
-   "context": "Browser tab title while downloads run: 'DP' (DebridPulse) then the live speed and overall progress. Keep it short.",
+   "context": "Browser tab title while downloads run: 'DP' (DownloadPulse) then the live speed and overall progress. Keep it short.",
    "owner": "frontend/static/app.js",
    "criticality": "normal",
    "args": {
@@ -4264,7 +4264,7 @@
   },
   "storage.domain.application": {
    "category": "card-title",
-   "context": "Where DebridPulse keeps its own state (database, configuration).",
+   "context": "Where DownloadPulse keeps its own state (database, configuration).",
    "owner": "frontend/static/ui-storage-health.js",
    "criticality": "normal"
   },
@@ -4734,7 +4734,7 @@
   },
   "theme.palette.native": {
    "category": "label",
-   "context": "The native DebridPulse palette in the theme list ('DebridPulse' is the product name).",
+   "context": "The native DownloadPulse palette in the theme list ('DownloadPulse' is the product name).",
    "owner": "frontend/static/ui-theme-picker.js",
    "criticality": "normal"
   },
@@ -17418,7 +17418,7 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.quickstart.lead.debridpulse_application_use_submit": {
+  "help.quickstart.lead.downloadpulse_application_use_submit": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), Quick Start: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. {file_type_2}, {file_type_1} stand for literal technical text (a link form, path, file type or value), shown exactly as written. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
@@ -17479,7 +17479,7 @@
     "path": "string: literal technical text shown exactly, here '/download'"
    }
   },
-  "help.quickstart.check_where_downloads.if_debridpulse_runs": {
+  "help.quickstart.check_where_downloads.if_downloadpulse_runs": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), Quick Start → Check where downloads are saved: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. {path} stands for literal technical text (a link form, path, file type or value), shown exactly as written. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
@@ -17705,19 +17705,19 @@
   },
   "help.using.language.account": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Using DebridPulse: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Using DownloadPulse: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
   "help.using.language.default.server": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Using DebridPulse (a Server installation, an Admin reading): a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Using DownloadPulse (a Server installation, an Admin reading): a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
   "help.using.language.default.standalone": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Using DebridPulse (a Standalone installation, its Administrator reading): a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Using DownloadPulse (a Standalone installation, its Administrator reading): a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
@@ -17912,33 +17912,33 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.using.questions_debridpulse_may.connect_local_network_address": {
+  "help.using.questions_downloadpulse_may.connect_local_network_address": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Everyday Use → Questions DebridPulse may ask while adding: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Everyday Use → Questions DownloadPulse may ask while adding: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "critical-warning"
   },
-  "help.using.questions_debridpulse_may.download_item_collection": {
+  "help.using.questions_downloadpulse_may.download_item_collection": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Everyday Use → Questions DebridPulse may ask while adding: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Everyday Use → Questions DownloadPulse may ask while adding: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.using.questions_debridpulse_may.authentication_required": {
+  "help.using.questions_downloadpulse_may.authentication_required": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Everyday Use → Questions DebridPulse may ask while adding: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Everyday Use → Questions DownloadPulse may ask while adding: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.using.questions_debridpulse_may.verify_server_identity": {
+  "help.using.questions_downloadpulse_may.verify_server_identity": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Everyday Use → Questions DebridPulse may ask while adding: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Everyday Use → Questions DownloadPulse may ask while adding: a list item. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.using.questions_debridpulse_may.these_dialogs_do": {
+  "help.using.questions_downloadpulse_may.these_dialogs_do": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Everyday Use → Questions DebridPulse may ask while adding: a paragraph. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Everyday Use → Questions DownloadPulse may ask while adding: a paragraph. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
@@ -18239,7 +18239,7 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.howitworks.when_something_fails.debridpulse_sorts_failures": {
+  "help.howitworks.when_something_fails.downloadpulse_sorts_failures": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), How It Works → When something fails: a paragraph. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
@@ -19701,7 +19701,7 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.trouble.files_not_where.debridpulse_must_allowed": {
+  "help.trouble.files_not_where.downloadpulse_must_allowed": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), Troubleshooting → Files are not where I expect, or disk space runs out: a list item. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
@@ -19749,7 +19749,7 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.trouble.page_stops_updating.debridpulse_sends_live": {
+  "help.trouble.page_stops_updating.downloadpulse_sends_live": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), Troubleshooting → The page stops updating live: a paragraph. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
@@ -19846,7 +19846,7 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.license.lead.debridpulse_provided_without_warranty": {
+  "help.license.lead.downloadpulse_provided_without_warranty": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), License: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
@@ -19918,13 +19918,13 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.quickstart.lead.debridpulse_application_submits_routes.submit": {
+  "help.quickstart.lead.downloadpulse_application_submits_routes.submit": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), Quick Start: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.quickstart.lead.debridpulse_application_submits_routes.viewer": {
+  "help.quickstart.lead.downloadpulse_application_submits_routes.viewer": {
    "category": "long-form-help",
    "context": "Field Manual (the Help page), Quick Start: a paragraph. Bold words name the interface's own labels and places; use the words the interface itself shows. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
@@ -20146,9 +20146,9 @@
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
-  "help.using.questions_debridpulse_may.title": {
+  "help.using.questions_downloadpulse_may.title": {
    "category": "long-form-help",
-   "context": "Field Manual (the Help page), Everyday Use → Questions DebridPulse may ask while adding: an expandable topic's title. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
+   "context": "Field Manual (the Help page), Everyday Use → Questions DownloadPulse may ask while adding: an expandable topic's title. Some passages have several wordings, each shown only to the readers it fits; translate each as a whole.",
    "owner": "frontend/static/ui-help-page.js",
    "criticality": "normal"
   },
@@ -20774,52 +20774,52 @@
   },
   "help.legal.title_fallback": {
    "category": "modal-title",
-   "context": "The viewer that shows a legal document bundled with DebridPulse (from Help → License): its title before the document's own is known.",
+   "context": "The viewer that shows a legal document bundled with DownloadPulse (from Help → License): its title before the document's own is known.",
    "owner": "frontend/static/ui-help-license-documents.js",
    "criticality": "normal"
   },
   "help.legal.close": {
    "category": "tooltip/aria",
-   "context": "The viewer that shows a legal document bundled with DebridPulse (from Help → License): accessible name of its close button.",
+   "context": "The viewer that shows a legal document bundled with DownloadPulse (from Help → License): accessible name of its close button.",
    "owner": "frontend/static/ui-help-license-documents.js",
    "criticality": "normal"
   },
   "help.legal.loading_note": {
    "category": "hint",
-   "context": "The viewer that shows a legal document bundled with DebridPulse (from Help → License): the note shown while the document loads.",
+   "context": "The viewer that shows a legal document bundled with DownloadPulse (from Help → License): the note shown while the document loads.",
    "owner": "frontend/static/ui-help-license-documents.js",
    "criticality": "normal"
   },
   "help.legal.bundled": {
    "category": "hint",
-   "context": "The viewer that shows a legal document bundled with DebridPulse (from Help → License): the note above the document, before the link to its latest version. {version} is DebridPulse's version, shown exactly.",
+   "context": "The viewer that shows a legal document bundled with DownloadPulse (from Help → License): the note above the document, before the link to its latest version. {version} is DownloadPulse's version, shown exactly.",
    "owner": "frontend/static/ui-help-license-documents.js",
    "criticality": "normal",
    "args": {
-    "version": "string: the running DebridPulse version, shown exactly (e.g. 1.0.14)"
+    "version": "string: the running DownloadPulse version, shown exactly (e.g. 1.0.14)"
    }
   },
   "help.legal.bundled_unversioned": {
    "category": "hint",
-   "context": "The viewer that shows a legal document bundled with DebridPulse (from Help → License): the same note when the version is not known.",
+   "context": "The viewer that shows a legal document bundled with DownloadPulse (from Help → License): the same note when the version is not known.",
    "owner": "frontend/static/ui-help-license-documents.js",
    "criticality": "normal"
   },
   "help.legal.latest": {
    "category": "action",
-   "context": "The viewer that shows a legal document bundled with DebridPulse (from Help → License): a link that opens the document's current copy on GitHub in a new tab.",
+   "context": "The viewer that shows a legal document bundled with DownloadPulse (from Help → License): a link that opens the document's current copy on GitHub in a new tab.",
    "owner": "frontend/static/ui-help-license-documents.js",
    "criticality": "normal"
   },
   "help.legal.failed": {
    "category": "error",
-   "context": "The viewer that shows a legal document bundled with DebridPulse (from Help → License): the note when the document did not load.",
+   "context": "The viewer that shows a legal document bundled with DownloadPulse (from Help → License): the note when the document did not load.",
    "owner": "frontend/static/ui-help-license-documents.js",
    "criticality": "normal"
   },
   "help.legal.load_failed": {
    "category": "error",
-   "context": "The viewer that shows a legal document bundled with DebridPulse (from Help → License): shown in the document's place when it did not load and the server gave no reason.",
+   "context": "The viewer that shows a legal document bundled with DownloadPulse (from Help → License): shown in the document's place when it did not load and the server gave no reason.",
    "owner": "frontend/static/ui-help-license-documents.js",
    "criticality": "normal"
   },
@@ -21176,7 +21176,7 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.usenet.downloads_recovery.debridpulse_verifies_repairs": {
+  "help.topic.usenet.downloads_recovery.downloadpulse_verifies_repairs": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Usenet), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -21557,7 +21557,7 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.torbox.what_plan_can.debridpulse_follows_torbox": {
+  "help.topic.torbox.what_plan_can.downloadpulse_follows_torbox": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -21569,7 +21569,7 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.torbox.what_plan_can.debridpulse": {
+  "help.topic.torbox.what_plan_can.downloadpulse": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (TorBox), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -22255,7 +22255,7 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.oidc.connection.public_debridpulse_base": {
+  "help.topic.oidc.connection.public_downloadpulse_base": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (OpenID Connect), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words. {variable} stands for literal technical text (a setting value, environment variable, claim, scope or file type), shown exactly as written.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -22397,7 +22397,7 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.user_accounts.account_actions.debridpulse_always_keeps": {
+  "help.topic.user_accounts.account_actions.downloadpulse_always_keeps": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (User Accounts), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -22745,7 +22745,7 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.statistics_reporting.intro.outbound_summary_debridpulse": {
+  "help.topic.statistics_reporting.intro.outbound_summary_downloadpulse": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Statistics Reporting), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -22877,7 +22877,7 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.event_logging.intro.debridpulse_records_event": {
+  "help.topic.event_logging.intro.downloadpulse_records_event": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Event Logging), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -22943,7 +22943,7 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.backups.statistics_snapshots.separately_debridpulse_saves": {
+  "help.topic.backups.statistics_snapshots.separately_downloadpulse_saves": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -22955,13 +22955,13 @@
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.backups.statistics_snapshots.debridpulse_keeps_saving": {
+  "help.topic.backups.statistics_snapshots.downloadpulse_keeps_saving": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Backups & Retention), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
    "criticality": "normal"
   },
-  "help.topic.database_reset.intro.erases_debridpulse_download": {
+  "help.topic.database_reset.intro.erases_downloadpulse_download": {
    "category": "long-form-help",
    "context": "Settings Help: a paragraph or list item of a Settings card's help dialog (Database Reset Controls), shown only where it applies to the reader (role, deployment type, Easy or Advanced). Interface labels it names are the interface's own words.",
    "owner": "frontend/static/ui-settings-help.js",
@@ -23321,7 +23321,7 @@
   },
   "setup.welcome.body.thanks": {
    "category": "hint",
-   "context": "Setup wizard Welcome page body, paragraph 1 of 3: a warm welcome and thanks for trying the app. DebridPulse is the product name.",
+   "context": "Setup wizard Welcome page body, paragraph 1 of 3: a warm welcome and thanks for trying the app. DownloadPulse is the product name.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
@@ -23360,7 +23360,7 @@
   },
   "setup.deployment.tagline": {
    "category": "hint",
-   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Deployment Type page. Meaning: will you use DebridPulse alone, or with a group of people? 'Flying solo' = alone; 'the whole crew' = your team, family or friends. Keep it a light question.",
+   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Deployment Type page. Meaning: will you use DownloadPulse alone, or with a group of people? 'Flying solo' = alone; 'the whole crew' = your team, family or friends. Keep it a light question.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
@@ -23432,13 +23432,13 @@
   },
   "setup.premium.body.optional": {
    "category": "hint",
-   "context": "Setup wizard Premium Services page body, paragraph 2 of 2, above the six service buttons. 'not required' is bold for emphasis. Media Downloads is a DebridPulse feature name.",
+   "context": "Setup wizard Premium Services page body, paragraph 2 of 2, above the six service buttons. 'not required' is bold for emphasis. Media Downloads is a DownloadPulse feature name.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
   "setup.getting_started.tagline": {
    "category": "hint",
-   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Getting Started (last) page. Meaning: setup is done, now start using DebridPulse. Upbeat.",
+   "context": "A short, playful tagline shown beneath the page title (personality, not instruction; the page body carries the guidance). Translate the tone and intent, not the literal words: use a natural, lighthearted phrase of similar length in your language. Do not back-translate literally and do not add an em dash. Setup wizard Getting Started (last) page. Meaning: setup is done, now start using DownloadPulse. Upbeat.",
    "owner": "frontend/static/ui-setup-wizard.js",
    "criticality": "normal"
   },
@@ -23468,7 +23468,7 @@
   },
   "settings.local_port.title": {
    "category": "label",
-   "context": "Settings › Access & Integrations › Deployment & Language (desktop application only): title of the Local Port item: the port on this computer where external applications (Sonarr, Radarr) reach DebridPulse. Sentence-case like the card's other titles (Default Language).",
+   "context": "Settings › Access & Integrations › Deployment & Language (desktop application only): title of the Local Port item: the port on this computer where external applications (Sonarr, Radarr) reach DownloadPulse. Sentence-case like the card's other titles (Default Language).",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "normal",
    "geometry": "One line, never wrapped."
@@ -23527,7 +23527,7 @@
   },
   "settings.local_port.confirm_message": {
    "category": "critical-warning",
-   "context": "Confirmation before changing Local Port: the applications that connected through the current port in the past week, and that they stop reaching DebridPulse until they are given the new port. {clients} is their list, already joined; {current} and {port} are port numbers (digits).",
+   "context": "Confirmation before changing Local Port: the applications that connected through the current port in the past week, and that they stop reaching DownloadPulse until they are given the new port. {clients} is their list, already joined; {current} and {port} are port numbers (digits).",
    "owner": "frontend/static/ui-settings-page.js",
    "criticality": "critical-warning",
    "args": {
@@ -23594,13 +23594,13 @@
   },
   "desktop.local_port.unavailable_title": {
    "category": "toast",
-   "context": "Desktop notification title when DebridPulse starts and another program already holds Local Port.",
+   "context": "Desktop notification title when DownloadPulse starts and another program already holds Local Port.",
    "owner": "desktop/supervisor.py",
    "criticality": "normal"
   },
   "desktop.local_port.unavailable": {
    "category": "toast",
-   "context": "Desktop notification body when DebridPulse starts and another program already holds Local Port. {port} is the port number (digits). 'Settings' is the page name.",
+   "context": "Desktop notification body when DownloadPulse starts and another program already holds Local Port. {port} is the port number (digits). 'Settings' is the page name.",
    "owner": "desktop/supervisor.py",
    "criticality": "normal",
    "args": {

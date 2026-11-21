@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.12 universal file-selection presentation owner.
+/* DownloadPulse v1.0.12 universal file-selection presentation owner.
  *
  * Bounded owner for the file-selection modal (specification sections 41-50).
  * It renders the tri-state folder tree, owns browser-local checkbox draft
@@ -390,7 +390,7 @@
     // auto-offer path guards against stomping any open modal before it calls in.
     if (selectorTransferId != null && selectorTransferId !== transferId) return;
     if (modal().mode === 'details') {
-      document.dispatchEvent(new CustomEvent('debridpulse:detail-closed', {detail: {reason: 'file-selection'}}));
+      document.dispatchEvent(new CustomEvent('downloadpulse:detail-closed', {detail: {reason: 'file-selection'}}));
     }
 
     selectorTransferId = transferId;
@@ -545,7 +545,7 @@
   // work: closing the selector cancels the whole transfer. An Admin may; a
   // User only where the server's ``access.destroy`` says no one else needs it.
   function mayChoose(transferId) {
-    const auth = window.debridPulseAuth;
+    const auth = window.downloadPulseAuth;
     if (!auth || !auth.can('transfers.operate')) return Promise.resolve(false);
     if (auth.can('administer')) return Promise.resolve(true);
     return api('GET', '/torrents/' + Number(transferId))
@@ -586,7 +586,7 @@
     if (selectorTransferId != null) return;   // a real selector is already open
     if (modal().mode && modal().mode !== 'details') return;  // another modal owns the shell
     if (modal().mode === 'details') {
-      document.dispatchEvent(new CustomEvent('debridpulse:detail-closed', {detail: {reason: 'file-selection'}}));
+      document.dispatchEvent(new CustomEvent('downloadpulse:detail-closed', {detail: {reason: 'file-selection'}}));
     }
     modal().open({
       mode: PENDING_MODE,
@@ -635,7 +635,7 @@
   // ── Compact glyph-only list chip (Dashboard Recent / Downloads, §6.3) ────
   function chipMarkup(item) {
     const affordance = item && item.file_selection_affordance;
-    if (!affordance || affordance === 'none' || !window.debridPulseAuth?.mayDestroy(item)) return '';
+    if (!affordance || affordance === 'none' || !window.downloadPulseAuth?.mayDestroy(item)) return '';
     const label = affordanceLabel(affordance);
     const icon = window.DPIcons && typeof window.DPIcons.svg === 'function'
       ? window.DPIcons.svg('folder') : '';
@@ -695,7 +695,7 @@
   // A language change: the open chooser's keyed words are re-rendered in place
   // (ui-i18n.js); here its title, close name, count, Select All and countdown
   // sentence -- the draft, focus and countdown are untouched.
-  document.addEventListener('debridpulse:locale-changed', function () {
+  document.addEventListener('downloadpulse:locale-changed', function () {
     const mode = modal().mode;
     const title = document.getElementById('modal-title');
     const close = document.querySelector('#modal .modal-close');
@@ -715,20 +715,20 @@
   // ── Wiring ──────────────────────────────────────────────────────────────
   function init() {
     // Choosing files is an operating control: a read-only caller has none.
-    if (!(window.debridPulseAuth && window.debridPulseAuth.can('transfers.operate'))) return;
-    document.addEventListener('debridpulse:file-selection-available', function (event) {
+    if (!(window.downloadPulseAuth && window.downloadPulseAuth.can('transfers.operate'))) return;
+    document.addEventListener('downloadpulse:file-selection-available', function (event) {
       const payload = event && event.detail || {};
       handleOffer(payload.transfer_id);
     });
-    document.addEventListener('debridpulse:pulse-connected', pollOffers);
-    document.addEventListener('debridpulse:detail-rendered', function (event) {
+    document.addEventListener('downloadpulse:pulse-connected', pollOffers);
+    document.addEventListener('downloadpulse:detail-rendered', function (event) {
       const payload = event && event.detail || {};
       const transferId = Number(payload.transferId);
       if (!Number.isFinite(transferId)) { detailTransferId = null; return; }
       detailTransferId = transferId;
       renderDetailEntry(transferId, Boolean(payload.relabel));
     });
-    document.addEventListener('debridpulse:detail-closed', function () {
+    document.addEventListener('downloadpulse:detail-closed', function () {
       detailTransferId = null;
       detailEntryShown = null;
     });
@@ -737,7 +737,7 @@
     // existing torrent_updated semantic transport delivered it. Re-read
     // authoritative state for the open Details entry -- never synthesize
     // mutability client-side, never just remove the DOM node.
-    document.addEventListener('debridpulse:transfer-updated', function (event) {
+    document.addEventListener('downloadpulse:transfer-updated', function (event) {
       const payload = event && event.detail || {};
       const transferId = Number(payload.transferId);
       if (Number.isFinite(transferId) && detailTransferId === transferId) {

@@ -1,14 +1,14 @@
 name: Testing Alias
 
-# Moves the rolling development alias ghcr.io/xipher-zero/debridpulse:1.0.14-testing
-# to the immutable sha-<commit> index that Fork Image has just published, when
-# that commit is still the 1.0.14 tip (.github/qualification/testing_alias.py
+# Moves the rolling development alias ghcr.io/xipher-zero/downloadpulse:1.0.0-testing
+# to the immutable sha-<commit> index that Image has just published, when
+# that commit is still the 1.0.0 tip (.github/qualification/testing_alias.py
 # decides). Not a qualification or release target: the six required workflows
 # stay independently authoritative, latest, v* and internal-v* stay Release
 # Promotion's, and nothing is ever built or re-tagged per architecture.
 #
-# Called only as Fork Image's last job, after its publication succeeded, on a
-# 1.0.14 push (a re-run included). A workflow that exists only on 1.0.14 can be
+# Called only as Image's last job, after its publication succeeded, on a
+# 1.0.0 push (a re-run included). A workflow that exists only on 1.0.0 can be
 # started by nothing else: GitHub runs workflow_dispatch, workflow_run,
 # repository_dispatch and schedule workflows only from the default branch.
 #
@@ -18,9 +18,9 @@ name: Testing Alias
 # No two registry writes overlap, and a commit that is no longer the tip never
 # writes -- a newer commit's own publication does.
 #
-# The outcome is the commit status "1.0.14-testing" on the published commit:
+# The outcome is the commit status "1.0.0-testing" on the published commit:
 # success (the alias is this commit's image), pending (superseded: no write) or
-# failure (a fault, naming the retry). It never changes Fork Image's verdict:
+# failure (a fault, naming the retry). It never changes Image's verdict:
 # every step continues on error.
 on:
   workflow_call:
@@ -28,23 +28,23 @@ on:
 permissions: {}
 
 env:
-  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse
-  BRANCH: "1.0.14"
-  ALIAS_TAG: "1.0.14-testing"
+  IMAGE_NAME: ghcr.io/xipher-zero/downloadpulse
+  BRANCH: "1.0.0"
+  ALIAS_TAG: "1.0.0-testing"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   alias:
-    name: Move 1.0.14-testing to this commit's image
+    name: Move 1.0.0-testing to this commit's image
     if: >-
-      github.event_name == 'push' && github.ref == 'refs/heads/1.0.14'
-      && github.repository == 'Xipher-Zero/debridpulse'
+      github.event_name == 'push' && github.ref == 'refs/heads/1.0.0'
+      && github.repository == 'Xipher-Zero/downloadpulse'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # The one alias writer (a literal, never github.workflow, which a called
     # workflow shares with its caller).
     concurrency:
-      group: dp-1.0.14-testing-alias-writer
+      group: dp-1.0.0-testing-alias-writer
       cancel-in-progress: false
       queue: max
     permissions:
@@ -200,15 +200,15 @@ jobs:
           PREVIOUS: ${{ steps.images.outputs.alias_digest }}
         run: |
           set -euo pipefail
-          # The one authoritative outcome, on the published commit, apart from Fork Image's verdict.
+          # The one authoritative outcome, on the published commit, apart from Image's verdict.
           python3 .github/qualification/testing_alias.py --outcome decision.json --write "${WRITE:-}" \
             --previous "${PREVIOUS:-}" > status.json \
-            || echo '{"state": "failure", "description": "1.0.14-testing state UNKNOWN: outcome unreadable, inspect the tag. Reconcile: re-run the Testing alias job."}' > status.json
+            || echo '{"state": "failure", "description": "1.0.0-testing state UNKNOWN: outcome unreadable, inspect the tag. Reconcile: re-run the Testing alias job."}' > status.json
           state="$(jq -r .state status.json)"; description="$(jq -r .description status.json)"
           {
             echo "## ${IMAGE_NAME}:${ALIAS_TAG}"
             if [ -s decision.json ]; then
-              jq -r '"- Commit: `\(.commit)` (1.0.14 tip: `\(.tip // "unread")`)", "- Source: `\(.source_tag // "—")`",
+              jq -r '"- Commit: `\(.commit)` (1.0.0 tip: `\(.tip // "unread")`)", "- Source: `\(.source_tag // "—")`",
                      "- Index digest: `\(.digest // "—")`", "- amd64: `\(.platforms.amd64 // "—")`",
                      "- arm64: `\(.platforms.arm64 // "—")`", "- Alias before: `\(.previous_alias_digest // "none")`",
                      "- Decision: **\(.action)** — \(.reason)"' decision.json

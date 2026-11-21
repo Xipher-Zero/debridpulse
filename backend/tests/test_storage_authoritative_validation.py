@@ -54,7 +54,7 @@ def _capacity(tmp_path, *, minimum_gb=0, hysteresis_gb=0.5):
         download_dir,
         minimum_gb=minimum_gb,
         hysteresis_gb=hysteresis_gb,
-        application_path=app_dir / "debridpulse.db",
+        application_path=app_dir / "downloadpulse.db",
     )
     return capacity, app_dir, download_dir
 
@@ -81,7 +81,7 @@ def _service(capacity, *, references=False):
 
 def test_authoritative_probe_success_leaves_no_artifact_and_exposes_evidence(tmp_path):
     capacity, _app_dir, download_dir = _capacity(tmp_path)
-    sentinel = download_dir / ".debridpulse-probe-owned"
+    sentinel = download_dir / ".downloadpulse-probe-owned"
     sentinel.write_text("user-data")
 
     snapshot = capacity.validate_download_path(download_dir)
@@ -213,7 +213,7 @@ def test_write_faults_are_authoritative_and_cleanup_runs(tmp_path, monkeypatch, 
 
     assert snapshot.state == expected_state
     assert snapshot.writable is False
-    assert not list(download_dir.glob(".debridpulse-probe-*"))
+    assert not list(download_dir.glob(".downloadpulse-probe-*"))
 
 
 def test_write_edquot_is_full(tmp_path, monkeypatch):
@@ -240,7 +240,7 @@ def test_flush_faults_are_authoritative(tmp_path, monkeypatch, code, expected_st
     _fault_handle(monkeypatch, flush_error=OSError(code, "flush failed"))
     snapshot = capacity.validate_download_path(download_dir)
     assert snapshot.state == expected_state
-    assert not list(download_dir.glob(".debridpulse-probe-*"))
+    assert not list(download_dir.glob(".downloadpulse-probe-*"))
 
 
 @pytest.mark.parametrize(
@@ -257,7 +257,7 @@ def test_fsync_faults_are_authoritative(tmp_path, monkeypatch, code, expected_st
     snapshot = capacity.validate_download_path(download_dir)
     assert snapshot.state == expected_state
     assert snapshot.writable is False
-    assert not list(download_dir.glob(".debridpulse-probe-*"))
+    assert not list(download_dir.glob(".downloadpulse-probe-*"))
 
 
 def test_fsync_edquot_is_full(tmp_path, monkeypatch):
@@ -289,7 +289,7 @@ def test_close_failure_after_success_is_validation_failure(tmp_path, monkeypatch
     snapshot = capacity.validate_download_path(download_dir)
     assert snapshot.state == StorageState.UNAVAILABLE
     assert snapshot.reason == StorageReason.IO_ERROR
-    assert not list(download_dir.glob(".debridpulse-probe-*"))
+    assert not list(download_dir.glob(".downloadpulse-probe-*"))
 
 
 def test_capacity_stat_failure_is_unavailable_and_cleanup_runs(tmp_path, monkeypatch):
@@ -307,7 +307,7 @@ def test_capacity_stat_failure_is_unavailable_and_cleanup_runs(tmp_path, monkeyp
     assert snapshot.reason == StorageReason.IO_ERROR
     assert snapshot.total_bytes is None
     assert snapshot.free_bytes is None
-    assert not list(download_dir.glob(".debridpulse-probe-*"))
+    assert not list(download_dir.glob(".downloadpulse-probe-*"))
 
 
 def test_unclassified_capacity_stat_failure_uses_stat_failed(tmp_path, monkeypatch):
@@ -343,7 +343,7 @@ def test_cleanup_failure_after_success_is_not_reported_healthy(tmp_path, monkeyp
     snapshot = capacity.validate_download_path(download_dir)
     assert snapshot.state == StorageState.READ_ONLY
     assert snapshot.writable is False
-    assert not list(download_dir.glob(".debridpulse-probe-*"))
+    assert not list(download_dir.glob(".downloadpulse-probe-*"))
 
 
 def test_cleanup_failure_does_not_mask_primary_fault(tmp_path, monkeypatch):
@@ -359,7 +359,7 @@ def test_cleanup_failure_does_not_mask_primary_fault(tmp_path, monkeypatch):
     snapshot = capacity.validate_download_path(download_dir)
     assert snapshot.state == StorageState.FULL
     assert snapshot.reason == StorageReason.CAPACITY_EXHAUSTED
-    assert not list(download_dir.glob(".debridpulse-probe-*"))
+    assert not list(download_dir.glob(".downloadpulse-probe-*"))
 
 
 def test_generic_eio_with_capacity_evidence_remains_unavailable(tmp_path, monkeypatch):
@@ -470,7 +470,7 @@ async def test_bad_download_storage_does_not_prevent_health_service_startup_path
     app_dir = tmp_path / "app"
     app_dir.mkdir()
     missing = tmp_path / "missing-download"
-    capacity = DiskCapacity(missing, application_path=app_dir / "debridpulse.db")
+    capacity = DiskCapacity(missing, application_path=app_dir / "downloadpulse.db")
     service, _repository, engine = _service(capacity)
 
     result = await storage_health(service)
@@ -495,7 +495,7 @@ async def test_settings_valid_candidate_passes_authoritative_validation(tmp_path
     repository.has_integration_references.assert_awaited_once_with()
     assert capacity.snapshot(StorageDomain.DOWNLOAD).configured_path == str(download_dir)
     assert capacity.snapshot(StorageDomain.DOWNLOAD).state == StorageState.HEALTHY
-    assert not list(candidate.glob(".debridpulse-probe-*"))
+    assert not list(candidate.glob(".downloadpulse-probe-*"))
 
 
 @pytest.mark.asyncio
@@ -620,7 +620,7 @@ def test_successful_new_candidate_can_be_activated_without_restarting_capacity_o
     assert detached.state == StorageState.HEALTHY
     assert capacity.snapshot(StorageDomain.DOWNLOAD).configured_path == str(download_dir)
 
-    capacity.configure(replacement, application_path=app_dir / "debridpulse.db")
+    capacity.configure(replacement, application_path=app_dir / "downloadpulse.db")
     health = capacity.check()
 
     assert health["download"]["configured_path"] == str(replacement)

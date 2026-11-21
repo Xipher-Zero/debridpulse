@@ -16,7 +16,7 @@
 set -euo pipefail
 
 cache="${1:?usage: install_browser_fonts.sh <download cache dir>}"
-target=/usr/local/share/fonts/debridpulse-browser
+target=/usr/local/share/fonts/downloadpulse-browser
 SUDO=""
 [ "$(id -u)" -eq 0 ] || SUDO=sudo
 

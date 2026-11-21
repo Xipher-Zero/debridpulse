@@ -24,7 +24,7 @@ def _settings(**updates):
     values = {
         "auth_password_enabled": True,
         "auth_oidc_enabled": False,
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
         "oidc_client_id": "client",
         "oidc_client_secret": "secret",
         "oidc_scopes": ["openid", "profile", "email"],
@@ -166,7 +166,7 @@ async def test_application_session_precedes_unexpected_bearer_header(installatio
     session_store.clear()
     token, _record = session_store.create(Principal.password_session(account("operator")), lifetime_seconds=3600)
     response, seen = await _admit({
-        "Cookie": f"debridpulse-session={token}",
+        "Cookie": f"downloadpulse-session={token}",
         "Authorization": "Bearer invalid-and-must-be-ignored",
     })
     assert response.status_code == 200

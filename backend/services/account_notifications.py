@@ -41,7 +41,7 @@ from services.notifications import NotificationService as DiscordNotificationCli
 from services.notifications import is_discord_webhook_url
 from core.localization import Coded
 
-logger = logging.getLogger("debridpulse.notify")
+logger = logging.getLogger("downloadpulse.notify")
 
 DESTINATIONS = ("discord_webhook_url", "discord_webhook_added", "stats_report_webhook_url")
 # How many personal webhook posts one dispatch keeps in flight at once. It
@@ -108,7 +108,7 @@ class NotificationRefused(Coded, ValueError):
 def _avatar_acceptable(url: str) -> bool:
     """A sender avatar is a public HTTPS image URL that Discord itself fetches.
 
-    DebridPulse never fetches it, so it cannot become a server-side request;
+    DownloadPulse never fetches it, so it cannot become a server-side request;
     the bounds here keep the stored value a plain URL and nothing more."""
     if not url:
         return True

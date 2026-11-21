@@ -271,7 +271,7 @@ def _artifact(event_type, severity, message, *, transfer_id, artifact_id, **fiel
 def directory_retired(*, transfer_id, artifact_id) -> JournalEvent:
     """A completed collection's folder, found empty once every claim on it was
     a settled delivery, removed. Truthful about what happened: the folder was
-    already empty; nothing inside it was deleted by DebridPulse."""
+    already empty; nothing inside it was deleted by DownloadPulse."""
     return _artifact("execution.folder_retired", "info",
                      "Empty download folder removed after its delivery was acknowledged; it held nothing",
                      transfer_id=transfer_id, artifact_id=artifact_id)

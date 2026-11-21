@@ -1,18 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>org.debridpulse.desktop</id>
-  <name>DebridPulse</name>
+  <id>net.downloadpulse.desktop</id>
+  <name>DownloadPulse</name>
   <summary>Self-hosted download and transfer manager</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-2.0-or-later</project_license>
   <description>
-    <p>DebridPulse manages downloads from direct links, magnets, torrents, NZBs and network sources through
+    <p>DownloadPulse manages downloads from direct links, magnets, torrents, NZBs and network sources through
       debrid services, Usenet, rsync, SFTP, WebDAV and media sites, with archive extraction and delivery.</p>
   </description>
-  <launchable type="desktop-id">org.debridpulse.desktop.desktop</launchable>
-  <url type="homepage">https://github.com/Xipher-Zero/debridpulse</url>
+  <launchable type="desktop-id">net.downloadpulse.desktop.desktop</launchable>
+  <url type="homepage">https://downloadpulse.net</url>
+  <url type="vcs-browser">https://github.com/Xipher-Zero/downloadpulse</url>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="1.0.14" date="2026-11-14"/>
+    <release version="1.0.0" date="2026-11-20"/>
   </releases>
 </component>

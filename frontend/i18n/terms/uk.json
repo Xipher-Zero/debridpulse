@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "uk",
  "register": "Ukrainian (standard Ukrainian orthography, 2019). Formal 'ви' (lower case) wherever the reader is addressed. Buttons and menu commands use the infinitive standard in Ukrainian software (Зберегти, Скасувати, Видалити, Повторити); headings and labels use nouns. Correct case, gender and number agreement, including the vocative-free UI style; Ukrainian typography («…» quotes, the typographic apostrophe ’ in words such as ім’я). Native Ukrainian terminology, never Russianisms or Russian calques (рушій, not двигун/движок, for an engine; постачальник for a provider). This catalog is Ukrainian only: it is not a source or variant of the Russian catalog.",
  "terms": {

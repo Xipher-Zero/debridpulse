@@ -12,7 +12,7 @@ from integrations.definition import IntegrationDefinition
 
 
 class RsyncOptions(BaseModel):
-    # Continue an interrupted file in place from the DebridPulse-authorized
+    # Continue an interrupted file in place from the DownloadPulse-authorized
     # prefix; off, nothing partial ever reaches the destination.
     partial_transfers: bool = True
     # Native transport compression. Off by default: most payloads are already
@@ -25,7 +25,7 @@ class RsyncOptions(BaseModel):
     # transfer begins (the SSH channel's connection and login share it).
     connection_timeout_seconds: int = Field(default=30, ge=5, le=300)
     # How long a running transfer may go without any data before it stops
-    # (rsync --timeout); never a replacement for DebridPulse's stalled policy.
+    # (rsync --timeout); never a replacement for DownloadPulse's stalled policy.
     transfer_timeout_seconds: int = Field(default=300, ge=30, le=3600)
 
 

@@ -1,4 +1,4 @@
-"""Real aria2 runtime proof of DebridPulse-owned continuation (1.0.13).
+"""Real aria2 runtime proof of DownloadPulse-owned continuation (1.0.13).
 
 A real aria2 daemon (production-like 64 MiB write cache, falloc, several
 connections per job) downloads from a throttled Range-capable HTTP origin.

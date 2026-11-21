@@ -1,4 +1,4 @@
-/* DebridPulse first-paint theme bootstrap and the one theme state owner.
+/* DownloadPulse first-paint theme bootstrap and the one theme state owner.
  *
  * Three choices, each kept apart from the others: the mode, the dark palette
  * and the light palette. Choosing a palette changes only the active mode's
@@ -6,7 +6,7 @@
  * choice. Nothing here ever chooses one mode's palette from the other's.
  *
  * Where the choices live is the server's decision for this page, prepended to
- * this script before it runs (window.debridPulseAppearance, served by
+ * this script before it runs (window.downloadPulseAppearance, served by
  * /ui-theme-bootstrap.js), so the first paint already has them:
  *   - 'browser': interactive sign-in is off. This browser's localStorage
  *     (`theme`, `dp-theme-palette-dark`, `dp-theme-palette-light`) holds them,
@@ -21,7 +21,7 @@
  * Anything else is an account whose appearance is unknown: the native
  * appearance, never a browser choice.
  *
- * DebridPulse Dark and Light are the native palettes: with them the body
+ * DownloadPulse Dark and Light are the native palettes: with them the body
  * carries no data-dp-palette and every token keeps its original value
  * (ui-theme-palettes.css declares only the alternatives). A missing or unknown
  * choice -- a retired palette included -- is the native palette of that mode,
@@ -29,9 +29,9 @@
  *
  * The product logo is drawn here too, inline, so it follows the theme in force
  * (ui-logo.css): its one source, logo.svg, is served with this script
- * (window.debridPulseLogo) and <dp-logo> is defined before the body below is
+ * (window.downloadPulseLogo) and <dp-logo> is defined before the body below is
  * parsed, so the sidebar's mark is drawn at first paint. The sidebar's signal
- * field (icons/dp/sidebar-wave-accent.svg, window.debridPulseSignalField) is
+ * field (icons/dp/sidebar-wave-accent.svg, window.downloadPulseSignalField) is
  * drawn the same way, as <dp-signal-field>, in the sidebar and the dock.
  */
 (function () {
@@ -49,17 +49,17 @@
     document.documentElement.dataset.dpEngine = 'webkitgtk';
   }
 
-  const source = window.debridPulseAppearance || {};
+  const source = window.downloadPulseAppearance || {};
   const browser = source.authority === 'browser';
 
   // The one palette catalog, each mode's palettes in picker order with the
   // native one first, served with this script from the server's authority
   // (services/account_appearance.py CATALOG), which accepts exactly these IDs.
   // Without it only the native palettes -- the absence of a palette -- exist.
-  const NATIVE = {dark: 'debridpulse-dark', light: 'debridpulse-light'};
+  const NATIVE = {dark: 'downloadpulse-dark', light: 'downloadpulse-light'};
   const CATALOG = Object.freeze(['dark', 'light'].reduce(function (catalog, mode) {
     const served = Array.isArray(source.catalog && source.catalog[mode]) ? source.catalog[mode] : [];
-    const entries = served.length ? served : [{id: NATIVE[mode], label: 'DebridPulse (Default)'}];
+    const entries = served.length ? served : [{id: NATIVE[mode], label: 'DownloadPulse (Default)'}];
     catalog[mode] = Object.freeze(entries.map(function (item) {
       return Object.freeze({id: String(item.id), label: String(item.label)});
     }));
@@ -107,7 +107,7 @@
     else document.body.setAttribute('data-dp-palette', chosen[active]);
   }
   function changed(light) {
-    document.dispatchEvent(new CustomEvent('debridpulse:theme-changed', {detail: {light: light}}));
+    document.dispatchEvent(new CustomEvent('downloadpulse:theme-changed', {detail: {light: light}}));
   }
 
   // ── the account's record ─────────────────────────────────────────────────
@@ -196,7 +196,7 @@
 
   if (!browser) {
     // auth.js confirms the session at load, periodically and on reconnect.
-    document.addEventListener('debridpulse:session-changed', function () {
+    document.addEventListener('downloadpulse:session-changed', function () {
       resolve();
       save();
     });
@@ -255,7 +255,7 @@
   // mark, the setup wizard's Welcome heading). The first copy keeps the
   // logo's own ids; every later copy renames them, so no copy draws with
   // another's gradients or glow (one hidden with its sidebar included).
-  const LOGO = typeof window.debridPulseLogo === 'string' ? window.debridPulseLogo : '';
+  const LOGO = typeof window.downloadPulseLogo === 'string' ? window.downloadPulseLogo : '';
   if (LOGO && window.customElements && !customElements.get('dp-logo')) {
     let logos = 0;
     customElements.define('dp-logo', class extends HTMLElement {
@@ -271,7 +271,7 @@
   // and the dock (ui-shell-signal-field.css colours it in the palette in
   // force); each copy renames its ids, so neither draws with the other's
   // gradients or filter.
-  const FIELD = typeof window.debridPulseSignalField === 'string' ? window.debridPulseSignalField : '';
+  const FIELD = typeof window.downloadPulseSignalField === 'string' ? window.downloadPulseSignalField : '';
   if (FIELD && window.customElements && !customElements.get('dp-signal-field')) {
     let copies = 0;
     customElements.define('dp-signal-field', class extends HTMLElement {

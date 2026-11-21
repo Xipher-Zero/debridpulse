@@ -29,7 +29,7 @@ const AUTH = process.env.DP_AUTH_BASE_URL;
 const SERVER_SECTIONS = ['Services', 'Downloads', 'Extraction', 'Authentication', 'Users & Access',
   'Notifications', 'Data & Maintenance'];
 const STANDALONE_KEYS = ['sources', 'downloads', 'extraction', 'users', 'notifications', 'maintenance'];
-const CONSEQUENCE = 'Clearing your password turns off password sign-in. Anyone who can reach DebridPulse '
+const CONSEQUENCE = 'Clearing your password turns off password sign-in. Anyone who can reach DownloadPulse '
   + 'can then access this installation without a password, until you set a new one in My Account.';
 
 async function isolateFonts(page) {
@@ -160,7 +160,7 @@ async function signedIn(browser, profile) {
   await isolateFonts(page);
   await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
-  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id));
+  await page.waitForFunction(() => Boolean(window.downloadPulseAuth?.authority?.account_id));
   await page.route(url => url.pathname.startsWith('/api/account'), async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;

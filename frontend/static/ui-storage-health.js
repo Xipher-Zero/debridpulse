@@ -190,7 +190,7 @@
   }
 
   // A language change says the warnings (and the region's name) again.
-  document.addEventListener('debridpulse:locale-changed', () => {
+  document.addEventListener('downloadpulse:locale-changed', () => {
     const region = document.getElementById('dp-storage-health');
     if (region) region.setAttribute('aria-label', t('storage.region_label'));
     if (currentHealth) render(currentHealth);
@@ -208,7 +208,7 @@
   }
 
   async function requestHealth() {
-    const response = await window.debridPulseAuth.fetch('/api/storage/health', {
+    const response = await window.downloadPulseAuth.fetch('/api/storage/health', {
       method: 'GET',
       headers: {'Accept': 'application/json'},
       cache: 'no-store',
@@ -263,7 +263,7 @@
   });
 
   // Storage health is administration: an account without it never polls.
-  if (!window.debridPulseAuth?.can('administer')) return;
+  if (!window.downloadPulseAuth?.can('administer')) return;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start, {once: true});
   } else {

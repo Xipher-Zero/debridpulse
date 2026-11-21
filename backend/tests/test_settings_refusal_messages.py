@@ -86,7 +86,7 @@ def test_a_rule_without_wording_is_not_valid_never_pydantic_prose():
 def test_the_refusal_is_a_400_with_the_detail_in_the_log(caplog):
     with pytest.raises(ValidationError) as caught:
         TorBoxOptions(rate_limit_per_minute=500)
-    with caplog.at_level(logging.INFO, logger="debridpulse.routes"):
+    with caplog.at_level(logging.INFO, logger="downloadpulse.routes"):
         refused = _refused(caught.value)
     assert isinstance(refused, HTTPException) and refused.status_code == 400
     assert refused.detail["message"] == "Value must be 300 or less."

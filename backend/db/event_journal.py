@@ -1,4 +1,4 @@
-"""The durable event journal: THE append-only history of what DebridPulse did.
+"""The durable event journal: THE append-only history of what DownloadPulse did.
 
 One row is one occurrence a canonical owner established -- a transfer
 transition, a route attempt's end, an execution failure, an operator's file
@@ -43,7 +43,7 @@ from core import search_contract
 from core.search_contract import SearchPlan
 from core.localization import Coded
 
-logger = logging.getLogger("debridpulse.event_journal")
+logger = logging.getLogger("downloadpulse.event_journal")
 
 # ── taxonomy ────────────────────────────────────────────────────────────────
 

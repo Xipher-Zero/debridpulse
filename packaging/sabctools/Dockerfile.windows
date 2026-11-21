@@ -1,6 +1,6 @@
 # sabctools for Windows x64 CPython 3.12 (packaging/sabctools/build-windows.sh),
 # on the same pinned Debian base as the other packaging recipes, with Debian's
-# UCRT mingw-w64 toolchain and the setuptools DebridPulse's lock pins.
+# UCRT mingw-w64 toolchain and the setuptools DownloadPulse's lock pins.
 # Build context: the repository root.
 #   podman build -f packaging/sabctools/Dockerfile.windows -o <out-dir> .
 FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS build

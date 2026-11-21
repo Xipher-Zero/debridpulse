@@ -39,7 +39,7 @@ def _cfg(*, password=False, oidc=False):
         auth_username="",
         auth_password_hash="",
         auth_oidc_enabled=oidc,
-        oidc_issuer_url="https://id.example/application/o/debridpulse" if oidc else "",
+        oidc_issuer_url="https://id.example/application/o/downloadpulse" if oidc else "",
         oidc_client_id="client" if oidc else "",
         oidc_client_secret="",
         oidc_scopes=["openid"],

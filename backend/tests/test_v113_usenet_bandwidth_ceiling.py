@@ -82,7 +82,7 @@ async def test_a_percentage_base_never_changes_how_dp_expresses_a_ceiling(lab):
         bandwidth_max unset   50 -> 0 (percent of nothing)   1024 -> 1024
         bandwidth_max 10M     50 -> 5242880 (50%)            1024 -> 1024
 
-    A value of 101 or more is absolute in BOTH modes, so DebridPulse's
+    A value of 101 or more is absolute in BOTH modes, so DownloadPulse's
     encoding is unambiguous however the service is configured; only 1..100
     remains inexpressible, which is reported unproven.
     """
@@ -93,7 +93,7 @@ async def test_a_percentage_base_never_changes_how_dp_expresses_a_ceiling(lab):
         assert (await lab.executor.set_bandwidth_ceiling(50)).effective_bytes_per_second is None
 
 
-def test_debridpulse_never_configures_a_percentage_base():
+def test_downloadpulse_never_configures_a_percentage_base():
     """The runtime must not set a line rate: DP assigns absolute ceilings."""
     from executors.sabnzbd import runtime
     import inspect

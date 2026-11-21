@@ -95,7 +95,7 @@ async def _start_http(body=b"stage5-payload", *, username=None, password=None):
             if expected is not None and authorization != expected:
                 writer.write(
                     b"HTTP/1.1 401 Unauthorized\r\n"
-                    b"WWW-Authenticate: Basic realm=\"DebridPulse Stage 5\"\r\n"
+                    b"WWW-Authenticate: Basic realm=\"DownloadPulse Stage 5\"\r\n"
                     b"Content-Length: 0\r\nConnection: close\r\n\r\n"
                 )
             else:

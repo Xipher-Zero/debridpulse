@@ -1,12 +1,12 @@
-# DebridPulse Release and Repository Operations
+# DownloadPulse Release and Repository Operations
 
-This document is the authoritative operational runbook for DebridPulse source promotion and release work.
+This document is the authoritative operational runbook for DownloadPulse source promotion and release work.
 
 ## Source-of-truth boundary
 
 Source changes, branch management, promotion and release preparation are performed against the source repository — either through the connected GitHub tooling or in a clone of the repository dedicated to development.
 
-**The deployment/validation host is not that workspace.** It may have a Compose project directory (historically `/home/xipher/alldebrid-client`), but that directory is a **runtime/deployment surface**, not the development source-of-truth. Do not run `git tag`, `git push`, branch-management commands, or source-development commands there merely because a shell is available.
+**The deployment/validation host is not that workspace.** It may have a Compose project directory, but that directory is a **runtime/deployment surface**, not the development source-of-truth. Do not run `git tag`, `git push`, branch-management commands, or source-development commands there merely because a shell is available.
 
 Use shell commands on the deployment host only for things that actually require the running installation: pulling a candidate image, changing the Compose image reference, recreating the service, querying health, controlled failure injection, filesystem inspection, and other local acceptance tests.
 
@@ -16,13 +16,13 @@ Releases are promoted by **exact SHA**, not by merging a pull request. `main` is
 fast-forwarded to the exact commit that hosted CI already qualified, so the commit,
 the tree, the tag and the published image all name the same artifact.
 
-1. Develop and qualify on the release branch (for example `1.0.12`).
+1. Develop and qualify on the release branch.
 2. Re-read changed files/diffs after writes. Verify that only intended files changed.
 3. Freeze and approve an exact source tree/SHA. Any later source change creates a new
    candidate and requires requalification from zero.
 4. Push the exact approved release-branch commit.
 5. Let the required hosted workflows qualify **that exact SHA**: Tests, Browser Runtime,
-   CodeQL, Fork Image, Container Security, Candidate Runtime Qualification (and
+   CodeQL, Image, Container Security, Candidate Runtime Qualification (and
    WS3 Adversarial on branches that run it). Do not rerun until green; classify a failure
    with the candidate-vs-anchor policy in `docs/QUALIFICATION_DETERMINISM.md`.
 6. Prefer the immutable candidate image (`sha-<full-git-sha>`) for local runtime validation,
@@ -73,15 +73,15 @@ Before publication, verify all release surfaces agree:
 - OCI image `version` and `revision` labels
 
 While the top `CHANGELOG.md` entry is titled `Development`, the README and Compose install
-examples must keep naming the newest *released* entry's image (for example `v1.0.13` while
-`[1.0.14] — Development` is open); the documentation contract tests refuse an image reference to
+examples must keep naming the newest *released* entry's image (for example `v1.0.0` while
+`[1.0.1] — Development` is open); the documentation contract tests refuse an image reference to
 the development `VERSION` in the README or Compose example. Releasing therefore changes these
 surfaces together in one release-identity commit: the top entry's title no longer says
 `Development` (it takes the release's title), and the README, Compose and landing-page image
 references move to the new version. That commit is the release candidate, and it is the one whose
 exact SHA must pass every required workflow.
 
-Do not reuse an existing historical Git tag. If inherited/upstream tags occupy the next apparent version numbers, advance to the next available release identity rather than deleting or rewriting historical tags.
+Do not reuse an existing Git tag. Release tags are never deleted or rewritten: a fix after a release is a new version.
 
 ## Preferred GitHub operations
 
@@ -139,13 +139,13 @@ Never create a branch named like a tag as a substitute for a real tag.
 For a public release image:
 
 - build from the exact merged release commit;
-- publish the versioned tag, e.g. `ghcr.io/xipher-zero/debridpulse:vX.Y.Z`;
+- publish the versioned tag, e.g. `ghcr.io/xipher-zero/downloadpulse:vX.Y.Z`;
 - include multi-arch targets expected by the permanent release workflow;
 - preserve SBOM/provenance generation;
 - set OCI labels including:
   - `org.opencontainers.image.version=X.Y.Z`
   - `org.opencontainers.image.revision=<full release commit SHA>`
-  - `org.opencontainers.image.source=https://github.com/Xipher-Zero/debridpulse`
+  - `org.opencontainers.image.source=https://github.com/Xipher-Zero/downloadpulse`
   - `org.opencontainers.image.licenses=GPL-2.0-or-later`
 
 The OCI revision is the authoritative check when moving a deployment from a candidate SHA image to the published release tag.
@@ -163,7 +163,7 @@ For candidate or release deployment:
 3. Back up the Compose file.
 4. Change only the image reference.
 5. Run `docker compose config --quiet`.
-6. Recreate only the DebridPulse service.
+6. Recreate only the DownloadPulse service.
 7. Inspect container image/status/health.
 8. Query the internal `/api/health` endpoint.
 9. Restore the previous Compose file/image if validation or recreation fails.

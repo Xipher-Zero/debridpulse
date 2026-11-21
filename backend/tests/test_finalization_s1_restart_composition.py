@@ -73,7 +73,7 @@ async def test_browse_confirm_authoritative_save_persists_and_restart_reconstruc
         directory.mkdir()
     monkeypatch.setattr(config, "CONFIG_PATH", config_dir / "config.json")
 
-    capacity = DiskCapacity(old_download, application_path=app_dir / "debridpulse.db")
+    capacity = DiskCapacity(old_download, application_path=app_dir / "downloadpulse.db")
     capacity.check()
 
     browsed = _browse_directory(selected, capacity)
@@ -105,7 +105,7 @@ async def test_browse_confirm_authoritative_save_persists_and_restart_reconstruc
 
         restarted_capacity = DiskCapacity(
             reloaded.download_folder,
-            application_path=app_dir / "debridpulse.db",
+            application_path=app_dir / "downloadpulse.db",
         )
         health = restarted_capacity.check()
         restarted_browse = _browse_directory(

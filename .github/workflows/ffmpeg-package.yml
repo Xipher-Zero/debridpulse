@@ -1,17 +1,16 @@
 name: FFmpeg Package
 
-# DebridPulse's FFmpeg package (docs/SUPPLY_CHAIN_POLICY.md section 4b) is an
+# DownloadPulse's FFmpeg package (docs/SUPPLY_CHAIN_POLICY.md section 4b) is an
 # immutable supply-chain artifact of its own: built once per architecture on a
 # NATIVE runner from packaging/ffmpeg/, published write-once to
-# ghcr.io/xipher-zero/debridpulse-ffmpeg:<package version>, and consumed by the
+# ghcr.io/xipher-zero/downloadpulse-ffmpeg:<package version>, and consumed by the
 # application Dockerfile by multi-arch manifest DIGEST. Application image
 # builds never compile FFmpeg. This workflow runs only when its inputs change.
 on:
   push:
     branches:
       - main
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
     paths:
       - 'packaging/ffmpeg/**'
@@ -32,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse-ffmpeg
+  IMAGE_NAME: ghcr.io/xipher-zero/downloadpulse-ffmpeg
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -102,7 +101,7 @@ jobs:
             echo "Unable to determine whether $REF exists: $raw"
             exit 1
           fi
-          recorded="$(jq -r '.annotations["io.debridpulse.ffmpeg.inputs"] // empty' <<< "$raw")"
+          recorded="$(jq -r '.annotations["io.downloadpulse.ffmpeg.inputs"] // empty' <<< "$raw")"
           if [ "$recorded" != "$INPUTS" ]; then
             echo "$REF is already published from different inputs (${recorded:-<none>}, now $INPUTS)."
             echo "A published package version is never rebuilt: bump FFMPEG_PACKAGE_VERSION (+dpN) in packaging/ffmpeg/."
@@ -230,15 +229,15 @@ jobs:
           grep -qiE 'not found|manifest unknown|no such manifest|name unknown|denied' <<< "$existing" || {
             echo "Unable to determine whether $REF exists; refusing to publish: $existing"; exit 1; }
           docker buildx imagetools create -t "$REF" \
-            --annotation "index:org.opencontainers.image.title=DebridPulse FFmpeg packages" \
+            --annotation "index:org.opencontainers.image.title=DownloadPulse FFmpeg packages" \
             --annotation "index:org.opencontainers.image.version=$VERSION" \
             --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
             --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --annotation "index:org.opencontainers.image.licenses=LGPL-2.1-or-later" \
-            --annotation "index:io.debridpulse.ffmpeg.inputs=$INPUTS" \
+            --annotation "index:io.downloadpulse.ffmpeg.inputs=$INPUTS" \
             "$IMAGE_NAME@$AMD64" "$IMAGE_NAME@$ARM64"
           raw="$(docker buildx imagetools inspect --raw "$REF")"
-          test "$(jq -r '.annotations["io.debridpulse.ffmpeg.inputs"]' <<< "$raw")" = "$INPUTS"
+          test "$(jq -r '.annotations["io.downloadpulse.ffmpeg.inputs"]' <<< "$raw")" = "$INPUTS"
           test "$(jq -r '.annotations["org.opencontainers.image.version"]' <<< "$raw")" = "$VERSION"
           # Each build pushed an INDEX (its image plus its provenance
           # attestation); the published index lists the per-architecture IMAGE

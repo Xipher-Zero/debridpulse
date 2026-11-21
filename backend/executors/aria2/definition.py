@@ -11,7 +11,7 @@ from integrations.definition import IntegrationDefinition
 from core.localization import CodedValueError, fact
 from core.settings_constraints import native_absolute
 
-logger = logging.getLogger("debridpulse.config")
+logger = logging.getLogger("downloadpulse.config")
 
 
 # The one size grammar the packaged aria2 (1.37.0) parses for its byte and
@@ -86,7 +86,7 @@ class Aria2Options(BaseModel):
     # no field-by-field justification for leaving any of them on
     # `AppSettings` as an authority. Bounds mirror `core.config_validator`'s
     # `numeric_bounds` for the equivalent legacy flat field. (There is no
-    # upload limit: DebridPulse's aria2 is compiled without BitTorrent, so it
+    # upload limit: DownloadPulse's aria2 is compiled without BitTorrent, so it
     # never uploads; a stored ``max_upload_limit`` is an unknown key and ignored.)
     auto_start: bool = True
     # Beside the database (``DB_PATH``'s directory, the persistent data root):
@@ -146,8 +146,8 @@ def build(options, environment):
     from executors.aria2.executor import Aria2Configuration, Aria2Executor
     from executors.aria2.runtime import RPC_SECRET, Aria2RuntimeConfiguration, rpc_service, runtime
     # Derived entirely from the injected typed `options` and the download root
-    # -- never a global settings lookup and never DebridPulse global policy.
-    # The daemon owner constructs the client for the one daemon DebridPulse runs.
+    # -- never a global settings lookup and never DownloadPulse global policy.
+    # The daemon owner constructs the client for the one daemon DownloadPulse runs.
     runtime.configure(Aria2RuntimeConfiguration(options=options, download_root=environment.download_root))
     client = rpc_service(options)
     configuration = Aria2Configuration(

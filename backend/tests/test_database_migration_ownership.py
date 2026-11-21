@@ -42,13 +42,13 @@ async def test_fresh_database_becomes_current_without_predecessor_backup(tmp_pat
 
 @pytest.mark.asyncio
 async def test_current_schema_defines_no_aria2_gid_ledger(tmp_path, monkeypatch):
-    # DebridPulse owns the only aria2 daemon; the predecessor per-GID ownership
+    # DownloadPulse owns the only aria2 daemon; the predecessor per-GID ownership
     # ledger is not part of the current schema, on a fresh database or otherwise.
     path = tmp_path / "fresh.db"
     monkeypatch.setattr(database, "DB_PATH", path)
     await v112.migrate()
     await database.init_db()
-    assert "debridpulse_aria2_owned_gids" not in tables(path)
+    assert "downloadpulse_aria2_owned_gids" not in tables(path)
 
 
 @pytest.mark.asyncio

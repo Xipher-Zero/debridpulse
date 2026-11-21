@@ -1,17 +1,16 @@
 name: aria2 Package
 
-# DebridPulse's aria2 packages (docs/SUPPLY_CHAIN_POLICY.md section 4a) are an
+# DownloadPulse's aria2 packages (docs/SUPPLY_CHAIN_POLICY.md section 4a) are an
 # immutable supply-chain artifact of their own: built once per architecture on
 # a NATIVE runner from packaging/aria2/, published write-once to
-# ghcr.io/xipher-zero/debridpulse-aria2:<package version>, and consumed by the
+# ghcr.io/xipher-zero/downloadpulse-aria2:<package version>, and consumed by the
 # application Dockerfile by multi-arch manifest DIGEST. Application image
 # builds never compile aria2. This workflow runs only when its inputs change.
 on:
   push:
     branches:
       - main
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
     paths:
       - 'packaging/aria2/**'
@@ -32,7 +31,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse-aria2
+  IMAGE_NAME: ghcr.io/xipher-zero/downloadpulse-aria2
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -100,7 +99,7 @@ jobs:
             echo "Unable to determine whether $REF exists: $raw"
             exit 1
           fi
-          recorded="$(jq -r '.annotations["io.debridpulse.aria2.inputs"] // empty' <<< "$raw")"
+          recorded="$(jq -r '.annotations["io.downloadpulse.aria2.inputs"] // empty' <<< "$raw")"
           if [ "$recorded" != "$INPUTS" ]; then
             echo "$REF is already published from different inputs (${recorded:-<none>}, now $INPUTS)."
             echo "A published package version is never rebuilt: bump ARIA2_PACKAGE_VERSION (+dpN) in packaging/aria2/."
@@ -227,15 +226,15 @@ jobs:
           grep -qiE 'not found|manifest unknown|no such manifest|name unknown|denied' <<< "$existing" || {
             echo "Unable to determine whether $REF exists; refusing to publish: $existing"; exit 1; }
           docker buildx imagetools create -t "$REF" \
-            --annotation "index:org.opencontainers.image.title=DebridPulse aria2 packages" \
+            --annotation "index:org.opencontainers.image.title=DownloadPulse aria2 packages" \
             --annotation "index:org.opencontainers.image.version=$VERSION" \
             --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
             --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --annotation "index:org.opencontainers.image.licenses=GPL-2.0-or-later" \
-            --annotation "index:io.debridpulse.aria2.inputs=$INPUTS" \
+            --annotation "index:io.downloadpulse.aria2.inputs=$INPUTS" \
             "$IMAGE_NAME@$AMD64" "$IMAGE_NAME@$ARM64"
           raw="$(docker buildx imagetools inspect --raw "$REF")"
-          test "$(jq -r '.annotations["io.debridpulse.aria2.inputs"]' <<< "$raw")" = "$INPUTS"
+          test "$(jq -r '.annotations["io.downloadpulse.aria2.inputs"]' <<< "$raw")" = "$INPUTS"
           test "$(jq -r '.annotations["org.opencontainers.image.version"]' <<< "$raw")" = "$VERSION"
           # Each build pushed an INDEX (its image plus its provenance
           # attestation); the published index lists the per-architecture IMAGE

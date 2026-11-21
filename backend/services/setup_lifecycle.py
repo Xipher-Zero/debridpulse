@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 
 from core.localization import Coded
 
-logger = logging.getLogger("debridpulse.setup")
+logger = logging.getLogger("downloadpulse.setup")
 
 INITIAL_PHASES = ("welcome", "deployment", "download_directory", "administrator",
                   "premium_services", "getting_started")

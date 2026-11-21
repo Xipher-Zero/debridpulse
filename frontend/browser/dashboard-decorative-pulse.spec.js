@@ -226,7 +226,7 @@ test('one heartbeat strip crosses the single row right to left at one speed, the
     }
   }
   expect(await page.evaluate(() => [...document.querySelectorAll('.dhs-val')].map(v => v.textContent))).toEqual(before);
-  expect(await page.evaluate(() => localStorage.getItem('debridpulse.dashboard.metric-history.v2'))).toBeNull();
+  expect(await page.evaluate(() => localStorage.getItem('downloadpulse.dashboard.metric-history.v2'))).toBeNull();
 });
 
 // The tablet shows three cards on one row; the phone two (Total Downloads and

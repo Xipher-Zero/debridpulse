@@ -183,7 +183,7 @@ function scheduleApply(){if(scheduled)return;scheduled=true;queueMicrotask(()=>{
 /* A language change: the eye and every line's name and placeholder are said again on the
  * same elements, so a password being edited keeps its focus and its text. */
 function relabel(){const e=editorNode;if(!e||!e.isConnected||!rows)return;const eye=e.querySelector('.dp-settings-password-eye');if(eye)setEye(eye);e.querySelectorAll('.dp-settings-password-line').forEach(input=>{const index=Number(input.dataset.passwordIndex)||0;input.setAttribute('aria-label',t('settings.extraction.password_line',{number:index+1}));if(input.hasAttribute('placeholder'))input.placeholder=t('settings.extraction.add_password');});}
-function init(){document.addEventListener('debridpulse:settings-rendered',scheduleApply);document.addEventListener('debridpulse:locale-changed',relabel);document.addEventListener('dp-settings-settled',event=>{const s=source();if(s&&event.target===s)syncClearAction(editor());});scheduleApply();}
+function init(){document.addEventListener('downloadpulse:settings-rendered',scheduleApply);document.addEventListener('downloadpulse:locale-changed',relabel);document.addEventListener('dp-settings-settled',event=>{const s=source();if(s&&event.target===s)syncClearAction(editor());});scheduleApply();}
 /* Converge on the accepted canonical state after the page's destructive clear.
  * The removal itself is the page's explicit action; this owner only makes the editor
  * show what the server now holds, and records it as the accepted baseline so the empty

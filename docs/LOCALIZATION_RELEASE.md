@@ -1,18 +1,16 @@
-# Localization: operating guide, readiness matrix and release decisions (1.0.14)
+# Localization: operating guide, readiness matrix and release decisions
 
-This is the standalone guide for working on DebridPulse's interface languages, and the record of what
-the 1.0.14 localization work proved and did not prove. The reference for the pieces themselves (runtime,
+This is the standalone guide for working on DownloadPulse's interface languages, and the record of what
+the localization work proved and did not prove. The reference for the pieces themselves (runtime,
 catalogs, metadata, validator rules, census, glossary and the language-choice contract) is
 [`LOCALIZATION.md`](LOCALIZATION.md); this file does not repeat it.
 
-**Status at the activation (2026-11-11, development branch `1.0.14`).**
-- **All 18 targets are `supported`**: the product owner activated them together, on the development
-  branch, once the language choice had landed. English stays `canonical`; `en-XA` and `ar-XB` stay
-  test-only `pseudo`. The activation is not a release: 1.0.14 remains in feature development, and nothing
-  was tagged, released or deployed.
-- All 18 catalogs are complete: **3495 of 3495** messages each (the English after the language
-  preferences work; WS7-B's figures below are 3467), current against the English and reviewed; the strict
-  check of every supported locale (`validate.mjs --release`) passes on the repository's own manifest.
+**Status.**
+- **All 18 targets are `supported`**: the product owner activated them together on 2026-11-11, once the
+  language choice had landed. English stays `canonical`; `en-XA` and `ar-XB` stay test-only `pseudo`.
+- All 18 catalogs are complete: **3669 of 3669** messages each, current against the English and
+  reviewed; the strict check of every supported locale (`validate.mjs --release`) passes on the
+  repository's own manifest.
 - **The language choice** (`LOCALIZATION.md` §5) -- each account's own in My Account and the installation
   default in Users & Access → Deployment & Language -- offers English and the 18 targets: 19 languages.
 - Every translation and review is **AI-made**. No human or native-speaker review has taken place.
@@ -116,28 +114,24 @@ test is skipped, and this module is skipped only when Node is missing.
 - **Other tests in the module** cover each class of broken message, the census of first-party literals
   outside the catalog, the shell's keys, the sign-in page, the pseudo locales and the catalog asset's
   versioning.
-- **Proved on 2026-11-11 (WS7-B):**
-  - the test ran and passed in CI on `13da60c4` (Tests job 130676889665);
-  - run locally, the same test passes on the repository and **fails** on a copy with one French message
-    removed. The failure names the key («fr shell.nav.settings: a source hash without its translation»).
-- **Caveat.** Tests has been red on `1.0.14` for reasons unrelated to localization (section 6, U1). A
-  localization failure would block Release Promotion, but it is not visible on its own while those
-  failures remain.
+- **Proved on 2026-11-11:** run locally, the test passes on the repository and **fails** on a copy with
+  one French message removed. The failure names the key («fr shell.nav.settings: a source hash without
+  its translation»).
 
 ## 4. Runtime behaviour: delivery, fallback and failure
 
 | Behaviour | How it works | Evidence |
 |---|---|---|
 | What an account downloads | `ui-theme-bootstrap.js` states the account's language before first paint. The page loads `/i18n/en.js` (always: English is every key's fallback) and, for another language, `/i18n/<tag>.js?v=<content hash>` | `backend/api/auth_routes.py` `_locale`, `locale_catalog_script` |
-| Cost on the wire (measured 2026-11-11, uncompressed) | `en.js` 370 KB; a target 363 KB (zh-Hans) to 763 KB (hi). One account's first load is 0.73–1.13 MB. Gzip would be about 92 KB plus 94–126 KB | `ws7b` packet `delivery.txt` |
+| Cost on the wire (measured 2026-11-11, uncompressed) | `en.js` 370 KB; a target 363 KB (zh-Hans) to 763 KB (hi). One account's first load is 0.73–1.13 MB. Gzip would be about 92 KB plus 94–126 KB | One-off measurement, 2026-11-11, at 3467 English messages |
 | Repeat loads | `Cache-Control: no-cache, must-revalidate` with a content `ETag`: a revalidation answers **304**, so the bytes are paid once per catalog version | Same |
 | A message missing or stale in a catalog | The server withholds a stale translation (made from older English). The interface shows English for that key alone and counts it as debt | `test_account_locale.py` (`…withheld_alone…`); browser L07b |
 | A missing, corrupt or invalid catalog | Not delivered (404, logged). The page stays English and says so once; a `supported` locale with an unreadable catalog is not admitted | `test_account_locale.py` (unreadable / malformed cases); L07b |
 | A catalog fetch that fails or never arrives | The page stays English, says so once in diagnostics, and the saved choice stands | L07b |
-| Localized start-up in test mode | `DEBRIDPULSE_I18N_TEST_LOCALES=1` admits the pseudo locales (`en-XA`, `ar-XB`). The stored locale is applied at first paint (`lang`, `dir`) | L02, L03; WS6-C first-paint evidence |
+| Localized start-up in test mode | `DOWNLOADPULSE_I18N_TEST_LOCALES=1` admits the pseudo locales (`en-XA`, `ar-XB`). The stored locale is applied at first paint (`lang`, `dir`) | L02, L03; LP07 (§6, D1) |
 
 **Pseudo locales** (`en-XA` accented and about 40% longer, `ar-XB` right-to-left) exist only with
-`DEBRIDPULSE_I18N_TEST_LOCALES=1`. They are the supported way to exercise localization without
+`DOWNLOADPULSE_I18N_TEST_LOCALES=1`. They are the supported way to exercise localization without
 activating a language.
 
 ## 5. Boundaries that a language never changes
@@ -163,51 +157,50 @@ The isolated qualification of the same lifecycle with real catalogs is D2/D3 in 
 
 | # | Requirement | Evidence |
 |---|---|---|
-| V1 | All 18 catalogs are complete and current: 3467/3467 messages, 0 missing, 0 stale, 0 extra | WS7-B reconciliation (`reconciliation.txt`); CI catalog test |
-| V2 | Every message is reviewed for the current English and current text. All 251 critical keys are back-translated and compared in every language | Same (`reviewedCurrent` 3467, critical 251/251, ×18) |
+| V1 | All 18 catalogs are complete and current: 3669/3669 messages, 0 missing, 0 stale, 0 extra | `validate.mjs --release` and `--json`; the catalog test (§3) |
+| V2 | Every message is reviewed for the current English and current text. All 258 critical keys are back-translated and compared in every language | Same (0 unreviewed, 0 without a back-translation, ×18) |
 | V3 | Every termbase covers all 31 concepts; 0 open findings; every rendering identical to English has a recorded reason | Same |
-| V4 | The release check refuses missing, stale and un-back-translated critical text, with per-key diagnostics | WS7-B isolated copy with all 18 `supported`: passes unchanged; refuses each of three broken copies |
-| V5 | No 320 px truncation of page titles (5 pages) or dock labels in any of the 19 languages (Chromium, host fonts) | WS7-A r2 census; L24b, L24c |
-| V6 | Dialogs at 320–1440 px (geometry, accessible name and description, focus trap and restoration) in ar, ja and de | WS6-C (108/108) |
-| V7 | Right-to-left layout and navigator, and isolation of technical literals in rich text | WS6-A (L03, L03b, L03c) |
+| V4 | The release check refuses missing, stale and un-back-translated critical text, with per-key diagnostics | Isolated copy with all 18 `supported` (2026-11-11): passes unchanged; refuses each of three broken copies |
+| V5 | No 320 px truncation of page titles (5 pages) or dock labels in any of the 19 languages (Chromium, host fonts) | 19-language fit census (2026-11-11); L24b, L24c |
+| V6 | Dialogs at 320–1440 px (geometry, accessible name and description, focus trap and restoration) in ar, ja and de | Dialog qualification (108/108 checks) |
+| V7 | Right-to-left layout and navigator, and isolation of technical literals in rich text | L03, L03b, L03c |
 | V8 | Fallback, failure and admission behaviour (§4, §5) | Existing tests, re-run 2026-11-11: `test_account_locale.py` 26 passed; L03, L07b, L08a passed |
 
 ### Corrected release blockers
 
 | # | Blocker | Correction |
 |---|---|---|
-| C1 | 320 px dock and title truncation in fr, de, es, pt-BR, uk and it | WS7-A (`474923b1`), text only: fr Aperçu and Téléch.; de Optionen; es and pt-BR Ajustes; uk Параметри and Завант.; it Opzioni |
-| C2 | Help and on-screen text still named renamed pages by their old name (fr «Tableau de bord»; Settings page references in de, es, pt-BR, uk, it) | WS7-B, text only: 162 messages (fr 9, de 33, es 35, pt-BR 35, uk 16, it 34). Each was classified as a page reference against the English and independently reviewed; 9 corrections were confirmed; all 25 critical messages were back-translated blind and found equivalent. Generic uses of the word ("settings" values, card names) are unchanged |
-| C3 | Open dialogs kept the old language on a language change | WS6-C (`13da60c4`) |
-| C4 | Right-to-left section navigation and literal isolation | WS6-A (`2bcbe66c`) |
-| C5 | Japanese and Arabic dock and title cut; Japanese and Korean in-word line breaks | WS6-B (`a7139597`) |
+| C1 | 320 px dock and title truncation in fr, de, es, pt-BR, uk and it | Text only: fr Aperçu and Téléch.; de Optionen; es and pt-BR Ajustes; uk Параметри and Завант.; it Opzioni |
+| C2 | Help and on-screen text still named renamed pages by their old name (fr «Tableau de bord»; Settings page references in de, es, pt-BR, uk, it) | Text only: 162 messages (fr 9, de 33, es 35, pt-BR 35, uk 16, it 34). Each was classified as a page reference against the English and independently reviewed; 9 corrections were confirmed; all 25 critical messages were back-translated blind and found equivalent. Generic uses of the word ("settings" values, card names) are unchanged |
+| C3 | Open dialogs kept the old language on a language change | Fixed: an open dialog re-says its words in place (`LOCALIZATION.md` §1, Owners) |
+| C4 | Right-to-left section navigation and literal isolation | Fixed; L03, L03b, L03c (V7) |
+| C5 | Japanese and Arabic dock and title cut; Japanese and Korean in-word line breaks | Fixed; L24b, L24c (V5); accepted limits A3, A4 |
 
 ### Known limitations accepted by the product owner
 
 | # | Limitation | Basis |
 |---|---|---|
-| A1 | **Arabic plain-text bidi.** Values inserted into plain-text messages (toasts, tooltips, attributes) are not direction-isolated, so punctuation next to a left-to-right value can display out of place. Rich text is isolated (WS6-A). Stored and copied values are unaffected | Localization Support Policy Amendment, 2026-11-11 |
-| A2 | A toast already on screen keeps its language after a language change; new messages use the new language | WS7 product decisions |
+| A1 | **Arabic plain-text bidi.** Values inserted into plain-text messages (toasts, tooltips, attributes) are not direction-isolated, so punctuation next to a left-to-right value can display out of place. Rich text is isolated (V7). Stored and copied values are unaffected | Localization Support Policy Amendment, 2026-11-11 |
+| A2 | A toast already on screen keeps its language after a language change; new messages use the new language | Product owner decision |
 | A3 | Japanese `word-break: auto-phrase` is Chromium-only; other engines keep `line-break: strict` | Same |
 | A4 | Japanese and Arabic dock and title fits have zero margin in Chromium with Noto fonts; other fonts and devices are not verified | Same |
 | A5 | Screen-reader output is not qualified; accessible names and roles are verified from the DOM only | Same |
 | A6 | zh-Hant uses Taiwan terminology; Hong Kong usage is out of scope | Same |
 | A7 | German «Passwort entfernen» for Clear Password | Same |
-| A8 | fr «Téléch.» and uk «Завант.» are abbreviations wherever the Downloads page is named in the sidebar, header and Help paths; Help prose keeps the full word as its expansion | WS7-A HOLD decision |
+| A8 | fr «Téléch.» and uk «Завант.» are abbreviations wherever the Downloads page is named in the sidebar, header and Help paths; Help prose keeps the full word as its expansion | Product owner decision |
 | A9 | All translation and review is AI-only, with no human or native-speaker review | Recorded in every ledger |
 
 ### Unresolved blockers
 
 | # | Blocker | Owner and consequence |
 |---|---|---|
-| U1 | **Tests and the security job are red on `1.0.14`, for reasons unrelated to localization.** No Tests run has passed in the last 40, and Release Promotion requires Tests. On `13da60c4` there were 16 failing UI-contract tests (classified ANCHOR_REPRODUCED_FLAKE or INCONCLUSIVE), plus the security job's dependency CVEs | Not localization. It blocks any 1.0.14 release, and it hides a localization CI failure (§3) until it is fixed |
-| U2 | **Catalogs are served uncompressed** (§4): 0.73–1.13 MB on an account's first load, against about 0.2 MB with gzip | Changing it is an application change, which WS7 is not authorized to make. Options: accept it (paid once per version; often compressed by a reverse proxy), or authorize response compression separately |
-| U3 | **125 Help spans name a control that has no exact catalog key** (14 are the Help manual's own tab names), plus 1 deliberately generic «Clear». The label-identity check cannot verify these; only per-message review covers them | Recorded per span in `frontend/i18n/en.labels.json`. Accept as review-only, or map them to keys in a later English-source change |
+| U1 | **Catalogs are served uncompressed** (§4): 0.73–1.13 MB on an account's first load, against about 0.2 MB with gzip | Changing it is an application change, not a localization one, and needs its own decision. Options: accept it (paid once per version; often compressed by a reverse proxy), or authorize response compression separately |
+| U2 | **125 Help spans name a control that has no exact catalog key** (14 are the Help manual's own tab names), plus 1 deliberately generic «Clear». The label-identity check cannot verify these; only per-message review covers them | Recorded per span in `frontend/i18n/en.labels.json`. Accept as review-only, or map them to keys in a later English-source change |
 
 ### Activation-dependent requirements
 
 They were first proved on an isolated fixture (a scratch copy of the static files marking the targets
-`supported`, language preferences candidate B), then on the **activated repository manifest itself**
+`supported`), then on the **activated repository manifest itself**
 (2026-11-11, local instance, desktop Chromium, host fonts; `language-preferences.spec.js` LP01–LP07, which
 runs in CI's Browser Runtime on the image's own manifest). None was a gate to the activation: the product
 owner decided the activation without one.
@@ -222,29 +215,28 @@ owner decided the activation without one.
 ## 7. Activation and rollback
 
 - **The 18 targets were activated together on 2026-11-11** (`planned` → `supported` in
-  `frontend/static/i18n/manifest.json`, nothing else), by the product owner's decision, on the
-  development branch. `validate.mjs --release` passes on that manifest. D1–D3 were verified on it; D4 is
+  `frontend/static/i18n/manifest.json`, nothing else), by the product owner's decision.
+  `validate.mjs --release` passes on that manifest. D1–D3 were verified on it; D4 is
   an accepted untested environment, not a condition of the activation.
 - **A language added later** is activated the same way: its manifest status becomes `supported` once
   `--release` exits 0 with that manifest, and this ledger is updated.
 - **Rollback** means setting the status back to `planned`. Accounts that chose the language read it as
   English, and their stored choice is kept, so re-activating restores it. Removing or corrupting a catalog
   has the same effect: the language is withdrawn, never half-shown.
-- **A later release** (not this activation) recomputes §6 on its tagged candidate. Zero debt is required
+- **Every release** recomputes §6 on its tagged candidate. Zero debt is required
   for every advertised language, and any withdrawal of a language is an explicit, owner-approved
   decision.
 
 ## 8. Per-language matrix
 
-Every target: 3495/3495 messages, current and reviewed (3467 at WS7-B, plus the language preferences
-work's 28 new messages and 3 changed ones, none critical); 251/251 critical keys back-translated; termbase
+Every target: 3669/3669 messages, current and reviewed; 258/258 critical keys back-translated; termbase
 31/31; `--complete` passes; no 320 px page-title or dock truncation (Chromium); status **`supported`**
 (activated 2026-11-11); AI-only review (A9). D1–D3 verified on the activated manifest; D4 not tested
 (accepted).
 
 | Language | Script and direction | Notes beyond the common state | State |
 |---|---|---|---|
-| de German | Latin, LTR | Settings page «Optionen» (WS7-A); A7 | Supported; accepted limits A9; D4 not tested |
+| de German | Latin, LTR | Settings page «Optionen»; A7 | Supported; accepted limits A9; D4 not tested |
 | fr French | Latin, LTR | «Aperçu» and «Téléch.» (A8) | Supported; accepted limits A8, A9; D4 not tested |
 | es Spanish | Latin, LTR | Settings page «Ajustes» | Supported; accepted limits A9; D4 not tested |
 | it Italian | Latin, LTR | Settings page «Opzioni» | Supported; accepted limits A9; D4 not tested |
@@ -256,13 +248,12 @@ work's 28 new messages and 3 changed ones, none critical); 251/251 critical keys
 | uk Ukrainian | Cyrillic, LTR | «Параметри» and «Завант.» (A8); few/many plurals | Supported; accepted limits A8, A9; D4 not tested |
 | tr Turkish | Latin, LTR | Dotted and dotless i kept distinct | Supported; accepted limits A9; D4 not tested |
 | id Indonesian | Latin, LTR | — | Supported; accepted limits A9; D4 not tested |
-| hi Hindi | Devanagari, LTR | Largest catalog (763 KB uncompressed, U2) | Supported; accepted limits A9; D4 not tested |
+| hi Hindi | Devanagari, LTR | Largest catalog (763 KB uncompressed, U1) | Supported; accepted limits A9; D4 not tested |
 | ja Japanese | CJK, LTR | A3 and A4 (zero-margin fits) | Supported; accepted limits A3, A4, A9; D4 not tested |
 | ko Korean | Hangul, LTR | `keep-all` word breaking | Supported; accepted limits A9; D4 not tested |
 | zh-Hans Chinese (Simplified) | CJK, LTR | Mainland usage | Supported; accepted limits A9; D4 not tested |
 | zh-Hant Chinese (Traditional) | CJK, LTR | Taiwan usage (A6) | Supported; accepted limits A6, A9; D4 not tested |
 | ar Arabic | Arabic, **RTL** | A1 (plain-text bidi) and A4 (zero-margin dock) | Supported; accepted limits A1, A4, A9; D4 not tested |
 
-**Activated is not certified.** The 18 are available on the development branch; no language is declared
-release-qualified or native-reviewed. U1 still blocks any 1.0.14 release regardless of language, D4 is
-untested, and every translation is AI-only.
+**Activated is not certified.** The 18 are offered to accounts; no language is declared release-qualified
+or native-reviewed. D4 is untested, and every translation is AI-only.

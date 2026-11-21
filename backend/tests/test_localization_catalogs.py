@@ -67,7 +67,7 @@ def _scratch(tmp_path: Path, *, english=None, meta=None, catalogs=None, manifest
     (i18n / "en.json").write_text(json.dumps(source), encoding="utf-8")
     (i18n / "manifest.json").write_text(json.dumps(source_manifest), encoding="utf-8")
     for tag, messages in (catalogs or {}).items():
-        (i18n / f"{tag}.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": tag,
+        (i18n / f"{tag}.json").write_text(json.dumps({"schema": "downloadpulse-catalog/1", "locale": tag,
                                                       "messages": messages, "sources": {}}), encoding="utf-8")
     meta_path = tmp_path / "en.meta.json"
     meta_path.write_text(json.dumps(source_meta), encoding="utf-8")
@@ -174,7 +174,7 @@ def test_stale_and_missing_debt_are_told_apart_critical_staleness_on_its_own_and
     def scratch(where, status):
         where.mkdir()
         i18n, meta_path = _scratch(where, manifest=lambda m: m["locales"]["de"].update(status=status))
-        (i18n / "de.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": "de",
+        (i18n / "de.json").write_text(json.dumps({"schema": "downloadpulse-catalog/1", "locale": "de",
                                                   "messages": messages, "sources": sources}), encoding="utf-8")
         return i18n, meta_path
 
@@ -217,12 +217,12 @@ WS5_DE = {
     "presentation.status.saved": "{mode, select, easy {ZZ-Leicht zz.} other {ZZ-Voll zz.}}",
     "error.validation.setting_url": "Zz http:// zz https:// zz.",
     "settings.oidc.public_base_hint_managed": "Zz PUBLIC_BASE_URL. Zz zz OIDC zz.",
-    "shell.version_label": "DebridPulse-Zz",
+    "shell.version_label": "DownloadPulse-Zz",
     "role.admin": "ZZ-Admin",
     "settings.deployment.standalone_hint_shortest": "Nur ZZ-Admin.",
     "account.action.clear_password": "Zz zz zz",
 }
-WS5_TERMS = {"schema": "debridpulse-terms/1", "locale": "de", "register": "Sie (formal), test double",
+WS5_TERMS = {"schema": "downloadpulse-terms/1", "locale": "de", "register": "Sie (formal), test double",
              "terms": {"easy": {"target": "ZZ-Leicht"}, "advanced": {"target": "ZZ-Voll"},
                        "role_admin": {"target": "ZZ-Admin", "forbidden": ["ZZ-Boss"]}}}
 
@@ -235,7 +235,7 @@ def _ws5(tmp_path, tag="de", messages=None, *, sources=None, terms=WS5_TERMS, re
     messages = dict(WS5_DE if messages is None else messages)
     hashes = {key: _sha(english[key]) for key in messages}
     hashes.update(sources or {})
-    (i18n / f"{tag}.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": tag, "messages": messages,
+    (i18n / f"{tag}.json").write_text(json.dumps({"schema": "downloadpulse-catalog/1", "locale": tag, "messages": messages,
                                                   "sources": hashes}), encoding="utf-8")
     meta = json.loads(META.read_text(encoding="utf-8"))["meta"]
     if terms is not None:
@@ -249,7 +249,7 @@ def _ws5(tmp_path, tag="de", messages=None, *, sources=None, terms=WS5_TERMS, re
     for key, change in (entries or {}).items():
         ledger[key] = {**ledger.get(key, {}), **change}
     (tmp_path / "review").mkdir()
-    (tmp_path / "review" / f"{tag}.json").write_text(json.dumps(review or {"schema": "debridpulse-review/1", "locale": tag,
+    (tmp_path / "review" / f"{tag}.json").write_text(json.dumps(review or {"schema": "downloadpulse-review/1", "locale": tag,
                                                                            "entries": ledger}), encoding="utf-8")
     return i18n, meta_path
 
@@ -289,7 +289,7 @@ WS5_MUTATIONS = [
      "the protected literal 'https://' appears 0 times, the English 1"),
     ("identifier translated", _mutated(**{"settings.oidc.public_base_hint_managed": "Zz ÖFFENTLICHE_URL. Zz zz OIDC zz."}), None,
      "the protected literal 'PUBLIC_BASE_URL' appears 0 times"),
-    ("name transliterated", _mutated(**{"shell.version_label": "ДебридПульс-Zz"}), None, "the protected name 'DebridPulse' is missing"),
+    ("name transliterated", _mutated(**{"shell.version_label": "ДебридПульс-Zz"}), None, "the protected name 'DownloadPulse' is missing"),
     ("help label differs from its control", _mutated(**{"help.notifications.statistics_reporting.test": "<b>ZZ-Prüfen</b> zz zz."}), None,
      "no <b> span says its translation 'ZZ-Test'"),
     ("concept key not its term", _mutated(**{"role.admin": "ZZ-Chef", "settings.deployment.standalone_hint_shortest": "Nur ZZ-Chef."}), None,
@@ -374,32 +374,32 @@ def _minimal(tmp_path, *, entries=None, terms=None):
     i18n = tmp_path / "i18n"
     i18n.mkdir(parents=True)
     english = {"shell.nav.settings": "Settings", "help.minimal.open": "Open <b>Settings</b> now.",
-               "account.clear.warning": "Anyone who can reach DebridPulse can sign in."}
+               "account.clear.warning": "Anyone who can reach DownloadPulse can sign in."}
     meta = {key: _meta(owner="frontend/static/auth.js", criticality="critical-warning" if key == "account.clear.warning" else "normal")
             for key in english}
     (i18n / "manifest.json").write_text(json.dumps(_development_manifest()), encoding="utf-8")
-    (i18n / "en.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": "en", "messages": english}), encoding="utf-8")
-    (tmp_path / "en.meta.json").write_text(json.dumps({"schema": "debridpulse-catalog-meta/1", "locale": "en", "meta": meta}), encoding="utf-8")
-    (tmp_path / "labels.json").write_text(json.dumps({"schema": "debridpulse-help-labels/1", "spans": {"help.minimal.open": [
+    (i18n / "en.json").write_text(json.dumps({"schema": "downloadpulse-catalog/1", "locale": "en", "messages": english}), encoding="utf-8")
+    (tmp_path / "en.meta.json").write_text(json.dumps({"schema": "downloadpulse-catalog-meta/1", "locale": "en", "meta": meta}), encoding="utf-8")
+    (tmp_path / "labels.json").write_text(json.dumps({"schema": "downloadpulse-help-labels/1", "spans": {"help.minimal.open": [
         {"text": "Settings", "kind": "control", "key": "shell.nav.settings", "reason": "The sidebar entry."}]}}), encoding="utf-8")
-    (tmp_path / "concepts.json").write_text(json.dumps({"schema": "debridpulse-terms/1", "locale": "en",
-        "protected": [{"text": "DebridPulse", "kind": "name", "reason": "Product name."}],
+    (tmp_path / "concepts.json").write_text(json.dumps({"schema": "downloadpulse-terms/1", "locale": "en",
+        "protected": [{"text": "DownloadPulse", "kind": "name", "reason": "Product name."}],
         "concepts": {"settings": {"en": "Settings", "key": "shell.nav.settings", "note": "Page name."}}}), encoding="utf-8")
     target = {"shell.nav.settings": "ZZ-Einstellungen", "help.minimal.open": "Zz <b>ZZ-Einstellungen</b> zz.",
-              "account.clear.warning": "Zz DebridPulse zz zz."}
-    (i18n / "de.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": "de", "messages": target,
+              "account.clear.warning": "Zz DownloadPulse zz zz."}
+    (i18n / "de.json").write_text(json.dumps({"schema": "downloadpulse-catalog/1", "locale": "de", "messages": target,
                                               "sources": {key: _sha(english[key]) for key in target}}), encoding="utf-8")
     (tmp_path / "terms").mkdir()
-    (tmp_path / "terms" / "de.json").write_text(json.dumps(terms or {"schema": "debridpulse-terms/1", "locale": "de", "register": "test double",
+    (tmp_path / "terms" / "de.json").write_text(json.dumps(terms or {"schema": "downloadpulse-terms/1", "locale": "de", "register": "test double",
                                                                     "terms": {"settings": {"target": "ZZ-Einstellungen"}}}), encoding="utf-8")
     ledger = {key: {"source": _sha(english[key]), "translation": _sha(text), "provenance": ["ai-generated", "ai-review"]}
               for key, text in target.items()}
     ledger["account.clear.warning"].update(provenance=["ai-generated", "ai-review", "ai-back-translation"],
-                                           backTranslation="Anyone who can reach DebridPulse can sign in.")
+                                           backTranslation="Anyone who can reach DownloadPulse can sign in.")
     for key, change in (entries or {}).items():
         ledger[key].update(change)
     (tmp_path / "review").mkdir()
-    (tmp_path / "review" / "de.json").write_text(json.dumps({"schema": "debridpulse-review/1", "locale": "de", "entries": ledger}), encoding="utf-8")
+    (tmp_path / "review" / "de.json").write_text(json.dumps({"schema": "downloadpulse-review/1", "locale": "de", "entries": ledger}), encoding="utf-8")
     return [f"--i18n={i18n}", f"--meta={tmp_path / 'en.meta.json'}", f"--labels={tmp_path / 'labels.json'}",
             f"--terms={tmp_path / 'concepts.json'}", "--complete=de"]
 
@@ -480,7 +480,7 @@ def test_ws5_a_defect_only_a_later_count_reaches_is_found(tmp_path):
     english = {"test.case.counts": "{p, plural, =101 {<b>p</b>} other {p}} {q, plural, one {q} other {qs}} {r, plural, one {r} other {rs}}"}
     meta = {"test.case.counts": _meta(args={"p": "plural", "q": "plural", "r": "plural"})}
     i18n, meta_path = _scratch(tmp_path, english=english, meta=meta)
-    (i18n / "de.json").write_text(json.dumps({"schema": "debridpulse-catalog/1", "locale": "de", "messages": {
+    (i18n / "de.json").write_text(json.dumps({"schema": "downloadpulse-catalog/1", "locale": "de", "messages": {
         "test.case.counts": "{p, plural, =101 {zp} one {zp} other {zp}} {q, plural, one {zq} other {zqs}} {r, plural, one {zr} other {zrs}}"},
         "sources": {"test.case.counts": _sha(english["test.case.counts"])}}), encoding="utf-8")
     code, report = _validate(i18n, meta_path)

@@ -30,10 +30,10 @@ permissions:
   attestations: read
 
 env:
-  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse
+  IMAGE_NAME: ghcr.io/xipher-zero/downloadpulse
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  SECURITY_PREDICATE_TYPE: https://github.com/Xipher-Zero/debridpulse/attestations/container-security/v1
-  RUNTIME_PREDICATE_TYPE: https://github.com/Xipher-Zero/debridpulse/attestations/candidate-runtime/v1
+  SECURITY_PREDICATE_TYPE: https://github.com/Xipher-Zero/downloadpulse/attestations/container-security/v1
+  RUNTIME_PREDICATE_TYPE: https://github.com/Xipher-Zero/downloadpulse/attestations/candidate-runtime/v1
 
 jobs:
   promote:
@@ -110,7 +110,7 @@ jobs:
             "CodeQL"
             "Container Security"
             "Candidate Runtime Qualification"
-            "Fork Image"
+            "Image"
           )
 
           api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${CANDIDATE_SHA}&per_page=100"

@@ -220,8 +220,8 @@ test('Auto Refresh, Refresh and a newer choice use only the applied filters; a s
   let release = null;
   const requests = await open(page, {hold: q => q.level === 'warning' ? new Promise(resolve => { release = resolve; }) : null});
   // The live stream connected: a journal hint is followed with an ordinary request (Auto Refresh is on by default).
-  await page.evaluate(() => { document.documentElement.dataset.dpPulse = 'connected'; document.dispatchEvent(new CustomEvent('debridpulse:pulse-connected')); });
-  const hint = latest => page.evaluate(latest => document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed', {detail: {latest}})), latest);
+  await page.evaluate(() => { document.documentElement.dataset.dpPulse = 'connected'; document.dispatchEvent(new CustomEvent('downloadpulse:pulse-connected')); });
+  const hint = latest => page.evaluate(latest => document.dispatchEvent(new CustomEvent('downloadpulse:activity-journal-changed', {detail: {latest}})), latest);
 
   // Applied Error: the hint and Refresh ask with it.
   await apply(page, [['level', 'Error']]);
@@ -364,7 +364,7 @@ test('a User without administration has no Activity Log, filter control or panel
   const user = authority => ({...authority, role: 'user', capabilities: authority.capabilities.filter(capability => capability !== 'administer')});
   await page.route(url => url.pathname === '/app.js', async route => {
     const body = await (await route.fetch()).text();
-    const marker = 'window.debridPulseAuthority=Object.freeze(';
+    const marker = 'window.downloadPulseAuthority=Object.freeze(';
     const [head, rest] = body.split(marker);
     const end = rest.indexOf(');');
     return route.fulfill({status: 200, contentType: 'application/javascript', body: head + marker + JSON.stringify(user(JSON.parse(rest.slice(0, end)))) + rest.slice(end)});

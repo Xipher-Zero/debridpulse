@@ -1,5 +1,5 @@
 name: Corresponding Source Request
-description: Request source covered by the DebridPulse container source offer
+description: Request source covered by the DownloadPulse container source offer
 labels: ["source-request"]
 body:
   - type: input
@@ -7,7 +7,7 @@ body:
     attributes:
       label: Container image and digest
       description: Provide the complete image reference, including its sha256 digest.
-      placeholder: ghcr.io/xipher-zero/debridpulse@sha256:...
+      placeholder: ghcr.io/xipher-zero/downloadpulse@sha256:...
     validations:
       required: true
 

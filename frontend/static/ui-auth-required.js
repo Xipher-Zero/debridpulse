@@ -1,4 +1,4 @@
-/* DebridPulse generic INPUT_REQUIRED browser interaction.
+/* DownloadPulse generic INPUT_REQUIRED browser interaction.
  *
  * Challenge metadata is the only authentication-policy input. This runtime
  * contains no protocol, provider, executor, URL-scheme, or native-error logic.
@@ -270,7 +270,7 @@
                data-dp-auth-error role="status" aria-live="polite" hidden></div>
         </div>
         <footer class="dp-modal-footer dp-auth-required-footer">
-          ${window.debridPulseAuth?.mayDestroy(active) === true ? `<button class="btn btn-ghost" type="button" data-dp-auth-cancel ${keyed('common.cancel')}</button>` : ''}
+          ${window.downloadPulseAuth?.mayDestroy(active) === true ? `<button class="btn btn-ghost" type="button" data-dp-auth-cancel ${keyed('common.cancel')}</button>` : ''}
           ${showKey ? `
             <button class="btn btn-ghost dp-auth-required-key${active.keySelected ? ' is-selected' : ''}"
                     type="button" data-dp-auth-key
@@ -707,7 +707,7 @@
   // A language change: the open dialog's keyed words are re-rendered in place
   // (ui-i18n.js); the words that follow its state are said again here. Typed
   // values, focus, the busy state and the answer in flight are untouched.
-  document.addEventListener('debridpulse:locale-changed', () => {
+  document.addEventListener('downloadpulse:locale-changed', () => {
     const active = state.active, overlay = state.overlay;
     if (!active || !overlay) return;
     const secretLabel = overlay.querySelector('[data-dp-auth-secret-label]');
@@ -726,15 +726,15 @@
 
   function bootstrap() {
     // Answering a challenge is an operation; a caller without it is never asked.
-    if (!window.debridPulseAuth?.can('transfers.operate')) return;
+    if (!window.downloadPulseAuth?.can('transfers.operate')) return;
     if (typeof window.api !== 'function') {
       window.setTimeout(bootstrap, 50);
       return;
     }
     scheduleScan(0);
     state.scanTimer = window.setInterval(scanNow, SCAN_INTERVAL_MS);
-    document.addEventListener('debridpulse:downloads-rendered', () => scheduleScan(0));
-    document.addEventListener('debridpulse:dashboard-recent-rendered', () => scheduleScan(0));
+    document.addEventListener('downloadpulse:downloads-rendered', () => scheduleScan(0));
+    document.addEventListener('downloadpulse:dashboard-recent-rendered', () => scheduleScan(0));
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') scheduleScan(0);
     });

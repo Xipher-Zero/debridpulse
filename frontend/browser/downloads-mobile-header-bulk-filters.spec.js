@@ -51,7 +51,7 @@ async function open(page, {role = 'admin', count = 618, width = 390, height = 84
       capabilities: authority.capabilities.filter(capability => capability !== 'administer')});
     await page.route(url => url.pathname === '/app.js', async route => {
       const body = await (await route.fetch()).text();
-      const marker = 'window.debridPulseAuthority=Object.freeze(';
+      const marker = 'window.downloadPulseAuthority=Object.freeze(';
       const [head, rest] = body.split(marker);
       const end = rest.indexOf(');');
       return route.fulfill({status: 200, contentType: 'application/javascript',

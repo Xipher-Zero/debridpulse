@@ -1,4 +1,4 @@
-# DebridPulse desktop runtime lock for Windows x64 (CPython 3.12): the
+# DownloadPulse desktop runtime lock for Windows x64 (CPython 3.12): the
 # canonical backend lock (backend/requirements.txt, every shared pin
 # unchanged) resolved for Windows, which adds the Windows-only dependencies
 # (colorama for click, tzdata for apprise) and drops uvloop (no Windows build),

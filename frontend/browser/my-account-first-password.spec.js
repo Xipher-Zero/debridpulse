@@ -29,7 +29,7 @@ async function open(browser, {profile = null, viewport = {width: 1280, height: 9
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
-  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id));
+  await page.waitForFunction(() => Boolean(window.downloadPulseAuth?.authority?.account_id));
   await page.route(url => url.pathname.startsWith('/api/account'), async route => {
     const request = route.request();
     const path = new URL(request.url()).pathname;

@@ -1,4 +1,4 @@
-// DebridPulse catalog validator (no network, no installed packages).
+// DownloadPulse catalog validator (no network, no installed packages).
 //
 //   node .github/localization/validate.mjs [--json] [--release] [--complete=TAG] [--i18n=DIR] [--meta=FILE]
 //                                         [--source=DIR] [--labels=FILE] [--terms=FILE]
@@ -38,7 +38,7 @@
 // --release: every locale the manifest marks `supported` must have zero
 // debt; any debt is then an error.
 //
-// WS5 translation checks (docs/LOCALIZATION.md §4). For each target
+// Translation checks (docs/LOCALIZATION.md §4). For each target
 // translation, HARD ERRORS also: a message rendered at sample values
 // (counts 0 1 2 3 5 11 21 101 and 1.5, each select case) whose rich-text
 // tags differ from the English rendering (dropped, added or moved between
@@ -66,7 +66,7 @@
 // Nothing here certifies a translation: automated checks prove structure,
 // literals and recorded terminology, not meaning.
 //
-// --complete=TAG: the WS5 candidate check for one (planned) locale: zero
+// --complete=TAG: the candidate check for one (planned) locale: zero
 // translation debt, a termbase for every concept, every translation reviewed,
 // every critical key back-translated, no open finding. --release applies the
 // same to every `supported` locale.
@@ -183,7 +183,7 @@ for (const key of new Set([...Object.keys(english.messages), ...Object.keys(meta
   }
 }
 
-// ── WS5: the English registers translations are checked against ─────────────
+// ── The English registers translations are checked against ─────────────
 const escapeRe = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const LETTER = /[\p{L}\p{N}]/u;
 // A name stands alone where it begins or ends with a letter or digit; a literal is found as written.
@@ -194,7 +194,7 @@ const concepts = existsSync(CONCEPTS) ? read(CONCEPTS) : null;
 const PROTECTED = [], CONCEPT = {};
 if (!concepts) error('terms', `the English concept register ${CONCEPTS} is missing`);
 else {
-  if (concepts.schema !== 'debridpulse-terms/1' || concepts.locale !== 'en') error('terms en', 'not a debridpulse-terms/1 English register');
+  if (concepts.schema !== 'downloadpulse-terms/1' || concepts.locale !== 'en') error('terms en', 'not a downloadpulse-terms/1 English register');
   for (const [index, entry] of (concepts.protected || []).entries()) {
     if (typeof entry?.text !== 'string' || !entry.text || !['name', 'literal'].includes(entry.kind) || !entry.reason) {
       error(`terms en protected[${index}]`, 'needs text, kind (name or literal) and reason');
@@ -218,7 +218,7 @@ const KINDS = new Set(['control', 'term', 'emphasis', 'control-unmapped', 'unres
 const labelMap = existsSync(LABELS) ? read(LABELS) : null;
 const labels = {spans: 0, control: 0, term: 0, emphasis: 0, 'control-unmapped': 0, unresolved: 0};
 const controlsOf = {};                       // help key -> [{index, keys, join, suffix}]
-if (!labelMap || labelMap.schema !== 'debridpulse-help-labels/1') error('labels', `the Help label map ${LABELS} is missing or not debridpulse-help-labels/1`);
+if (!labelMap || labelMap.schema !== 'downloadpulse-help-labels/1') error('labels', `the Help label map ${LABELS} is missing or not downloadpulse-help-labels/1`);
 else {
   const spans = labelMap.spans || {};
   for (const key of new Set([...Object.keys(spans), ...Object.keys(english.messages).filter(each => each.startsWith('help.'))])) {
@@ -248,7 +248,7 @@ else {
   }
 }
 
-// ── WS5: rendered checks (samples and rendering: messages.mjs) ───────────────
+// ── Rendered checks (samples and rendering: messages.mjs) ───────────────
 const tagCounts = text => {
   const counts = {};
   for (const m of text.matchAll(/\uE000(\/?)([a-z]+)\uE001/g)) counts[`${m[1]}${m[2]}`] = (counts[`${m[1]}${m[2]}`] || 0) + 1;
@@ -295,9 +295,9 @@ const report = {locales: {}, keys: Object.keys(english.messages).length, labels}
 for (const [tag, info] of Object.entries(manifest.locales)) {
   if (tag === manifest.default || info.status === 'pseudo') continue;
   const path = join(I18N, `${tag}.json`);
-  const catalog = existsSync(path) ? read(path) : {schema: 'debridpulse-catalog/1', messages: {}, sources: {}};
+  const catalog = existsSync(path) ? read(path) : {schema: 'downloadpulse-catalog/1', messages: {}, sources: {}};
   if (existsSync(path) && catalog.locale !== tag) error(`${tag}`, `catalog says locale '${catalog.locale}'`);
-  if (catalog.schema !== 'debridpulse-catalog/1') error(`${tag}`, `catalog schema is '${catalog.schema}', not debridpulse-catalog/1`);
+  if (catalog.schema !== 'downloadpulse-catalog/1') error(`${tag}`, `catalog schema is '${catalog.schema}', not downloadpulse-catalog/1`);
   const sources = catalog.sources && typeof catalog.sources === 'object' ? catalog.sources : {};
   if (catalog.sources !== undefined && sources !== catalog.sources) error(`${tag}`, 'sources is not an object');
   for (const [key, hash] of Object.entries(sources)) {
@@ -310,7 +310,7 @@ for (const [tag, info] of Object.entries(manifest.locales)) {
   const ledger = existsSync(reviewPath) ? read(reviewPath) : null;
   const TERMS = {};
   if (termbase) {
-    if (termbase.schema !== 'debridpulse-terms/1' || termbase.locale !== tag) error(`terms ${tag}`, `not a debridpulse-terms/1 termbase for ${tag}`);
+    if (termbase.schema !== 'downloadpulse-terms/1' || termbase.locale !== tag) error(`terms ${tag}`, `not a downloadpulse-terms/1 termbase for ${tag}`);
     if (!termbase.register) error(`terms ${tag}`, 'no register (the address and formality chosen for this locale)');
     for (const [id, entry] of Object.entries(termbase.terms || {})) {
       if (!(id in CONCEPT)) { error(`terms ${tag} ${id}`, 'not a concept of the English register'); continue; }
@@ -321,7 +321,7 @@ for (const [tag, info] of Object.entries(manifest.locales)) {
   }
   const entries = ledger?.entries || {};
   if (ledger) {
-    if (ledger.schema !== 'debridpulse-review/1' || ledger.locale !== tag) error(`review ${tag}`, `not a debridpulse-review/1 ledger for ${tag}`);
+    if (ledger.schema !== 'downloadpulse-review/1' || ledger.locale !== tag) error(`review ${tag}`, `not a downloadpulse-review/1 ledger for ${tag}`);
     for (const [key, entry] of Object.entries(entries)) {
       const at = `review ${tag} ${key}`;
       if (!(key in english.messages)) error(at, 'not an English key');

@@ -5,10 +5,7 @@ on:
   push:
     branches:
       - main
-      - '1.0.11'
-      - '1.0.12'
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
       - 'audit/**'
     tags:
@@ -17,10 +14,7 @@ on:
   pull_request:
     branches:
       - main
-      - '1.0.11'
-      - '1.0.12'
-      - '1.0.13'
-      - '1.0.14'
+      - '1.0.0'
       - 'staging/**'
   workflow_dispatch:
     inputs:
@@ -199,7 +193,7 @@ jobs:
           # (packaging/aria2/build-package.sh; docs/SUPPLY_CHAIN_POLICY.md
           # section 4a): the same CONNECT exact-read patch, BitTorrent compiled
           # out and the same +dp2 suffix, so the runtime layer exercises the
-          # binary DebridPulse ships; the published image's own packages are
+          # binary DownloadPulse ships; the published image's own packages are
           # qualified separately by Candidate Runtime Qualification.
           # deb-src and the package index were prepared by the build-inputs step.
           sudo apt-get install -y --no-install-recommends openssl dpkg-dev build-essential fakeroot patch
@@ -572,7 +566,7 @@ jobs:
       - name: Install dependencies + audit tools
         run: |
           cd backend
-          # DP 1.0.12 leveling remediation (DEP-001): requirements.txt is now
+          # Leveling remediation (DEP-001): requirements.txt is now
           # hash-pinned, which makes pip auto-enable --require-hashes mode for
           # the WHOLE install the moment any file in it carries a hash.
           # requirements-qa.txt is deliberately not hash-pinned (dev/CI-only

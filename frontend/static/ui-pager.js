@@ -104,7 +104,7 @@
     sync(parts);
   }
 
-  document.addEventListener('debridpulse:locale-changed', () => {
+  document.addEventListener('downloadpulse:locale-changed', () => {
     mounted.forEach(host => { const parts = hosts.get(host); if (parts?.model) sync(parts); });
   });
 

@@ -1,14 +1,14 @@
 """1.0.13 Gate-9 rev-5, item 4: the documented ownership must match reality.
 
-The supported topology bundles the acquisition service INSIDE the DebridPulse
-container: DebridPulse starts it, stops it, restarts it when it is unhealthy,
+The supported topology bundles the acquisition service INSIDE the DownloadPulse
+container: DownloadPulse starts it, stops it, restarts it when it is unhealthy,
 owns its configuration, and never exposes it. Earlier prose -- written when the
 service was assumed to be an operator-run external instance -- says the
 opposite, and stale architecture prose is what makes the next change reason
 from a topology that no longer exists.
 
 The invariant to state is narrower than "external" or "internal": the executor
-is external to the transfer CORE's implementation, but internal to DebridPulse
+is external to the transfer CORE's implementation, but internal to DownloadPulse
 PRODUCT ownership.
 """
 from __future__ import annotations
@@ -63,7 +63,7 @@ RETIRED_CLAIMS = (
 )
 
 
-def test_no_source_claims_debridpulse_does_not_own_the_service_lifecycle():
+def test_no_source_claims_downloadpulse_does_not_own_the_service_lifecycle():
     offenders = []
     for path in SOURCES:
         text = path.read_text()
@@ -150,7 +150,7 @@ def test_the_intended_core_boundary_wording_is_still_allowed():
 
     allowed = collapse(
         "the acquisition service is external to the transfer core's implementation "
-        "and internal to debridpulse product ownership; it is an out-of-core "
+        "and internal to downloadpulse product ownership; it is an out-of-core "
         "implementation reached over a private loopback api."
     )
     for description, pattern in FORBIDDEN_CLAIMS:

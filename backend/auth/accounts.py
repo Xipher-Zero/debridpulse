@@ -1,4 +1,4 @@
-"""DebridPulse accounts: the ONE owner of durable identity.
+"""DownloadPulse accounts: the ONE owner of durable identity.
 
 An account is the stable, immutable identity every sign-in resolves to. Its
 facts are kept apart: the ROLE (``accounts.role``), the human account's one
@@ -886,7 +886,7 @@ async def import_legacy_credential(username: str, password_hash: str) -> bool:
     Before accounts, the one local credential lived in ``config.json``; it is
     that installation's operator, the default Admin. The same file input
     remains the offline recovery path: an operator who can no longer sign in
-    stops DebridPulse, writes ``auth_username`` and a plaintext
+    stops DownloadPulse, writes ``auth_username`` and a plaintext
     ``auth_password`` into the configuration file (``core.config`` turns the
     plaintext into a verifier at load) and starts it again; this replaces the
     default Admin's credential. Idempotent. Returns whether anything changed."""
@@ -1668,7 +1668,7 @@ async def _seen(token_id: str) -> None:
             await db.commit()
     except Exception:  # noqa: BLE001 -- recording use must never refuse the use
         import logging
-        logging.getLogger("debridpulse.accounts").warning("a token's last use could not be recorded", exc_info=True)
+        logging.getLogger("downloadpulse.accounts").warning("a token's last use could not be recorded", exc_info=True)
 
 
 async def recent_clients(days: int = 7) -> list[dict]:

@@ -48,7 +48,7 @@ consolidation participants are now exported under scope ``component`` (with
 all of their transfer-scoped rows) instead of ``context``; it adds
 ``metadata.closure.component`` (the bounded component, its limits and any
 truncation) and ``metadata.component_transfer_ids``. 4 is a strict superset
-of 3: it exports ``artifact_material_state`` rows (DebridPulse-owned material
+of 3: it exports ``artifact_material_state`` rows (DownloadPulse-owned material
 truth per artifact) with every transfer-scoped artifact set, and each
 ``observations.filesystem.targets[]`` entry gains ``material`` -- the durable
 VALID frontier reconciled against what the payload on disk shows now (length,
@@ -96,7 +96,7 @@ from transfers.filesystem import observe_material, payload_facts
 from transfers.models import ExecutionState, MaterializationKind
 from transfers.storage import StorageDomain, observe_capacity
 
-TRACE_FORMAT = "debridpulse.transfer-trace"
+TRACE_FORMAT = "downloadpulse.transfer-trace"
 # 2: adds collection_status, observations.filesystem, observations.executors,
 # runtime_context, and metadata.process; build_revision is populated.
 # 3: adds the bounded consolidation component (scope 'component',
@@ -624,7 +624,7 @@ async def _observe_filesystem(collector: _Collector, roots) -> tuple[dict, dict]
 
 
 async def _material_facts(row, path: str) -> dict | None:
-    """DebridPulse material truth for one artifact, reconciled -- read-only --
+    """DownloadPulse material truth for one artifact, reconciled -- read-only --
     against the payload now: what DP holds VALID, how far it reaches, and
     whether the file still backs it. Observation only; nothing is changed."""
     if row is None:
@@ -682,7 +682,7 @@ async def _observe_executors(application, collector: _Collector) -> tuple[dict, 
         if engine is None or repository is None:
             entry.update(observation="unavailable", reason="no_application_runtime")
             continue
-        # The canonical fence decides what DebridPulse may observe: only work
+        # The canonical fence decides what DownloadPulse may observe: only work
         # it still owns. Anything else is outside its observation rights.
         entry["dp_owned"] = bool(await repository.authorize_execution(handle, "observe"))
         if not entry["dp_owned"]:
@@ -724,7 +724,7 @@ async def _observe_executors(application, collector: _Collector) -> tuple[dict, 
     counts = {}
     for entry in entries.values():
         counts[entry["observation"]] = counts.get(entry["observation"], 0) + 1
-    status = _status(counts, empty_reason="no exported execution attempt is observable by DebridPulse")
+    status = _status(counts, empty_reason="no exported execution attempt is observable by DownloadPulse")
     return {"attempts": list(entries.values())}, status
 
 
@@ -824,7 +824,7 @@ async def _runtime_context(application, collector: _Collector) -> tuple[dict, di
 
 
 def filename(transfer_id: int, generated_at: datetime) -> str:
-    return f"debridpulse-transfer-{int(transfer_id)}-trace-{generated_at.strftime('%Y%m%dT%H%M%SZ')}.json"
+    return f"downloadpulse-transfer-{int(transfer_id)}-trace-{generated_at.strftime('%Y%m%dT%H%M%SZ')}.json"
 
 
 async def build(transfer_id: int, application) -> dict | None:
@@ -938,10 +938,10 @@ async def build(transfer_id: int, application) -> dict | None:
             "observation_boundary": (
                 "durable_state is the retained database as of generated_at. observations and runtime_context are "
                 "what could be observed at generation time only: they do not describe any earlier moment, and "
-                "DebridPulse does not version settings. Filesystem or executor state that changed or disappeared "
-                "before generation, remote provider state DebridPulse never recorded, transient network conditions "
+                "DownloadPulse does not version settings. Filesystem or executor state that changed or disappeared "
+                "before generation, remote provider state DownloadPulse never recorded, transient network conditions "
                 "and the values of secrets are outside what a trace can contain. Executors are observed only for "
-                "attempts DebridPulse still owns; directories are never walked beyond the durably recorded member "
+                "attempts DownloadPulse still owns; directories are never walked beyond the durably recorded member "
                 "paths. Contradictions between domains are exported as found."),
         },
         "collection_status": {

@@ -170,7 +170,7 @@ def test_shared_visual_contract_is_css_owned_not_runtime_injected() -> None:
 
     assert "installDuplicateStatusStyle" not in operator
     assert "document.createElement('style')" not in operator
-    assert "debridpulse-duplicate-status-style" not in operator
+    assert "downloadpulse-duplicate-status-style" not in operator
 
 
 def test_static_frontend_resources_are_forced_to_revalidate() -> None:

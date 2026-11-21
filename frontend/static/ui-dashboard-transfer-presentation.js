@@ -33,7 +33,7 @@ async function renderRecent(){
   // Where no whole row fits (a handheld's limit of 0) none is drawn; one is still asked for, to know whether any exist.
   const response=await api('GET',`/torrents?limit=${Math.max(1,recentLimit)}&order=queue`);
   return paintRecent(response,recentLimit);
- }catch(error){console.error(error); document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered')); return null;}
+ }catch(error){console.error(error); document.dispatchEvent(new CustomEvent('downloadpulse:dashboard-recent-rendered')); return null;}
 }
 function paintRecent(response,recentLimit){
   const items=recentLimit===0?[]:Array.isArray(response?.items)?response.items:[],body=document.getElementById('dash-tbody'); if(!body)return response;
@@ -41,20 +41,20 @@ function paintRecent(response,recentLimit){
   const T=(key,values)=>DPI18n.t(key,values);
   const count=document.getElementById('dash-activity-count');
   if(count)count.removeAttribute('data-i18n');   // index.html's first-paint words; this owner's from here
-  const operable=window.debridPulseAuth?.can('transfers.operate')===true;
-  if(!items.length&&recentLimit===0&&Array.isArray(response?.items)&&response.items.length){body.innerHTML=''; if(count)count.textContent=T('dashboard.activity.shown',{count:0}); document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered')); return response;}
-  if(!items.length){body.innerHTML=`<tr><td colspan="${operable?6:5}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${esc(T('dashboard.activity.empty'))}</div></td></tr>`; if(count)count.textContent=T('dashboard.activity.none'); document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered')); return response;}
+  const operable=window.downloadPulseAuth?.can('transfers.operate')===true;
+  if(!items.length&&recentLimit===0&&Array.isArray(response?.items)&&response.items.length){body.innerHTML=''; if(count)count.textContent=T('dashboard.activity.shown',{count:0}); document.dispatchEvent(new CustomEvent('downloadpulse:dashboard-recent-rendered')); return response;}
+  if(!items.length){body.innerHTML=`<tr><td colspan="${operable?6:5}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${esc(T('dashboard.activity.empty'))}</div></td></tr>`; if(count)count.textContent=T('dashboard.activity.none'); document.dispatchEvent(new CustomEvent('downloadpulse:dashboard-recent-rendered')); return response;}
   if(count)count.textContent=T('dashboard.activity.shown',{count:items.length});
   const pause=esc(T('transfer.action.pause')),resume=esc(T('transfer.action.resume')),pauseTip=esc(T('transfer.action.pause_tooltip')),resumeTip=esc(T('transfer.action.resume_tooltip')),unnamed=esc(T('transfer.unnamed'));
   body.innerHTML=items.map(t=>{const pct=t.progress!=null?Math.round(t.progress):0,presentation=window.DPProcessingPresentation.presentationStatus(t,t.status),show=pct>0&&presentation!=='completed'&&presentation!=='consolidated'&&presentation!=='deleted',dn=t.display_name||t.name||'',summary=progressSummary(t,presentation); return `<tr data-torrent-id="${t.id}" data-status="${esc(t.status)}" data-presentation-status="${esc(presentation)}" onclick="if(!window.dpIsInteractiveRowTarget(event.target))showDetail(${t.id})" style="cursor:pointer"><td>${summary.value}<div class="t-name" data-tooltip="${esc(dn)||''}">${esc(dn)||unnamed}</div><div class="dash-row-bar-slot" aria-hidden="true"><div class="dash-row-bar${show?'':' is-empty'}"><div class="dash-row-bar-fill" style="width:${Math.max(0,Math.min(100,pct))}%;background:var(--blue)"></div></div>${summary.track}</div><div class="dp-transfer-provider-meta"><span class="dp-transfer-meta-main">${statusGlyph(transferDisplayStatus(t),t)}${sourceSlot(t.current_source_identity,{providerId:providerChipId(t)})}${providerChip(t,'dashboard_recent')}${fileSelectionChipMarkup(t)}${groupLauncherMarkup(t)}</span><span class="dp-recent-size">${fmtSize(t.size_bytes)}</span></div></td><td data-role="transfer-status">${badge(transferDisplayStatus(t),t)}</td><td data-role="transfer-progress">${progress(t.progress,presentation,t.active_execution_progress,t.active_execution_basis,t.acquisition_eta??null)}</td><td class="sz">${fmtSize(t.size_bytes)}</td><td class="sz">${window.downloadsDateMarkup(t.created_at)}</td>${operable?`<td onclick="event.stopPropagation()"><div class="actions">${PAUSEABLE_PRESENTATION.has(presentation)?`<button class="btn btn-blue btn-sm" data-default-label="${pause}" onclick="event.stopPropagation();pauseT(${t.id},this)" data-tooltip="${pauseTip}">${window.DPIcons.iconLabel('pause',T('transfer.action.pause'))}</button>`:''}${presentation==='paused'?`<button class="btn btn-blue btn-sm" data-default-label="${resume}" onclick="event.stopPropagation();resumeT(${t.id},this)" data-tooltip="${resumeTip}">${window.DPIcons.iconLabel('play',T('transfer.action.resume'))}</button>`:''}</div></td>`:''}</tr>`;}).join('');
   fitTransferSummaryLines();
   requestAnimationFrame(()=>{if(!document.getElementById('view-dashboard')?.classList.contains('active'))return; const fitted=typeof dashboardRecentLimit==='function'?dashboardRecentLimit():recentLimit; if(typeof _dashboardRecentFitLimit!=='undefined'&&fitted!==_dashboardRecentFitLimit){_dashboardRecentFitLimit=fitted; if(typeof loadRecent==='function')loadRecent().catch(()=>{});}});
-  document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered')); return response;
+  document.dispatchEvent(new CustomEvent('downloadpulse:dashboard-recent-rendered')); return response;
 }
 // A language change draws the same rows in the new words. Focus on a row's
 // control goes back to the same control -- found by its row's transfer and its
 // action (onclick), never by its words -- or, gone, to its row, else the list.
-document.addEventListener('debridpulse:locale-changed',()=>{if(!lastRecent)return;
+document.addEventListener('downloadpulse:locale-changed',()=>{if(!lastRecent)return;
   const body=document.getElementById('dash-tbody'),active=document.activeElement,inside=body&&active&&body.contains(active);
   const row=inside?active.closest('tr[data-torrent-id]'):null,action=inside?active.getAttribute('onclick'):null;
   paintRecent(lastRecent.response,lastRecent.recentLimit);

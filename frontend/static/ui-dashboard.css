@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.11 Dashboard presentation. */
+/* DownloadPulse v1.0.11 Dashboard presentation. */
 
 #content.dashboard-active {
   overflow-y: hidden;
@@ -904,7 +904,7 @@ body.light #view-dashboard .dp-dashboard-activity .empty-icon {
 /* Canonical Dashboard continuation: accepted v1.0.11 calibration folded in source order. */
 
 /* Consolidated from ui-dashboard-batch5.css. */
-/* DebridPulse v1.0.11 live-review refinement batch.
+/* DownloadPulse v1.0.11 live-review refinement batch.
    This is a presentation-only correction layer. It intentionally does not
    advance the application version or the existing v=18 cache generation. */
 
@@ -1140,7 +1140,7 @@ body.light #view-dashboard #btn-add-transfer {
 }
 
 /* Consolidated from ui-dashboard-polish.css. */
-/* DebridPulse v1.0.11 final live-review polish.
+/* DownloadPulse v1.0.11 final live-review polish.
    Presentation-only refinements. Do not advance the application version or
    the existing v=18 visual cache generation. */
 
@@ -1921,7 +1921,7 @@ body.light #view-dashboard #btn-recover-all .dp-icon {
 }
 
 /* Consolidated from ui-dashboard-final.css. */
-/* DebridPulse v1.0.11 final Dashboard overrides.
+/* DownloadPulse v1.0.11 final Dashboard overrides.
  *
  * These rules remove stale Dashboard calibration divergences from the shared
  * language while retaining only genuine Dashboard-specific geometry here.

@@ -52,7 +52,7 @@ pytestmark = pytest.mark.asyncio
 
 MIRROR_FILENAME = "ubuntu-24.04.3-desktop-amd64.iso"
 SAMPLE_BYTES = 64 * 1024
-PAYLOAD = (hashlib.sha256(b"debridpulse-dp-1.0.12-fixture-seed").digest() * (SAMPLE_BYTES // 32 + 1))[:3 * SAMPLE_BYTES]
+PAYLOAD = (hashlib.sha256(b"downloadpulse-dp-1.0.12-fixture-seed").digest() * (SAMPLE_BYTES // 32 + 1))[:3 * SAMPLE_BYTES]
 assert len(PAYLOAD) > SAMPLE_BYTES  # Section 11: large enough to force first+last range sampling.
 
 

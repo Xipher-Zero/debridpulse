@@ -100,8 +100,9 @@ def test_the_backups_manager_is_one_state_owner_in_the_shared_dialog_shell():
     # One inventory reader: every refresh goes through load().
     assert manager.count("request('GET', INVENTORY") == 2  # open() + load()
     # Application terminology, never transport terminology.
+    # (The product's own name, DownloadPulse, is not transport terminology.)
     for word in ("Upload", "Download", "Import Backup", "Export Backup", "Server Storage", "Remote Backup"):
-        assert word not in manager, word
+        assert word not in manager.replace("DownloadPulse", ""), word
     # Single-checkmark selection, never radio buttons, never multi-select.
     assert 'type="checkbox"' in manager and 'type="radio"' not in manager
     assert "state.selected = state.selected === id ? '' : id;" in manager
@@ -132,7 +133,7 @@ def test_backup_folder_is_the_centred_bordered_island_with_browse_inside_the_fie
     body = panel()
     island = body[body.index('<div class="dp-settings-backup-folder-island dp-settings-help-slot">'):body.index("${omitted('backup-additional-settings') ? '' : disclosureSection(")]
     assert "directoryField('backup_folder', say('settings.backups.folder')" in island and english("settings.backups.folder") == "Backup Folder"
-    assert says(island, "Choose where DebridPulse stores database and configuration backups.")
+    assert says(island, "Choose where DownloadPulse stores database and configuration backups.")
     # Title-over-Hint left + control right, centred against it: the shared
     # inline-field grammar. Browse INSIDE the field: the shared embedded action.
     assert "inline: true, embedAction: true" in island
@@ -209,10 +210,10 @@ def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
          "Keep at most this many backups. Older excess backups are removed even when they are within the "
          "retention period."),
         ("stats_snapshot_interval_minutes", "min: 0, max: 1440", "minutes",
-         "How often DebridPulse saves a record of download activity and statistics from the previous 24 hours "
+         "How often DownloadPulse saves a record of download activity and statistics from the previous 24 hours "
          "to its internal database. These snapshots are not sent as reports."),
         ("stats_snapshot_keep_days", "min: 1, max: 365", "days",
-         "How many days DebridPulse keeps its saved statistics snapshots before automatically deleting older "
+         "How many days DownloadPulse keeps its saved statistics snapshots before automatically deleting older "
          "records. Snapshots are stored internally and are not currently viewable in the interface."),
     )
     for key, bounds, unit, hint in expected:
@@ -333,7 +334,7 @@ def test_reset_safety_is_unchanged_and_only_the_stale_apply_copy_moved():
     assert "typedPhrase: 'WIPE'," in wipe
     assert "tone: 'danger'," in wipe
     assert "Processing must be paused" not in wipe
-    assert says(wipe, "DebridPulse pauses processing for the wipe and returns it to its previous state afterwards")
+    assert says(wipe, "DownloadPulse pauses processing for the wipe and returns it to its previous state afterwards")
     assert says(wipe, "creates a safety backup first; if the backup fails, nothing is wiped.")
     assert "request('POST', '/admin/database/wipe', {confirm: true}, 60000)" in wipe
     assert "notify(t('settings.reset.done'), 'success');" in wipe and english("settings.reset.done") == "Database wiped. Pre-wipe backup created."

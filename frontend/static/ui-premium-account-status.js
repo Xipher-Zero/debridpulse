@@ -110,10 +110,10 @@
   window.DPPremiumAccount = Object.freeze({until: premiumUntil, account: premiumAccount, describe});
 
   let lastEntries = null;
-  document.addEventListener('debridpulse:provider-status', event => {
+  document.addEventListener('downloadpulse:provider-status', event => {
     lastEntries = event.detail?.entries || [];
     render(lastEntries);
   });
   // A language change says the row again from what was last published.
-  document.addEventListener('debridpulse:locale-changed', () => { if (lastEntries) render(lastEntries); });
+  document.addEventListener('downloadpulse:locale-changed', () => { if (lastEntries) render(lastEntries); });
 })();

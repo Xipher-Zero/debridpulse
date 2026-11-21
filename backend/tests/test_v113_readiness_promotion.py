@@ -136,7 +136,7 @@ async def test_a_preparing_primary_yields_to_a_prepared_backup_released_never_fa
     promoted = [item for item in await lab.repository.standbys(lab.transfer.id) if item["promoted_at"]]
     assert [item["id"] for item in promoted] == [standby_id]
     assert ("resolve", MAGNET) not in lab.providers["parcel-b"].calls                 # the root was never created again
-    # The released primary was DebridPulse's own (CREATED): given back through the one cleanup owner.
+    # The released primary was DownloadPulse's own (CREATED): given back through the one cleanup owner.
     (released,) = [state for resource, state, _pending in await lab.repository.resources(lab.transfer.id)
                    if resource.id == lab.primary.id]
     assert released == ResourceState.ABSENT

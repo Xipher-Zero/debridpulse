@@ -74,7 +74,7 @@ def test_the_route_does_not_bypass_provider_routing():
 # Help documents every engine by its product name (aria2, rsync, Usenet
 # (SABnzbd), yt-dlp). It is prose: the Help owner makes no request of any kind.
 HELP_DOCUMENTATION = "ui-help-page.js"
-NETWORK_CALLS = re.compile(r"\bfetch\(|XMLHttpRequest|EventSource|debridPulseAuth\.fetch|\brequest\(")
+NETWORK_CALLS = re.compile(r"\bfetch\(|XMLHttpRequest|EventSource|downloadPulseAuth\.fetch|\brequest\(")
 
 
 def test_no_frontend_code_calls_the_acquisition_service_directly():

@@ -24,7 +24,7 @@ def _settings(**updates):
         "auth_password_enabled": True,
         "auth_oidc_enabled": True,
         "oidc_provider_name": "Authentik",
-        "oidc_issuer_url": "https://id.example/application/o/debridpulse",
+        "oidc_issuer_url": "https://id.example/application/o/downloadpulse",
         "oidc_client_id": "client",
         "oidc_client_secret": "super-private-oidc-value",
         "oidc_scopes": ["openid", "profile", "email"],

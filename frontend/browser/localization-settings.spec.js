@@ -1,7 +1,7 @@
 // @ts-check
 const {test, expect} = require('@playwright/test');
 
-/* DebridPulse 1.0.14 localization, WS3c: Settings services and engines --
+/* DownloadPulse 1.0.14 localization, WS3c: Settings services and engines --
  * the Settings shell (tabs, header), Services (premium providers, Usenet
  * news servers, Network Sources), Downloads (behavior, transfer methods, disk
  * space, engine activity) and Extraction -- say every word through the
@@ -17,7 +17,7 @@ const {test, expect} = require('@playwright/test');
 // Proper names (providers, protocols, codecs, formats), units and what the
 // installation or a fixture wrote; and language names, which Intl writes
 // (English under a pseudo locale, by design).
-const NAMES = ['DebridPulse', 'AllDebrid', 'Debrid-Link', 'Real-Debrid', 'TorBox', 'Premiumize', 'Usenet', 'WebDAV', 'rsync',
+const NAMES = ['DownloadPulse', 'AllDebrid', 'Debrid-Link', 'Real-Debrid', 'TorBox', 'Premiumize', 'Usenet', 'WebDAV', 'rsync',
   'HTTP(S)', '(S)FTP', 'SCP', 'Metalink (Multimeta)', 'Metalink', 'Multimeta', 'Media Downloads', 'HEVC (H.265)', 'H.264', 'AV1',
   'yt-dlp', 'aria2', 'English', 'news.example.com', 'synthetic-renamed', 'KB/s', 'MB/s', 'GB'];
 

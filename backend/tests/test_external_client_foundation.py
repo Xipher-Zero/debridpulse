@@ -666,7 +666,7 @@ async def test_one_missing_member_never_reports_completion(world):
     assert done["state"] == "available" and done["generation"] == 1 and done["complete"]
     assert sorted(item["name"] for item in done["files"]) == ["one.bin", "two.bin"]
     assert all(item["import_path"].startswith("/imports/tv/") for item in done["files"])
-    assert str(world.payloads) not in json.dumps(done)          # DebridPulse's own root is never disclosed
+    assert str(world.payloads) not in json.dumps(done)          # DownloadPulse's own root is never disclosed
 
 
 async def test_finalization_delays_readiness_and_a_finalization_without_an_inventory_is_not_delivered(world):
@@ -1081,7 +1081,7 @@ async def test_http_status_semantics_and_isolation(http, world):
     assert (await client.get("/api/external/v1/jobs", headers=http.admin_headers)).status_code == 403
     assert (await client.get("/api/external/profiles", headers=http.admin_headers)).status_code == 200
     capabilities = (await client.get("/api/external/v1/capabilities", headers=http.client_headers)).json()
-    assert capabilities["protocol"] == "debridpulse.external/1"
+    assert capabilities["protocol"] == "downloadpulse.external/1"
     assert [profile["id"] for profile in capabilities["profiles"]] == ["tv"]
     assert "clients" not in capabilities["profiles"][0] and "local_root" not in capabilities["profiles"][0]
     # Revocation fails the very next call; the job and its demand stay.

@@ -328,7 +328,7 @@ async def test_a_real_acquisition_is_cancelled_after_a_restart_and_its_retry_com
             await asyncio.sleep(0.2)
         assert running.state == ExecutionState.RUNNING and running.progress.completed_bytes > 0
 
-        # DebridPulse restarts: a new executor finds the group by its durable
+        # DownloadPulse restarts: a new executor finds the group by its durable
         # ownership and stops all of it -- worker, launcher, any helper.
         restarted = MediaExecutor(str(root), str(runtime), _allowed, sandbox=sandbox)
         assert (await restarted.observe(handle)).state == ExecutionState.RUNNING

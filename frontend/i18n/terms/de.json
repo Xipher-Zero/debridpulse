@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "de",
  "register": "Formal 'Sie' throughout. Buttons and menu commands use the infinitive (Speichern, Abbrechen); headings and labels use nouns. Help addresses the reader as 'Sie'. Standard German software terminology; English loan words only where German IT usage is established (Download, Dashboard, Server, Token).",
  "terms": {

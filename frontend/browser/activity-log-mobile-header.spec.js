@@ -16,7 +16,7 @@ const { test, expect } = require('@playwright/test');
 
 const WEB_FONTS = process.env.DP_WEB_FONTS === '1';
 const TITLES = ['For the Record', 'The Records', 'Activity', 'Logs'];
-const HINTS = ['Everything DebridPulse thought was worth mentioning.', 'Things worth writing down.', 'Worth noting.', ''];
+const HINTS = ['Everything DownloadPulse thought was worth mentioning.', 'Things worth writing down.', 'Worth noting.', ''];
 
 function journal() {
   const state = {top: 457};
@@ -140,7 +140,7 @@ test('Refresh as its glyph alone keeps its name, tooltip and keyboard focus, and
 test('Auto Refresh out of the row is on, never writing the session choice; back in the row, the choice (off) holds', async ({page}) => {
   const {log, requests} = await open(page, {width: 779, startOff: true});
   const toggle = page.locator('#ev-live');
-  const hint = latest => page.evaluate(value => document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed', {detail: {latest: value}})), latest);
+  const hint = latest => page.evaluate(value => document.dispatchEvent(new CustomEvent('downloadpulse:activity-journal-changed', {detail: {latest: value}})), latest);
   await expect(toggle).not.toBeChecked();
   // Off, in the row: a journal hint brings nothing.
   log.top = 460;
@@ -181,7 +181,7 @@ test('Auto Refresh left on (the default) stays on in and out of the row, one req
     await expect(toggle).toBeChecked();
     const before = requests.length;
     log.top += 2;
-    await page.evaluate(value => document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed', {detail: {latest: value}})), log.top);
+    await page.evaluate(value => document.dispatchEvent(new CustomEvent('downloadpulse:activity-journal-changed', {detail: {latest: value}})), log.top);
     await expect.poll(() => requests.length, `${width}px`).toBe(before + 1);
     await page.waitForTimeout(1200);
     expect(requests.length, `${width}px: no further requests`).toBe(before + 1);

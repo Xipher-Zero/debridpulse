@@ -6,7 +6,7 @@ function storageSnapshot(domain, state, generation) {
   const application = domain === 'application_state';
   return {
     domain,
-    configured_path: application ? '/app/data/debridpulse.db' : '/download',
+    configured_path: application ? '/app/data/downloadpulse.db' : '/download',
     resolved_path: application ? '/app/data' : '/download',
     exists: true,
     is_directory: true,

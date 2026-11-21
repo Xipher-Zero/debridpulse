@@ -45,7 +45,7 @@ async function signIn(browser, {username, password}) {
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -113,7 +113,7 @@ test('the sign-in page is drawn in the last published login theme, whatever the 
       await context.close();
     }
 
-    // A refused sign-in is drawn in it too, its error keeping DebridPulse's own colour.
+    // A refused sign-in is drawn in it too, its error keeping DownloadPulse's own colour.
     const {context, page} = await publicPage(browser, {colorScheme: 'dark'});
     await page.locator('#username').fill(`la-nobody-${run}`);
     await page.locator('#password').fill('not-the-password');
@@ -131,7 +131,7 @@ test('the sign-in page is drawn in the last published login theme, whatever the 
     await next.context.close();
   } finally {
     // Leave the installation's login appearance as this file found it.
-    const palette = found.palette || `debridpulse-${found.mode}`;
+    const palette = found.palette || `downloadpulse-${found.mode}`;
     await own(mine, found.mode, palette);
     await publish(mine, found.mode, palette);
     for (const session of [mine, user]) await session.context.close();
@@ -216,7 +216,7 @@ test('the sidebar logo is logo.svg drawn inline in the signed-in account\'s own 
         ekg: ['start', 'mid', 'end'].map(stop => getComputedStyle(svg.querySelector(`.dp-logo-ekg-${stop}`)).stopColor)};
     });
     const native = await logo();
-    expect(native).toMatchObject({img: false, label: 'DebridPulse logo', hidden: 'true', square: 'rgb(8, 11, 24)',
+    expect(native).toMatchObject({img: false, label: 'DownloadPulse logo', hidden: 'true', square: 'rgb(8, 11, 24)',
       outline: 'rgb(166, 44, 255)', ekg: ['rgb(181, 50, 255)', 'rgb(0, 212, 255)', 'rgb(20, 159, 255)']});
     await own.page.evaluate(() => window.DPTheme.choose('gruvbox-dark'));
     expect(await logo()).toMatchObject({square: 'rgb(40, 40, 40)', outline: 'rgb(211, 134, 155)', ekg: ['rgb(211, 134, 155)', 'rgb(131, 165, 152)', 'rgb(131, 165, 152)'], size: native.size});
@@ -246,7 +246,7 @@ test('an Admin publishes the login theme from the end of the theme menu, and onl
     const {context, page} = await publicPage(browser);
     const {mode, palette} = await drawn(page);
     await context.close();
-    return {mode, palette: palette || `debridpulse-${mode}`};
+    return {mode, palette: palette || `downloadpulse-${mode}`};
   };
   const user = await signIn(browser, viewer);
   const mine = await signIn(browser, publisher);
@@ -273,7 +273,7 @@ test('an Admin publishes the login theme from the end of the theme menu, and onl
     await expect(section.locator('.dp-theme-picker-login-label')).toHaveText('Current login theme');
     const label = (mode, palette) => page.evaluate(([mode, palette]) =>
       `${window.DPTheme.catalog[mode].find(item => item.id === palette).label} · ${mode === 'light' ? 'Light' : 'Dark'}`, [mode, palette]);
-    await expect(value).toHaveText(await label(found.mode, found.palette || `debridpulse-${found.mode}`));
+    await expect(value).toHaveText(await label(found.mode, found.palette || `downloadpulse-${found.mode}`));
     const shape = await set.evaluate(button => ({classes: button.className, radius: parseFloat(getComputedStyle(button).borderRadius),
       height: button.getBoundingClientRect().height, token: parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dp-radius-sm'))}));
     expect(shape.classes).toContain('dp-btn dp-btn--secondary dp-btn--sm');
@@ -288,7 +288,7 @@ test('an Admin publishes the login theme from the end of the theme menu, and onl
     // A personal choice is personal: the sign-in page is unchanged.
     await page.locator('#theme-picker .dp-theme-picker-option[data-palette="dracula"]').click();
     await expect.poll(() => api(page, 'GET', '/account/appearance').then(r => r.body.dark_palette)).toBe('dracula');
-    expect(await loginTheme()).toEqual({mode: found.mode, palette: found.palette || `debridpulse-${found.mode}`});
+    expect(await loginTheme()).toEqual({mode: found.mode, palette: found.palette || `downloadpulse-${found.mode}`});
 
     // Set current while the personal save is still on its way: what is shown is what is published.
     await open();
@@ -341,7 +341,7 @@ test('an Admin publishes the login theme from the end of the theme menu, and onl
       await page.waitForTimeout(500);
     }
   } finally {
-    const palette = found.palette || `debridpulse-${found.mode}`;
+    const palette = found.palette || `downloadpulse-${found.mode}`;
     await own(mine, found.mode, palette);
     await publish(mine, found.mode, palette);
     for (const session of [mine, user]) await session.context.close();

@@ -76,7 +76,7 @@ def _request(
         "query_string": query_string,
         "headers": raw_headers,
         "client": ("127.0.0.1", 12345),
-        "server": ("debridpulse.local", 443 if scheme == "https" else 80),
+        "server": ("downloadpulse.local", 443 if scheme == "https" else 80),
     }
     return Request(scope, receive=receive)
 
@@ -84,7 +84,7 @@ def _request(
 def _form_request(path, values, *, cookie="", extra_headers=None):
     body = urlencode(values).encode()
     headers = {
-        "Host": "debridpulse.local",
+        "Host": "downloadpulse.local",
         "Content-Type": "application/x-www-form-urlencoded",
         "Content-Length": str(len(body)),
         **(extra_headers or {}),
@@ -116,16 +116,16 @@ async def _ok(_request):
 
 @pytest.mark.asyncio
 async def test_auth_bootstrap_loads_before_application_javascript():
-    request = _request("GET", path="/app.js", headers={"Host": "debridpulse.local"})
+    request = _request("GET", path="/app.js", headers={"Host": "downloadpulse.local"})
     request.state.principal = Principal.password_session(account("viewer", role=Role.READONLY))
     bundle_response = await auth_routes.application_javascript_bundle(request)
     bundle = bundle_response.body.decode("utf-8")
     # The caller's authority comes first -- without any CSRF token.
-    authority = json.loads(bundle.split("window.debridPulseAuthority=Object.freeze(", 1)[1].split(");", 1)[0])
+    authority = json.loads(bundle.split("window.downloadPulseAuthority=Object.freeze(", 1)[1].split(");", 1)[0])
     assert authority["role"] == "readonly" and "transfers.operate" not in authority["capabilities"]
     assert "csrf_token" not in authority
-    auth_marker = "DebridPulse application-session bootstrap"
-    app_marker = "DebridPulse — self-hosted multi-provider transfer manager."
+    auth_marker = "DownloadPulse application-session bootstrap"
+    app_marker = "DownloadPulse — self-hosted multi-provider transfer manager."
     assert auth_marker in bundle
     assert app_marker in bundle
     assert bundle.index(auth_marker) < bundle.index(app_marker)
@@ -272,12 +272,12 @@ def test_login_route_remains_behind_general_cross_site_mutation_defense():
 async def test_open_mode_session_status_is_anonymous_and_login_is_bypassed(monkeypatch):
     cfg = _settings(enabled=False)
     monkeypatch.setattr(auth_routes, "get_settings", lambda: cfg)
-    request = _request("GET", path="/login", headers={"Host": "debridpulse.local"})
+    request = _request("GET", path="/login", headers={"Host": "downloadpulse.local"})
     response = await auth_routes.login_page(request, next="/stats")
     assert response.status_code == 303
     assert response.headers["location"] == "/stats"
 
-    status_request = _request("GET", path="/api/auth/session", headers={"Host": "debridpulse.local"})
+    status_request = _request("GET", path="/api/auth/session", headers={"Host": "downloadpulse.local"})
     status_request.state.principal = Principal.anonymous()
     data = await auth_routes.auth_session_status(status_request)
     assert data["authenticated"] is False
@@ -297,14 +297,14 @@ async def test_session_mutation_requires_csrf_and_correct_token_passes(monkeypat
     )
     cookie = f"{HTTP_SESSION_COOKIE}={token}"
 
-    missing = _request("POST", headers={"Cookie": cookie, "Host": "debridpulse.local"})
+    missing = _request("POST", headers={"Cookie": cookie, "Host": "downloadpulse.local"})
     assert (await enforce_authentication(missing, _ok)).status_code == 403
 
     valid = _request(
         "POST",
         headers={
             "Cookie": cookie,
-            "Host": "debridpulse.local",
+            "Host": "downloadpulse.local",
             "X-CSRF-Token": session_store.csrf_token(token),
         },
     )
@@ -317,7 +317,7 @@ async def test_session_mutation_requires_csrf_and_correct_token_passes(monkeypat
 async def test_auth_session_status_returns_csrf_only_for_server_session():
     session_store.clear()
     token, _ = session_store.create(Principal.password_session(account("operator")), lifetime_seconds=3600)
-    request = _request("GET", path="/api/auth/session", headers={"Host": "debridpulse.local"})
+    request = _request("GET", path="/api/auth/session", headers={"Host": "downloadpulse.local"})
     request.state.principal = Principal.password_session(account("operator"))
     request.state.auth_session_token = token
     data = await auth_routes.auth_session_status(request)
@@ -326,7 +326,7 @@ async def test_auth_session_status_returns_csrf_only_for_server_session():
     assert data["csrf_token"] == session_store.csrf_token(token)
     assert data["session_expires_in_seconds"] > 0
 
-    basic = _request("GET", path="/api/auth/session", headers={"Host": "debridpulse.local"})
+    basic = _request("GET", path="/api/auth/session", headers={"Host": "downloadpulse.local"})
     basic.state.principal = Principal.http_basic(account("operator"))
     basic_data = await auth_routes.auth_session_status(basic)
     assert basic_data["csrf_token"] == ""
@@ -346,7 +346,7 @@ async def test_password_change_invalidates_existing_browser_session(operator, mo
         path="/",
         headers={
             "Cookie": f"{HTTP_SESSION_COOKIE}={token}",
-            "Host": "debridpulse.local",
+            "Host": "downloadpulse.local",
             "Accept": "text/html",
         },
     )
@@ -366,7 +366,7 @@ async def test_login_page_clears_stale_password_session(operator, monkeypatch):
     request = _request(
         "GET",
         path="/login",
-        headers={"Host": "debridpulse.local", "Cookie": f"{HTTP_SESSION_COOKIE}={token}"},
+        headers={"Host": "downloadpulse.local", "Cookie": f"{HTTP_SESSION_COOKIE}={token}"},
     )
     response = await auth_routes.login_page(request, next="/stats")
     assert response.status_code == 200
@@ -386,7 +386,7 @@ async def test_browser_navigation_redirects_but_api_get_is_json_401(monkeypatch)
     browser = _request(
         "GET",
         path="/stats",
-        headers={"Host": "debridpulse.local", "Accept": "text/html"},
+        headers={"Host": "downloadpulse.local", "Accept": "text/html"},
     )
     browser_response = await enforce_authentication(browser, _ok)
     assert browser_response.status_code == 303
@@ -395,7 +395,7 @@ async def test_browser_navigation_redirects_but_api_get_is_json_401(monkeypatch)
     api_request = _request(
         "GET",
         path="/api/stats",
-        headers={"Host": "debridpulse.local", "Accept": "application/json"},
+        headers={"Host": "downloadpulse.local", "Accept": "application/json"},
     )
     api_response = await enforce_authentication(api_request, _ok)
     assert api_response.status_code == 401
@@ -413,7 +413,7 @@ async def test_machine_basic_mutation_does_not_require_browser_csrf(operator, mo
     request = _request(
         "POST",
         headers={
-            "Host": "debridpulse.local",
+            "Host": "downloadpulse.local",
             "Authorization": _basic("operator", "secret"),
         },
     )
@@ -441,7 +441,7 @@ async def test_password_login_creates_rotated_application_session(operator, monk
             "next": "/stats?window=24",
         },
         cookie=(
-            f"debridpulse-login-csrf={browser_nonce}; "
+            f"downloadpulse-login-csrf={browser_nonce}; "
             f"{HTTP_SESSION_COOKIE}={old_token}"
         ),
     )
@@ -469,7 +469,7 @@ async def test_login_csrf_reuse_is_rejected(operator, monkeypatch):
     login_csrf_store.clear()
 
     browser_nonce, csrf = login_csrf_store.issue()
-    cookie = f"debridpulse-login-csrf={browser_nonce}"
+    cookie = f"downloadpulse-login-csrf={browser_nonce}"
     first = _form_request(
         "/login",
         {"username": "operator", "password": "wrong", "csrf_token": csrf, "next": "/"},
@@ -492,7 +492,7 @@ async def test_login_csrf_reuse_is_rejected(operator, monkeypatch):
 async def test_logout_revokes_server_session_and_expires_cookie():
     session_store.clear()
     token, _ = session_store.create(Principal.password_session(account("operator")), lifetime_seconds=3600)
-    request = _request("POST", path="/api/auth/logout", headers={"Host": "debridpulse.local"})
+    request = _request("POST", path="/api/auth/logout", headers={"Host": "downloadpulse.local"})
     request.state.principal = Principal.password_session(account("operator"))
     request.state.auth_session_token = token
 

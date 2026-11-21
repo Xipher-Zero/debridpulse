@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test');
 const holdPulse = page => page.route('**/api/events/stream', () => {});
 
 async function waitForSessionBootstrap(page) {
-  await expect.poll(() => page.evaluate(() => window.debridPulseAuth?.session() !== null)).toBeTruthy();
+  await expect.poll(() => page.evaluate(() => window.downloadPulseAuth?.session() !== null)).toBeTruthy();
 }
 
 test('unrelated application 401 does not redirect an open-mode browser to login', async ({ page }) => {
@@ -28,11 +28,11 @@ test('unrelated application 401 does not redirect an open-mode browser to login'
   await holdPulse(page);
   await page.goto('/');
   await waitForSessionBootstrap(page);
-  expect(await page.evaluate(() => window.debridPulseAuth.session().authenticated)).toBe(false);
+  expect(await page.evaluate(() => window.downloadPulseAuth.session().authenticated)).toBe(false);
 
   const sessionsBeforeProbe = sessionRequests;
   const status = await page.evaluate(async () => {
-    const response = await window.debridPulseAuth.fetch('/api/bootstrap-401-probe');
+    const response = await window.downloadPulseAuth.fetch('/api/bootstrap-401-probe');
     return response.status;
   });
 
@@ -41,7 +41,7 @@ test('unrelated application 401 does not redirect an open-mode browser to login'
   await page.waitForTimeout(150);
   expect(loginRequests).toBe(0);
   expect(new URL(page.url()).pathname).toBe('/');
-  expect(await page.evaluate(() => window.debridPulseAuth.session().authenticated)).toBe(false);
+  expect(await page.evaluate(() => window.downloadPulseAuth.session().authenticated)).toBe(false);
 });
 
 test('application 401 still redirects when canonical session confirmation reports expiration', async ({ page }) => {
@@ -88,10 +88,10 @@ test('application 401 still redirects when canonical session confirmation report
   await holdPulse(page);
   await page.goto('/');
   await waitForSessionBootstrap(page);
-  expect(await page.evaluate(() => window.debridPulseAuth.session().authenticated)).toBe(true);
+  expect(await page.evaluate(() => window.downloadPulseAuth.session().authenticated)).toBe(true);
 
   sessionExpired = true;
-  await page.evaluate(() => window.debridPulseAuth.fetch('/api/bootstrap-expired-probe'));
+  await page.evaluate(() => window.downloadPulseAuth.fetch('/api/bootstrap-expired-probe'));
 
   await expect(page).toHaveURL(/\/login\?next=/);
 });

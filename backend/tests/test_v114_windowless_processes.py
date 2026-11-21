@@ -1,4 +1,4 @@
-"""No program DebridPulse starts opens a console window on Windows.
+"""No program DownloadPulse starts opens a console window on Windows.
 
 The desktop application's backend has no console of its own, so a console
 program it starts directly -- aria2, the Usenet service, rsync, the archive

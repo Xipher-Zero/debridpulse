@@ -1,10 +1,10 @@
-"""Wait for the exact candidate image that this commit's Fork Image run publishes.
+"""Wait for the exact candidate image that this commit's Image run publishes.
 
 Container Security and Candidate Runtime Qualification start on the same push
-as Fork Image, but can only qualify ``ghcr.io/xipher-zero/debridpulse:sha-<commit>``
-once Fork Image has published it -- which takes as long as that run's build,
+as Image, but can only qualify ``ghcr.io/xipher-zero/downloadpulse:sha-<commit>``
+once Image has published it -- which takes as long as that run's build,
 its runner queue and its multi-architecture push take. So they wait on that
-run, not on a clock: while the commit's Fork Image push run is queued or
+run, not on a clock: while the commit's Image push run is queued or
 running (including an authorized re-run of it), they keep waiting; once the
 image is in the registry they go on; and once the run has finished without it
 they fail, saying why. The wait is still bounded (``CAP``).
@@ -28,28 +28,28 @@ import subprocess
 import sys
 import time
 
-FORK_IMAGE = ".github/workflows/fork-image.yml"
+IMAGE_WORKFLOW = ".github/workflows/image.yml"
 # Run states in which the publisher may still publish (the API's run statuses).
 ACTIVE = frozenset({"queued", "in_progress", "waiting", "requested", "pending"})
 POLL = 20                      # seconds between observations
 CAP = 60 * 60                  # the longest any wait may last
-REGISTRATION = 10 * 60         # how long a push's Fork Image run may take to appear
+REGISTRATION = 10 * 60         # how long a push's Image run may take to appear
 PROPAGATION = 2 * 60           # how long a finished publication may take to be readable
 _SHA = re.compile(r"[0-9a-f]{40}")
 _DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 def publishers(runs, sha: str) -> list[dict]:
-    """The Fork Image push runs for exactly ``sha``, newest first. A re-run
+    """The Image push runs for exactly ``sha``, newest first. A re-run
     updates its own run, so each one's status is its latest attempt's. The
     first is the one authority: an older run, active or not, decides nothing."""
-    found = [run for run in runs or () if isinstance(run, dict) and run.get("path") == FORK_IMAGE
+    found = [run for run in runs or () if isinstance(run, dict) and run.get("path") == IMAGE_WORKFLOW
              and run.get("head_sha") == sha and run.get("event") == "push"]
     return sorted(found, key=lambda run: int(run.get("id") or 0), reverse=True)
 
 
 def _named(run: dict) -> str:
-    return f"Fork Image run {run.get('id')} (attempt {run.get('run_attempt') or 1})"
+    return f"Image run {run.get('id')} (attempt {run.get('run_attempt') or 1})"
 
 
 def verdict(runs, image: str, *, sha: str, waited: float, settled_for: float | None) -> tuple[str, str]:
@@ -68,8 +68,8 @@ def verdict(runs, image: str, *, sha: str, waited: float, settled_for: float | N
     found = publishers(runs, sha)
     if not found:
         if waited < REGISTRATION:
-            return "wait", f"image {image}; no Fork Image push run for this commit yet"
-        return "fail", (f"no Fork Image push run for this commit appeared within {REGISTRATION // 60} min: "
+            return "wait", f"image {image}; no Image push run for this commit yet"
+        return "fail", (f"no Image push run for this commit appeared within {REGISTRATION // 60} min: "
                         "nothing will publish the candidate")
     newest = found[0]
     if newest.get("status") in ACTIVE or newest.get("status") != "completed":
@@ -117,7 +117,7 @@ def _fetch_runs(repository: str, sha: str):
     def fetch():
         output = subprocess.run(
             ["gh", "api", "-H", "X-GitHub-Api-Version: 2022-11-28",
-             f"repos/{repository}/actions/workflows/fork-image.yml/runs?head_sha={sha}&event=push&per_page=100"],
+             f"repos/{repository}/actions/workflows/image.yml/runs?head_sha={sha}&event=push&per_page=100"],
             check=True, capture_output=True, text=True, timeout=60).stdout
         return json.loads(output).get("workflow_runs") or []
     return fetch

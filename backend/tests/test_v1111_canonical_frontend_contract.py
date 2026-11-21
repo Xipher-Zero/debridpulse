@@ -89,7 +89,7 @@ def test_settings_is_the_single_clean_room_owner_and_emits_explicit_lifecycle() 
     source = read(SETTINGS)
     assert "window.loadSettings = load;" in source
     assert "window.DPSettingsPage = Object.freeze({load, openTab, writeDocument: overrides => writeSettingsDocument(overrides), providerStatuses, mountProvider,\n    providerArtwork,\n    // A card's contextual Help chip, from this page's one emitter, for a surface\n    // that offers the same topic outside Settings (the setup wizard's Premium\n    // Services and each service's view there): `title` names the card it\n    // explains -- its title key, or {name}, a service's own name.\n    helpChip: (topic, title) => helpChip(topic, typeof title === 'string' ? say(title) : String(title?.name || ''))});" in source
-    assert "debridpulse:settings-rendered" in source
+    assert "downloadpulse:settings-rendered" in source
     assert "view.innerHTML =" in source
     assert "new MutationObserver" not in source
     assert "window.api =" not in source
@@ -112,7 +112,7 @@ def test_settings_authentication_renders_final_cards_directly() -> None:
         "OpenID Connect",
         "Default Role for New OIDC Users",
         "Browser Session Lifetime",
-        "Public DebridPulse Base URL",
+        "Public DownloadPulse Base URL",
         "OIDC Callback URL",
         # DP 1.0.13: Test is a provider-level action on the card's own
         # operational rail, in the one canonical treatment -- relocated from
@@ -222,7 +222,7 @@ def test_help_is_direct_final_owner_with_eight_reviewed_sections() -> None:
     assert "dp-help-section-card" in source
     assert "window.loadHelp = load;" in source
     assert "window.DPHelpPage = Object.freeze({load, activateTab});" in source
-    assert "debridpulse:help-rendered" in source
+    assert "downloadpulse:help-rendered" in source
     assert "DOMContentLoaded" not in source
     assert "new MutationObserver" not in source
     assert "if (v === 'help')      loadHelp();" in read(APP)
@@ -255,7 +255,7 @@ def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> 
     assert "const helpRoot = () => document.getElementById('view-help');" in legal
     assert "let activeBackdrop = null;" in legal
     assert "let activeOpener = null;" in legal
-    assert "debridpulse:help-rendered" in legal
+    assert "downloadpulse:help-rendered" in legal
     assert "requestAnimationFrame" not in legal
     assert "DOMContentLoaded" not in legal
 
@@ -268,7 +268,7 @@ def test_statistics_is_final_owner_with_reviewed_copy_default_and_palette() -> N
     for fragment in (
         "window.loadDetailedStats = loadDetailedStats;",
         "window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});",
-        "statisticsPurpleGradient", "debridpulse:theme-changed",
+        "statisticsPurpleGradient", "downloadpulse:theme-changed",
     ):
         assert fragment in source
     for fragment in (
@@ -310,22 +310,22 @@ def test_canonical_coordination_uses_explicit_events_not_page_convergence_observ
     app = read(APP)
     operator = read(STATIC / "operator-title.js")
     for event in (
-        "debridpulse:navigation",
-        "debridpulse:dashboard-stats-rendered",
+        "downloadpulse:navigation",
+        "downloadpulse:dashboard-stats-rendered",
     ):
         assert event in app
     # The Activity Log owner is the sole producer of its render event.
     activity_owner = read(STATIC / "ui-activity-log-runtime.js")
-    assert "debridpulse:activity-rendered" in activity_owner
-    assert "debridpulse:activity-rendered" not in app
+    assert "downloadpulse:activity-rendered" in activity_owner
+    assert "downloadpulse:activity-rendered" not in app
     # The Dashboard Recent Items renderer was consolidated into its bounded
     # presentation owner (ui-dashboard-transfer-presentation.js). That owner is
-    # now the sole producer of debridpulse:dashboard-recent-rendered; the app.js
+    # now the sole producer of downloadpulse:dashboard-recent-rendered; the app.js
     # loadRecent() entrypoint is a stable delegator that neither renders rows nor
     # emits the event.
     dashboard_owner = read(STATIC / "ui-dashboard-transfer-presentation.js")
-    assert "debridpulse:dashboard-recent-rendered" in dashboard_owner
-    assert "debridpulse:dashboard-recent-rendered" not in app
+    assert "downloadpulse:dashboard-recent-rendered" in dashboard_owner
+    assert "downloadpulse:dashboard-recent-rendered" not in app
     assert "new MutationObserver" not in operator
     assert "window.loadStats =" not in operator
     assert not (STATIC / "ui-runtime.js").exists()
@@ -407,12 +407,12 @@ def test_install_references_track_the_latest_published_release() -> None:
     # for an unreleased VERSION.
     headings = re.findall(r"^## \[(\d+(?:\.\d+)+)\](.*)$", read(CHANGELOG), re.M)
     released = next(v for v, title in headings if "development" not in title.casefold())
-    tag = f"ghcr.io/xipher-zero/debridpulse:v{released}"
+    tag = f"ghcr.io/xipher-zero/downloadpulse:v{released}"
     assert tag in read(COMPOSE)
     assert read(README).count(tag) >= 2
     development = read(VERSION).strip()
     if development != released:
-        unreleased = f"ghcr.io/xipher-zero/debridpulse:v{development}"
+        unreleased = f"ghcr.io/xipher-zero/downloadpulse:v{development}"
         assert unreleased not in read(COMPOSE)
         assert unreleased not in read(README)
 

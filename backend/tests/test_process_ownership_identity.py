@@ -2,7 +2,7 @@
 one-shot inputs never block the event loop.
 
 FUNC-003: the group id used to be recorded only after the program had already
-started, so a failed record write or a DebridPulse crash in between left a
+started, so a failed record write or a DownloadPulse crash in between left a
 live group no one could name or stop. The child now waits at a one-byte gate
 until its id is durable; a failed record or a crash leaves the gate at
 end-of-file and the child exits having run nothing.
@@ -132,7 +132,7 @@ def test_a_crash_before_the_identity_is_recorded_leaves_no_live_group_and_runs_n
         import asyncio, os, sys
         sys.path.insert(0, os.getcwd())
         import executors.process_ownership as po
-        po.os.pwrite = lambda *args: os._exit(0)   # DebridPulse dies right after the child exists
+        po.os.pwrite = lambda *args: os._exit(0)   # DownloadPulse dies right after the child exists
         owner = po.ProcessOwnership({str(runtime)!r})
         asyncio.run(owner.spawn("a", ["sh", "-c", "touch {ran}; sleep 3"], env=owner.environment()))
     """)

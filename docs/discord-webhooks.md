@@ -1,6 +1,6 @@
 # Webhook Notifications
 
-DebridPulse sends instance-wide alerts to webhooks configured by an Admin under
+DownloadPulse sends instance-wide alerts to webhooks configured by an Admin under
 **Settings → Notifications → Webhook Notifications**. Each field is saved when you leave it;
 **Test** sends a test message to the saved webhooks and bypasses deduplication.
 
@@ -18,7 +18,7 @@ DebridPulse sends instance-wide alerts to webhooks configured by an Admin under
   "discord_notifications_enabled": true,
   "discord_webhook_url": "https://discord.com/api/webhooks/.../main",
   "discord_webhook_added": "https://discord.com/api/webhooks/.../added",
-  "discord_username": "DebridPulse",
+  "discord_username": "DownloadPulse",
   "discord_avatar_url": "https://example.com/avatar.png",
   "discord_notify_added": true,
   "discord_notify_finished": true,
@@ -73,4 +73,4 @@ A non-Discord URL receives a POST with this body:
 
 - **Deduplication:** the same message (same URL, title and description) within 10 seconds is sent once.
 - **Rate limiting:** at least 2 seconds between messages to the same URL.
-- **Discord 429:** DebridPulse waits for the `retry_after` Discord returns and retries once (at most 10 seconds for a User's personal webhook).
+- **Discord 429:** DownloadPulse waits for the `retry_after` Discord returns and retries once (at most 10 seconds for a User's personal webhook).

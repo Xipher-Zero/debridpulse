@@ -12,7 +12,7 @@ from services.event_bus import publish
 from services.notification_service import NotificationService
 from services.notifications import COLOR_PARTIAL
 
-logger = logging.getLogger("debridpulse.notify")
+logger = logging.getLogger("downloadpulse.notify")
 
 
 class Observability:

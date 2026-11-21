@@ -1,6 +1,6 @@
-"""DP 1.0.13: an *arr client sees the progress DebridPulse itself shows.
+"""DP 1.0.13: an *arr client sees the progress DownloadPulse itself shows.
 
-DebridPulse's primary bar (``app.js`` ``progress()``) shows the current
+DownloadPulse's primary bar (``app.js`` ``progress()``) shows the current
 in-flight execution figure while a downloading transfer has nothing verified
 yet; the SABnzbd dialect's queue reported verified material alone (0 for a
 native Usenet job until import) and hardcoded ``mb``/``mbleft`` to 0.00.
@@ -8,7 +8,7 @@ Radarr and Sonarr draw their queue bar from ``mb``/``mbleft`` only
 (``QueueRow.tsx``: ``100 - sizeleft / size * 100``; ``SabnzbdQueueItem``
 ``Percentage`` is parsed but never read; Radarr v6.4.4.10685, Sonarr
 v4.0.20.3014), so the acceptance is on those fields: they carry the
-executor's own exact byte counters whenever DebridPulse shows exactly those,
+executor's own exact byte counters whenever DownloadPulse shows exactly those,
 and stay SABnzbd's unknown form otherwise -- never a declared NZB size and
 never a total derived from a percentage.
 

@@ -28,7 +28,7 @@ def _request(method="GET", path="/api/stats", headers=None):
         "query_string": b"",
         "headers": raw_headers,
         "client": ("127.0.0.1", 12345),
-        "server": ("debridpulse.local", 80),
+        "server": ("downloadpulse.local", 80),
     }
     return Request(scope)
 
@@ -75,7 +75,7 @@ async def test_general_browser_security_rejects_cross_site_mutation_in_open_mode
     request = _request(
         "POST",
         headers={
-            "Host": "debridpulse.local",
+            "Host": "downloadpulse.local",
             "Origin": "https://evil.example",
             "Sec-Fetch-Site": "cross-site",
         },
@@ -86,14 +86,14 @@ async def test_general_browser_security_rejects_cross_site_mutation_in_open_mode
 
 @pytest.mark.asyncio
 async def test_general_browser_security_allows_machine_and_same_origin_mutations():
-    machine = _request("POST", headers={"Host": "debridpulse.local"})
+    machine = _request("POST", headers={"Host": "downloadpulse.local"})
     assert (await enforce_general_web_security(machine, _ok)).status_code == 200
 
     same_origin = _request(
         "POST",
         headers={
-            "Host": "debridpulse.local",
-            "Origin": "http://debridpulse.local",
+            "Host": "downloadpulse.local",
+            "Origin": "http://downloadpulse.local",
             "Sec-Fetch-Site": "same-origin",
         },
     )
@@ -105,7 +105,7 @@ async def test_general_browser_security_preserves_explicit_cors_origin():
     request = _request(
         "POST",
         headers={
-            "Host": "debridpulse.local",
+            "Host": "downloadpulse.local",
             "Origin": "https://automation.example",
             "Sec-Fetch-Site": "cross-site",
         },
@@ -123,7 +123,7 @@ async def test_general_browser_security_requires_exact_configured_cors_origin():
     request = _request(
         "POST",
         headers={
-            "Host": "debridpulse.local",
+            "Host": "downloadpulse.local",
             "Origin": "http://automation.example",
             "Sec-Fetch-Site": "cross-site",
         },
@@ -145,7 +145,7 @@ async def test_password_http_auth_sets_common_principal(operator, monkeypatch):
     request = _request(
         "GET",
         headers={
-            "Host": "debridpulse.local",
+            "Host": "downloadpulse.local",
             "Authorization": _basic("operator", "secret"),
         },
     )
@@ -201,7 +201,7 @@ async def test_public_routes_and_open_mode_remain_admitted(monkeypatch):
         "get_settings",
         lambda: _password_settings(enabled=False),
     )
-    open_request = _request("GET", path="/api/stats", headers={"Host": "debridpulse.local"})
+    open_request = _request("GET", path="/api/stats", headers={"Host": "downloadpulse.local"})
     assert (await enforce_password_http_auth(open_request, _ok)).status_code == 200
     # Open mode is the standalone installation's one Admin, not an anonymous tenant.
     assert open_request.state.principal.authenticated is False

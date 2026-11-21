@@ -1,4 +1,4 @@
-/* DebridPulse v1.0.12 transfer-level common-source group switching.
+/* DownloadPulse v1.0.12 transfer-level common-source group switching.
  *
  * A thin wrapper over the already-qualified per-file canonical candidate and
  * manual-switch machinery. It answers one derived question — which source
@@ -337,7 +337,7 @@
   function launcherMarkup(item, variant, surface) {
     // A source switch is offered only where the server says this caller may
     // destroy the work (``access.destroy``); otherwise the history alone.
-    if (!(item && window.debridPulseAuth?.mayDestroy(item))) return staticHistoryMarkup(item, variant);
+    if (!(item && window.downloadPulseAuth?.mayDestroy(item))) return staticHistoryMarkup(item, variant);
     const scope = item && item.candidate_action_scope;
     if (scope === 'artifact') {
       return actionLauncherMarkup(item.id, variant, surface, 'artifact', item.candidate_action_artifact_id, item.candidate_action_count);
@@ -1024,7 +1024,7 @@
   // per-file disclosure (ui-detail-candidates.js), and this module's artifact
   // and group choosers launched from Details, Dashboard Recent Activity and
   // Downloads -- goes through these primitives. When the requested source
-  // cannot continue from the artifact's DebridPulse-valid material the
+  // cannot continue from the artifact's DownloadPulse-valid material the
   // backend refuses first (409, confirmation "discard_material") with the
   // exact amounts; nothing has changed. The discard is never estimated here.
 
@@ -1049,7 +1049,7 @@
         retained_bytes: confirmation.retained_bytes,
       };
     }
-    const response = await window.debridPulseAuth.fetch(
+    const response = await window.downloadPulseAuth.fetch(
       '/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate',
       {
         method: 'POST',
@@ -1064,7 +1064,7 @@
 
   // Read-only: what the same continuation planner would keep and discard.
   async function previewOne(transferId, artifactId, candidateId) {
-    const response = await window.debridPulseAuth.fetch(
+    const response = await window.downloadPulseAuth.fetch(
       '/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate/preview?candidate_id=' +
         encodeURIComponent(candidateId));
     const payload = await response.json().catch(function () { return {}; });
@@ -1307,18 +1307,18 @@
   function install() {
     document.addEventListener('click', onDocumentClick);
     document.addEventListener('pointerdown', onDocumentPointerDown, true);
-    document.addEventListener('debridpulse:detail-rendered', onDetailRendered);
-    document.addEventListener('debridpulse:detail-closed', onDetailClosed);
-    document.addEventListener('debridpulse:transfer-updated', onTransferUpdated);
-    document.addEventListener('debridpulse:locale-changed', onLocaleChanged);
+    document.addEventListener('downloadpulse:detail-rendered', onDetailRendered);
+    document.addEventListener('downloadpulse:detail-closed', onDetailClosed);
+    document.addEventListener('downloadpulse:transfer-updated', onTransferUpdated);
+    document.addEventListener('downloadpulse:locale-changed', onLocaleChanged);
     // Deferred to a microtask defensively: Downloads and Dashboard Recent
     // both render the group launcher inline, in the same pass as the rest
     // of the row, before this event fires -- but a microtask still runs
     // after every same-dispatch listener has finished, independent of
     // registration order, so this stays correct even if a future owner adds
     // its own listener for this event.
-    document.addEventListener('debridpulse:dashboard-recent-rendered', function () { queueMicrotask(function () { onSurfaceRendered('dashboard_recent'); }); });
-    document.addEventListener('debridpulse:downloads-rendered', function () { queueMicrotask(function () { onSurfaceRendered('downloads'); }); });
+    document.addEventListener('downloadpulse:dashboard-recent-rendered', function () { queueMicrotask(function () { onSurfaceRendered('dashboard_recent'); }); });
+    document.addEventListener('downloadpulse:downloads-rendered', function () { queueMicrotask(function () { onSurfaceRendered('downloads'); }); });
     window.addEventListener('resize', onViewportChange, {passive: true});
     window.addEventListener('scroll', onViewportChange, {passive: true, capture: true});
   }

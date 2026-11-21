@@ -458,7 +458,7 @@ test('each card\'s Test answers on its own card', async ({page}) => {
 
 /* ── A standard User's own Notifications, in a real User-role session ───── */
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -478,7 +478,7 @@ async function signIn(browser, {username, password}, viewport) {
   }
   await expect(page).not.toHaveURL(/\/login/);
   await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toBeAttached();
-  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.fetch));
+  await page.waitForFunction(() => Boolean(window.downloadPulseAuth?.fetch));
   if (shared && !reuse) adminSession.remember(await context.storageState());
   return {context, page};
 }
@@ -495,7 +495,7 @@ test('a User\'s own Notifications take the same header Test treatment through th
   const own = answer(page, '/api/account/notifications/test-discord', () => [200, {notifications: {}}]);
   const ownReport = answer(page, '/api/account/notifications/send-report', () => [200, {notifications: {}, hours: 24}]);
   const global = answer(page, '/api/settings/validate-discord', () => [500, {}]);
-  expect(await page.evaluate(() => window.debridPulseAuthority?.role)).toBe('user');
+  expect(await page.evaluate(() => window.downloadPulseAuthority?.role)).toBe('user');
   await page.evaluate(() => window.nav([...document.querySelectorAll('#sidebar .nav-item')]
     .find(item => item.textContent.includes('Notifications'))));
   const view = page.locator('#view-settings');

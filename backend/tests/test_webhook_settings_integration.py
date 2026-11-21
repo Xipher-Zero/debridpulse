@@ -178,7 +178,7 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         fake_aria2.apply_memory_tuning.assert_not_awaited()
 
     async def test_aria2_global_options_refuses_the_retired_upload_speed(self):
-        """DebridPulse's aria2 is compiled without BitTorrent and never uploads,
+        """DownloadPulse's aria2 is compiled without BitTorrent and never uploads,
         so the legacy edge has no upload speed: a request naming only it is
         refused, and nothing is persisted or sent to aria2."""
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock())
@@ -432,7 +432,7 @@ class StatsOwnsNoTransportTests(unittest.TestCase):
                         "session.post", "avatar_url", "embeds", "response.status"):
             self.assertNotIn(retired, source, retired)
         # ...and none of the retired Statistics-only wire envelope.
-        for retired in ('"event": "stats_report"', '"source": "debridpulse"',
+        for retired in ('"event": "stats_report"', '"source": "downloadpulse"',
                         '"triggered_by": triggered_by,'):
             self.assertNotIn(retired, source, retired)
         # Report CONTENT generation stays here; only delivery moved.

@@ -306,8 +306,8 @@ async def test_build_revision_is_the_packaged_revision_and_null_only_without_one
         assert metadata["build_revision"] == expected, value
     version.read_build_revision.cache_clear()
     dockerfile = (REPO / "Dockerfile").read_text()
-    assert "ENV DEBRIDPULSE_BUILD_REVISION=${VCS_REF}" in dockerfile
-    assert version.BUILD_REVISION_ENV == "DEBRIDPULSE_BUILD_REVISION"
+    assert "ENV DOWNLOADPULSE_BUILD_REVISION=${VCS_REF}" in dockerfile
+    assert version.BUILD_REVISION_ENV == "DOWNLOADPULSE_BUILD_REVISION"
 
 
 @pytest.mark.asyncio

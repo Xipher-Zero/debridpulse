@@ -173,7 +173,7 @@ def windows_reserved_name(component: str) -> bool:
 
 
 def _windows_fully_qualified(value: str) -> bool:
-    """A canonical Windows path DebridPulse can own: drive-absolute
+    """A canonical Windows path DownloadPulse can own: drive-absolute
     (``C:\\...``) or UNC (``\\\\server\\share\\...``), already normal (no
     ``.``/``..``, ``/``, doubled or trailing separator), never drive-relative
     (``C:x``), rooted without a drive (``\\x``), a device or extended-length

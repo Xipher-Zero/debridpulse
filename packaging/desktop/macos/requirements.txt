@@ -1,4 +1,4 @@
-# DebridPulse desktop runtime lock for macOS (CPython 3.12): the canonical
+# DownloadPulse desktop runtime lock for macOS (CPython 3.12): the canonical
 # backend lock (backend/requirements.txt, every shared pin unchanged) resolved
 # for macOS, plus packaging/desktop/macos/requirements.in -- exactly
 # pyobjc-core and pyobjc-framework-Cocoa 12.2.1, which the bundled Usenet

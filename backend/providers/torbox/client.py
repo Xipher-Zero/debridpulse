@@ -32,7 +32,7 @@ from transfers.errors import safe_diagnostic
 API_HOST = "api.torbox.app"
 API = f"https://{API_HOST}/v1/api"
 # The name TorBox shows the operator on its device-authorization page.
-DEVICE_APP_NAME = "DebridPulse"
+DEVICE_APP_NAME = "DownloadPulse"
 
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 30
 DEFAULT_UPLOAD_TIMEOUT_SECONDS = 120
@@ -238,7 +238,7 @@ def _object(value: Any, what: str) -> dict:
     return value
 
 
-# The one DebridPulse-local field of a member address: the safe hostname of
+# The one DownloadPulse-local field of a member address: the safe hostname of
 # the hoster a web download was submitted for. It is provenance only -- never
 # sent to TorBox, never part of the member's identity.
 SOURCE_HOST_FIELD = "source_host"

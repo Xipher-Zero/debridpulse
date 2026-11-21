@@ -32,8 +32,8 @@ def _oidc_settings():
         auth_password_enabled=True,
         auth_oidc_enabled=True,
         oidc_provider_name="OpenID Connect",
-        oidc_issuer_url="https://id.example/application/o/debridpulse",
-        oidc_client_id="debridpulse-client",
+        oidc_issuer_url="https://id.example/application/o/downloadpulse",
+        oidc_client_id="downloadpulse-client",
         oidc_client_secret="secret",
         oidc_scopes=["openid", "profile", "email"],
         oidc_allow_all=True,
@@ -88,7 +88,7 @@ async def test_oidc_start_rate_limit_fails_before_discovery(monkeypatch):
 
 
 async def _native_login_appearance():
-    return {"mode": "dark", "palette": "debridpulse-dark"}
+    return {"mode": "dark", "palette": "downloadpulse-dark"}
 
 
 @pytest.mark.asyncio

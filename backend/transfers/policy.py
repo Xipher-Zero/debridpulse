@@ -71,7 +71,7 @@ def remote_source_capacity(error: NormalizedError) -> bool:
 
     An external capacity fact, not evidence against the candidate or its route:
     such a refusal never spends a recovery or retry budget, and it is never a
-    stall or an unrelated network failure. DebridPulse stays the one admission
+    stall or an unrelated network failure. DownloadPulse stays the one admission
     owner -- it simply retries later (or moves to an equivalent alternate), with
     no second scheduler and no count of the server's slots. A provider
     account's own concurrency limit is a provider fact (``Domain.PROVIDER``) and
@@ -80,7 +80,7 @@ def remote_source_capacity(error: NormalizedError) -> bool:
 
 
 # A source route that is permanently unusable as submitted. Intrinsically so:
-# the object is not there, the endpoint is unsupported, or DebridPulse may not
+# the object is not there, the endpoint is unsupported, or DownloadPulse may not
 # reach it. Otherwise only a route failure its emitter declared terminal
 # (non-retryable or permanent): an ordinary transient failure -- a timeout, a
 # DNS or connection failure retried with backoff -- is never a dead route,
@@ -362,11 +362,11 @@ class TransferPolicy:
     refreshes_per_recovery_epoch: int = 1
     # A provider quota hold (a typed quota-scope refusal): how long its scope
     # is avoided before ONE dispatch of pending work may ask again, and how
-    # long that one probe holds the scope's turn. DebridPulse's own interval,
+    # long that one probe holds the scope's turn. DownloadPulse's own interval,
     # never a provider's reset time.
     quota_requalify_seconds: float = 300.0
     quota_probe_lease_seconds: float = 120.0
-    # DebridPulse-owned material continuation: how often a running writer's
+    # DownloadPulse-owned material continuation: how often a running writer's
     # reported material is made durable and committed, and how long a writer
     # being replaced may quiesce before it is force-fenced.
     material_checkpoint_interval: float = 5.0

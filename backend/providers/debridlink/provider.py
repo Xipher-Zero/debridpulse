@@ -17,7 +17,7 @@ Every link Debrid-Link generates is execution material only: its durability
 is not documented (a downloader link carries an ``expired`` flag), so it is
 transient -- never persisted, regenerated for each execution through
 ``refresh`` -- and only the request it came from is durable truth. Routing,
-failover, retry, placement and file selection are DebridPulse's.
+failover, retry, placement and file selection are DownloadPulse's.
 """
 from __future__ import annotations
 
@@ -204,7 +204,7 @@ class DebridLinkProvider:
         try:
             observed = replace(await self.observe(created_resource), request=request)
         except TransferError as exc:
-            # The torrent exists and its id is known: it reaches DebridPulse's
+            # The torrent exists and its id is known: it reaches DownloadPulse's
             # durable provider-resource boundary unready rather than vanish
             # with this exception -- a failed first observation is no proof it
             # is gone, and only a bound resource is observed again and cleaned

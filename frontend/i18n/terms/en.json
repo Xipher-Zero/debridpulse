@@ -1,9 +1,9 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "en",
  "about": "The English concept register every locale's termbase (terms/<tag>.json) gives a term for, and the protected names and literals no translation changes. A concept's key is the catalog key whose translation is the term itself; its match (a regular expression on English text, flags 'iu' unless given) finds where English names the concept, and the translation must then use the term or one of its listed forms. Concepts without a match are checked by their key and their forbidden alternatives only (English uses their word in other senses too). See docs/LOCALIZATION.md §2 and §4.",
  "protected": [
-  {"text": "DebridPulse", "kind": "name", "reason": "Product name."},
+  {"text": "DownloadPulse", "kind": "name", "reason": "Product name."},
   {"text": "AllDebrid", "kind": "name", "reason": "Premium service name."},
   {"text": "Debrid-Link", "kind": "name", "reason": "Premium service name."},
   {"text": "Premiumize", "kind": "name", "reason": "Premium service name."},
@@ -15,7 +15,7 @@
   {"text": "yt-dlp", "kind": "name", "reason": "Download engine name."},
   {"text": "rsync", "kind": "name", "reason": "Protocol and program name."},
   {"text": "WebDAV", "kind": "name", "reason": "Protocol name."},
-  {"text": "Multimeta", "kind": "name", "reason": "Locked DebridPulse source name (not Multilink)."},
+  {"text": "Multimeta", "kind": "name", "reason": "Locked DownloadPulse source name (not Multilink)."},
   {"text": "OpenID Connect", "kind": "name", "reason": "Protocol name."},
   {"text": "OIDC", "kind": "name", "reason": "Protocol name."},
   {"text": "HTTP", "kind": "name", "reason": "Protocol name."},
@@ -68,7 +68,7 @@
   "help_license": {"en": "Help & License", "key": "shell.nav.help", "match": "Help & License", "flags": "u", "note": "Product guide and licensing page."},
   "field_manual": {"en": "Field Manual", "key": "help.header.title", "match": "\\bField Manual\\b", "flags": "u", "note": "The Help page's own name."},
   "activity_log": {"en": "Activity Log", "key": "shell.nav.activity_log", "match": "\\bActivity Log\\b", "flags": "u", "note": "Transfer events, decisions and alerts."},
-  "download_activity": {"en": "Download Activity", "key": "dashboard.activity.title", "match": "\\bDownload Activity\\b", "flags": "u", "note": "Locked DebridPulse term: the Dashboard's live list."},
+  "download_activity": {"en": "Download Activity", "key": "dashboard.activity.title", "match": "\\bDownload Activity\\b", "flags": "u", "note": "Locked DownloadPulse term: the Dashboard's live list."},
   "download_engine_activity": {"en": "Download Engine Activity", "key": "settings.engine_activity.title", "match": "\\bDownload Engine Activity\\b", "flags": "u", "note": "The Settings card listing engine work."},
   "dashboard": {"en": "Dashboard", "key": "shell.nav.dashboard", "note": "Page name."},
   "settings": {"en": "Settings", "key": "shell.nav.settings", "note": "Page name."},
@@ -78,6 +78,6 @@
   "source": {"en": "Source", "key": "group_candidates.source", "note": "Where a file comes from; distinct from Provider."},
   "retry": {"en": "Retry", "key": "transfer.action.retry", "note": "Try again after a failure; distinct from Resume and Recovery."},
   "resume": {"en": "Resume", "key": "transfer.action.resume", "note": "Continue after a pause; distinct from Retry and Recovery."},
-  "recovery": {"en": "Recovery", "key": "activity.category.recovery", "note": "DebridPulse's own handling after a fault; distinct from Retry and Resume."}
+  "recovery": {"en": "Recovery", "key": "activity.category.recovery", "note": "DownloadPulse's own handling after a fault; distinct from Retry and Resume."}
  }
 }

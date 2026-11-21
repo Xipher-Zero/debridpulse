@@ -3,7 +3,7 @@
 Two executors that share nothing -- a per-execution copier and an
 aggregate-throughput acquisition service -- are rendered by ONE schema, from
 ONE observation seam, and controlled through ONE set of generic actions that
-dispatch the existing canonical DebridPulse commands. Nothing native reaches
+dispatch the existing canonical DownloadPulse commands. Nothing native reaches
 the boundary and nothing the application does not own can be seen or touched.
 """
 import asyncio
@@ -103,7 +103,7 @@ async def test_two_unrelated_executors_are_rendered_by_one_neutral_schema(work):
     assert len({tuple(sorted(row)) for row in rows}) == 1
     for row in rows:
         assert row["executor_name"], "a row must say which executor holds it"
-        assert row["name"], "the display name is DebridPulse's own artifact name"
+        assert row["name"], "the display name is DownloadPulse's own artifact name"
 
 
 @pytest.mark.asyncio
@@ -124,7 +124,7 @@ async def test_only_work_the_application_owns_is_ever_shown(work):
     attempts = {attempt.handle.attempt_id for attempt in await work.repository.live_executions()}
     assert owned == attempts and owned
 
-    # A job the service holds that DebridPulse never created is not our work,
+    # A job the service holds that DownloadPulse never created is not our work,
     # so it is not reported -- and there is no way to ask for it.
     before = len(payload["items"])
     work.service.jobs["stranger"] = SimpleNamespace(native_id="stranger")
@@ -279,7 +279,7 @@ async def test_one_executor_failing_never_fabricates_absence_for_another(work):
     assert by_executor["ledger-copy"]["state"] == str(ExecutionState.UNKNOWN)
     # An unobservable execution declares no pause/resume of its own: those are
     # the executor's answer, and it did not give one. Cancellation remains
-    # available because that path is DebridPulse's, not the executor's -- and
+    # available because that path is DownloadPulse's, not the executor's -- and
     # it still refuses to release the attempt without observed stop truth.
     assert executor_work.PAUSE not in by_executor["ledger-copy"]["controls"]
     assert executor_work.RESUME not in by_executor["ledger-copy"]["controls"]

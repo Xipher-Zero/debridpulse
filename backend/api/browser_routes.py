@@ -37,7 +37,7 @@ from external.service import BROWSER_SOURCE_KINDS, ExternalClients
 
 router = APIRouter()
 
-BROWSER_PROTOCOL = "debridpulse.browser/1"
+BROWSER_PROTOCOL = "downloadpulse.browser/1"
 
 # Starting a pairing allocates in-memory state for ten minutes: ten starts
 # per peer and sixty-four installation-wide per ten minutes keep the store

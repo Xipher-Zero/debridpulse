@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test');
  * preference, and the two-line Metalink title. A refused value writes
  * nothing, so this file owns no settings key. */
 
-const PREF_KEY = 'debridpulse.downloads.date-presentation.v1';
+const PREF_KEY = 'downloadpulse.downloads.date-presentation.v1';
 
 async function openServices(page, {width = 1440, height = 1000, pref} = {}) {
   await page.setViewportSize({width, height});

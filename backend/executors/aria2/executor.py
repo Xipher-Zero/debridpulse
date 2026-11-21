@@ -223,14 +223,14 @@ class Aria2Executor:
     # intent keeps paused, so per-execution controls converge global pause.
     #
     # Continuation: a FRESH aria2 job continues a FILE exactly at a
-    # DebridPulse-authorized offset (the payload is cut to the plan boundary,
+    # DownloadPulse-authorized offset (the payload is cut to the plan boundary,
     # the ``.aria2`` control file is discarded and the job resumes there); it
     # cannot import arbitrary sparse ranges. aria2 exports completed pieces as
     # exact final-file ranges and pauses gracefully. A natively paused job
     # keeps its own in-memory piece map and ``aria2.unpause`` continues it
     # (native private resume) -- for the same source only: another source is
     # always a fresh job, prepared by ``start`` like any other. Private resume
-    # neither reads nor writes the control file, and is never DebridPulse
+    # neither reads nor writes the control file, and is never DownloadPulse
     # material truth.
     #
     # Sparse import (characterized 1.37.0, HTTP/FTP/SFTP): a FRESH job whose
@@ -339,8 +339,8 @@ class Aria2Executor:
         return aria2's per-job continuation options.
 
         The private control file never outlives a writer: whatever it claims
-        (possibly more than DebridPulse ever committed) is discarded, so aria2
-        cannot promote bytes DebridPulse did not authorize. A contiguous plan
+        (possibly more than DownloadPulse ever committed) is discarded, so aria2
+        cannot promote bytes DownloadPulse did not authorize. A contiguous plan
         cuts the payload to its boundary -- aria2 then continues exactly there
         -- and fails closed when the retained prefix is not physically present.
         A sparse-import plan keeps the payload and states exactly its retained
@@ -348,7 +348,7 @@ class Aria2Executor:
         plan retains nothing and aria2 starts from zero -- except a
         ``NATIVE_STATE_HANDOFF`` plan: its retained ranges belong to the
         inherited job's own state, so a fresh job fails closed on it rather
-        than overwrite material DebridPulse holds valid."""
+        than overwrite material DownloadPulse holds valid."""
         plan = request.continuation
         if plan is not None and plan.strategy == ContinuationStrategy.NATIVE_STATE_HANDOFF:
             raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)

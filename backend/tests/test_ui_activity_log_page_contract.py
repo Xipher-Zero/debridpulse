@@ -22,7 +22,7 @@ def test_activity_log_keeps_approved_content_with_direct_structural_owners() -> 
     assert "dp-activity-card" in view
     assert "document.svg" in view
     assert "For the Record" in view
-    assert "Everything DebridPulse thought was worth mentioning." in view
+    assert "Everything DownloadPulse thought was worth mentioning." in view
     assert "Refresh activity log" in view
     assert 'data-dp-lucide="refresh"' in view
     # app.js holds no Activity Log implementation; navigation calls the owner.
@@ -59,7 +59,7 @@ def test_auto_refresh_is_one_island_left_of_refresh_on_by_default_and_kept_for_t
     # restored on every entry, and is nothing the server keeps.
     # 1.0.14: entering the page follows the session's choice -- or, below 780px only, on while the
     # handheld header has Auto Refresh out of the row (never written to the choice).
-    assert "document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&wanted();" in runtime
+    assert "document.addEventListener('downloadpulse:navigation',event=>{live=event.detail?.view==='events'&&wanted();" in runtime
     assert "function wanted(){return chosen()||liveHidden;}" in runtime
     assert "if(!HANDHELD.matches){delete header.dataset.dpFit;delete heading.dataset.dpCopy;delete hint.dataset.dpCopy;setLiveHidden(false);return;}" in runtime
     assert "const HANDHELD=window.matchMedia('(max-width: 779px)');" in runtime
@@ -81,23 +81,23 @@ def test_auto_refresh_follows_the_one_stream_and_reads_rows_only_from_the_journa
     assert app.count("new EventSource(") == 1
     signal = app[app.index("'activity_journal_changed'"):]
     signal = signal[:signal.index("es.addEventListener(")]
-    assert "debridpulse:activity-journal-changed" in signal and "DPActivityLog" not in signal
+    assert "downloadpulse:activity-journal-changed" in signal and "DPActivityLog" not in signal
     assert "event-list" not in signal
     # The owner opens no stream and runs no timer loop of its own; a hint
     # becomes the ordinary newest-page request, coalesced.
     assert "EventSource" not in runtime and "setInterval" not in runtime
-    assert "document.addEventListener('debridpulse:activity-journal-changed',hint);" in runtime
+    assert "document.addEventListener('downloadpulse:activity-journal-changed',hint);" in runtime
     assert "const kept={cursor,request,nav};restart();void fetchPage({quiet:kept});" in runtime
     # A failed Auto Refresh restores the page's snapshot, cursors and pager and says nothing.
     assert "if(quiet){cursor=quiet.cursor;request=quiet.request;nav=quiet.nav;" in runtime
     # A row is only ever rendered from a GET /events answer.
     assert runtime.count("render(payload,c);") == 1     # the one call, in fetchPage
     assert "event?.detail?.latest" in runtime and "items" not in runtime[runtime.index("function hint("):
-                                                                           runtime.index("document.addEventListener('debridpulse:activity-journal-changed'")]
+                                                                           runtime.index("document.addEventListener('downloadpulse:activity-journal-changed'")]
     # An older page or a newest page read below its top is never replaced.
     assert "function following(){" in runtime and "nav.page===1" in runtime and "scrollTop<=TOP_SLACK" in runtime
     # A lost stream is said, not hidden; a reconnect is caught up from the journal.
-    assert "debridpulse:pulse-lost" in runtime and "debridpulse:pulse-connected" in runtime
+    assert "downloadpulse:pulse-lost" in runtime and "downloadpulse:pulse-connected" in runtime
     assert "dataset.dpPulse = 'lost'" in app and "dataset.dpPulse = 'connected'" in app
 
 

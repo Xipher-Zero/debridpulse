@@ -93,11 +93,11 @@ def test_safety_recovery_copy_uses_user_facing_titles_and_explanations():
         "Minimum Free Disk Space (GB)",
         "Stops new downloads from starting when free disk space falls below this amount. Set to 0 to disable the disk-space guard.",
         "Resume Free Space Buffer (GB)",
-        "Extra free space required above the minimum before DebridPulse starts downloads again. Helps prevent repeated stop/start behavior near the limit.",
+        "Extra free space required above the minimum before DownloadPulse starts downloads again. Helps prevent repeated stop/start behavior near the limit.",
         "Stalled Download Timeout (hours)",
-        "How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.",
+        "How long a download can remain stalled before DownloadPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.",
         "Download Error Retries",
-        "How many times DebridPulse retries a download after an error. Set to 0 to disable automatic retries.",
+        "How many times DownloadPulse retries a download after an error. Set to 0 to disable automatic retries.",
         "Retry Delay (seconds)",
         # Every fact of the policy it sets (transfers/policy.py TransferPolicy._delay:
         # retry_delay doubled per failure, at most max_retry_delay = 300 s), in

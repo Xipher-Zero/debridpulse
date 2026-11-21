@@ -1,7 +1,7 @@
-"""Real-Debrid upstream file selection: DebridPulse's authorized selection,
+"""Real-Debrid upstream file selection: DownloadPulse's authorized selection,
 expressed to Real-Debrid by its own file ids (#592 against #591).
 
-DebridPulse decides which members a transfer wants; Real-Debrid is told
+DownloadPulse decides which members a transfer wants; Real-Debrid is told
 exactly those, and only once they are decided (``contracts.UpstreamSelection``,
 ``TransferRepository.upstream_selection``). Real-Debrid's answer is judged by
 what its torrent then states and what its links prove: individual links carry
@@ -442,7 +442,7 @@ def with_native_ids(*identifiers):
 async def test_native_ids_that_do_not_name_each_file_once_are_refused_before_anything_is_sent(identifiers):
     """Real-Debrid's ids are judged across the torrent's WHOLE file list,
     never only the authorized members': an id two files share would select a
-    file DebridPulse never authorized, and a later comparison by id would
+    file DownloadPulse never authorized, and a later comparison by id would
     accept that overbroad selection. Refused for this torrent on this
     provider, from Real-Debrid's own answer, before any selection is sent --
     permanent: reading the same torrent again cannot change it."""

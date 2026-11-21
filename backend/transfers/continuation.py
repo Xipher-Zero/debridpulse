@@ -3,7 +3,7 @@
 Every execution replacement -- first admission, automatic failover, operator
 candidate switch, Resume, startup/provider/executor recovery and collection
 convergence -- reaches a new writer through ``TransferEngine._dispatch``, which
-asks this planner exactly one question: given the artifact's DebridPulse-owned
+asks this planner exactly one question: given the artifact's DownloadPulse-owned
 material and the executor core selected, what may the new writer keep, and
 where may it write? Executors only declare what they can honor
 (``ExecutorCapabilities.continuation``); retention, rollback and restart are
@@ -54,7 +54,7 @@ def parks_on_pause(capabilities: ExecutorCapabilities) -> bool:
 
     Parking keeps disposable acceleration (the executor's private progress,
     e.g. sparse pieces the DP-valid prefix does not cover); it never widens
-    DebridPulse material, which the forced checkpoint before parking already
+    DownloadPulse material, which the forced checkpoint before parking already
     committed. While the durable pause intent stands a parked job has NO
     progress authority (``authorize_execution`` refuses start/resume; a parked
     job observed acquiring again is re-quiesced by the one writer retirement),
@@ -69,7 +69,7 @@ def parks_on_pause(capabilities: ExecutorCapabilities) -> bool:
 def retirement_keeps_progress(capabilities: ExecutorCapabilities, strategy: str | None = None) -> bool:
     """Whether retiring a writer now -- the one writer retirement: quiesce,
     forced checkpoint, fence -- keeps what it acquired, decided from declared
-    capabilities only: its work becomes DebridPulse material at the forced
+    capabilities only: its work becomes DownloadPulse material at the forced
     checkpoint (``EXPORT_MATERIAL_RANGES``, never inside a DESTINATION_AWARE
     reconstruction, whose work is no material before it completes) and a fresh
     writer of the same executor continues from that material (contiguously,

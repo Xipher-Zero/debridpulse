@@ -44,7 +44,7 @@ async function closeSignedIn() {
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
-  const response = await window.debridPulseAuth.fetch(`/api${path}`, {
+  const response = await window.downloadPulseAuth.fetch(`/api${path}`, {
     method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
   return {status: response.status, body: await response.json().catch(() => null)};
 }, [method, path, body]);
@@ -159,7 +159,7 @@ test('My Account: one fixed dialog with a profile view and a password view, no s
       .toEqual(['DP Username', 'Display Name', 'Actual Name', 'Email']);
     await expect(dialog.locator('[data-account-username]')).toHaveText(user.username);
     await expect(dialog.locator('.dp-account-username')).toContainText(
-      'Your DebridPulse account username. Used for local password sign-in when configured. Separate from your display name.');
+      'Your DownloadPulse account username. Used for local password sign-in when configured. Separate from your display name.');
     await expect(dialog.locator('[data-account-view="profile"] input')).toHaveCount(3);
     await expect(dialog.locator('.dp-account-username :is(input, button)')).toHaveCount(0);
     await expect(dialog.locator('[data-field="email"]')).toHaveValue('');

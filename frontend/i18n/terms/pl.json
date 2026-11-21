@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "pl",
  "register": "Polish. Buttons and menu commands use the imperative standard in Polish software (Zapisz, Anuluj, Usuń, Ponów); headings and labels use nouns. Help prose is impersonal (można, należy, wystarczy) and never addresses the reader as 'ty' or 'Pan/Pani'. Correct case, gender and number agreement; Polish typography („…” quotes). Established IT loan words only where Polish usage is settled (token, webhook, serwer).",
  "terms": {

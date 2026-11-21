@@ -86,15 +86,15 @@ test('the License introduction reads as approved, with only the warranty centred
   await page.locator('#view-help .dp-help-tab[data-tab="license"]:not(.dp-motion-still *)').click();
   const paragraphs = page.locator('#dp-help-panel-license .dp-help-copy--lead > p');
   await expect(paragraphs).toHaveText([
-    'DebridPulse is Copyright © 2026 Chris Moore and is distributed under the GNU General Public License v2.0 or later (GPL-2.0-or-later).',
-    'The GPL permits you to use, study, modify, and redistribute DebridPulse under its terms. If you redistribute DebridPulse '
+    'DownloadPulse is Copyright © 2026 Chris Moore and is distributed under the GNU General Public License v2.0 or later (GPL-2.0-or-later).',
+    'The GPL permits you to use, study, modify, and redistribute DownloadPulse under its terms. If you redistribute DownloadPulse '
       + 'or a modified version, applicable licensing and source-code requirements must be followed. The complete license text governs the exact terms.',
-    'DebridPulse is provided without warranty, as specified in the license.',
+    'DownloadPulse is provided without warranty, as specified in the license.',
   ]);
   const alignment = await paragraphs.evaluateAll(nodes => nodes.map(node => getComputedStyle(node).textAlign));
   expect(alignment.slice(0, 2).every(value => value === 'start' || value === 'left')).toBe(true);
   expect(alignment[2]).toBe('center');
-  await expect(paragraphs.nth(2).locator('b')).toHaveText('DebridPulse is provided without warranty, as specified in the license.');
+  await expect(paragraphs.nth(2).locator('b')).toHaveText('DownloadPulse is provided without warranty, as specified in the license.');
   await expect(paragraphs.nth(0).locator('b')).toHaveText('GNU General Public License v2.0 or later');
   await expect(paragraphs.nth(0).locator('code')).toHaveText('GPL-2.0-or-later');
 });

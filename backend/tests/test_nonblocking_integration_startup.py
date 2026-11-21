@@ -1,7 +1,7 @@
 """DP 1.0.13: control-plane readiness never waits for provider/executor readiness.
 
 ``application.lifetime.start_application`` is the one startup sequence. It
-blocks only on DebridPulse-owned core prerequisites; integration startup is
+blocks only on DownloadPulse-owned core prerequisites; integration startup is
 begun -- and owned, observed and cancelled -- by the one integration lifecycle
 owner (``ApplicationService``), and the scheduler loops that need started
 integrations wait for it. Their first cycles are the startup recovery.
@@ -162,7 +162,7 @@ async def test_a_failed_integration_start_degrades_only_that_integration(caplog)
     broken, healthy = Integration(fails=True), Integration()
     application = Application(broken, healthy)
 
-    with caplog.at_level(logging.WARNING, logger="debridpulse.application"):
+    with caplog.at_level(logging.WARNING, logger="downloadpulse.application"):
         await lifetime.start_application(application)
         await _settled(healthy.maintained)
 

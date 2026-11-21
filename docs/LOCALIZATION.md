@@ -1,24 +1,22 @@
 # Localization
 
-DebridPulse 1.0.14 status: **WS0–WS7 complete: 18 complete, AI-reviewed target catalogs, all
-`supported` since their activation on the development branch (2026-11-11). The language choice (My
-Account, and the installation default under Users & Access → Deployment & Language, §5) offers English
-and the 18 targets.** The operating guide, the per-language readiness matrix and the
-release-decision ledger (what is verified, corrected, accepted, unresolved and activation-dependent) are in
-[`LOCALIZATION_RELEASE.md`](LOCALIZATION_RELEASE.md). The runtime, the catalogs, the validators,
-the pseudo locales, the per-account language and the coded-error seam exist.
+Status: **18 complete, AI-reviewed target catalogs, all `supported` (activated together on 2026-11-11).
+The language choice (My Account, and the installation default under Users & Access → Deployment &
+Language, §5) offers English and the 18 targets.** The operating guide, the per-language readiness
+matrix and the release-decision ledger (what is verified, corrected, accepted, unresolved and
+activation-dependent) are in [`LOCALIZATION_RELEASE.md`](LOCALIZATION_RELEASE.md). The runtime, the
+catalogs, the validators, the pseudo locales, the per-account language and the coded-error seam exist.
 These surfaces read the catalog:
 
-- WS2's proof surfaces: My Account and its Help, the sign-in pages, and the
-  account error codes;
-- WS3a, the application shell and shared UI: the sidebar (navigation, Provider
+- My Account and its Help, the sign-in pages, and the account error codes;
+- the application shell and shared UI: the sidebar (navigation, Provider
   Status, the status rows) and the topbar (processing controls, speed badge
   and cap menu, theme controls); Dashboard; Activity Log; Statistics; and the
   shared owners every page draws with: status badges and failure categories,
   progress and ETA, sizes, speeds and durations, toasts, the pager, search
   notices, storage warnings, premium accounts, source icons, tooltips' tab
   index, and the accessible names the accessibility runtime sets;
-- WS3b, the download operations: Downloads (headings, filters, search, the
+- the download operations: Downloads (headings, filters, search, the
   date menu, summaries, row and bulk actions, queue order, removal and
   restart dialogs); Details (facts, route history, original resource, error
   disclosure, withdrawal, trace, the per-file candidate disclosure); file
@@ -26,14 +24,14 @@ These surfaces read the catalog:
   (`ui-group-candidates.js`, its discard confirmation included); the
   authentication-required dialog; the server folder picker; transfer uploads;
   and the submission prompts (local network, acquisition scope);
-- WS3c, Settings services and engines: the Settings shell (tabs, navigator,
+- Settings services and engines: the Settings shell (tabs, navigator,
   header identity and its shorter forms, disclosures, help chips' names);
   Services (premium provider cards and their keys, account connections and
   tuning; Usenet and its news-server cards; Network Sources); Downloads
   (behavior and limits, the transfer-method tuning cards, disk space and
   recovery, Download Engine Activity); Extraction and the archive-password
   editor; and their dialogs, busy labels, refusals and results;
-- WS3d, Settings administration and integrations: Authentication (Status
+- Settings administration and integrations: Authentication (Status
   figures and their shorter forms, Username & Password, sessions, OpenID
   Connect and its verification window); Users & Access (Deployment Type and its
   switch confirmations, User Accounts, roles and sign-in methods, Edit User,
@@ -45,99 +43,67 @@ These surfaces read the catalog:
   words (`ui-settings-persistence.js`); and the shared Settings dialog's
   default slot words, typed-phrase label and progress lines.
 
-- WS3e, the server's refusals: every message the server returns for display
+- the server's refusals: every message the server returns for display
   is named by a stable code (or is exempt, with the reason its words never
   become interface text); the interface says a coded refusal in the reader's
   language and keeps the English `detail` for anything else (§1, Errors).
 
-- WS4a, the Field Manual (the Help page, `ui-help-page.js`): every section,
+- the Field Manual (the Help page, `ui-help-page.js`): every section,
   passage, step, accordion, inset, heading and accessible name, for every
   reader -- each role, deployment type and Easy or Advanced -- the License
   viewer's own words (`ui-help-license-documents.js`; the bundled documents
   stay as bundled), and the shared section navigator's tooltip
   (`ui-section-nav.js`).
 
-- WS4b, Settings Help (`ui-settings-help.js`): every topic a Settings card,
+- Settings Help (`ui-settings-help.js`): every topic a Settings card,
   the Role selectors or My Account opens -- titles, headings, paragraphs and
   list items, for every reader -- and the role comparison table, its caption,
   headings and answers.
 
 The census finds no first-party interface literal outside the catalog or the
 reviewed exemptions. The language choice (§5) lists English and the `supported`
-targets only -- since the activation, all 18.
+targets only: all 18.
 
-WS5-0 adds the translation tooling a language candidate is qualified with (§4,
-WS5 translation checks): the concept register and protected names, termbases and
-review ledgers, the Help label map, the review sheet and the locale probe. Every
-target stays `planned`.
+Languages are qualified with the translation tooling in §4 (Translation checks): the concept register
+and protected names, termbases and review ledgers, the Help label map, the review sheet and the locale
+probe.
 
-WS5-A1 adds the German catalog (`frontend/static/i18n/de.json`, every key), its
-termbase (`frontend/i18n/terms/de.json`) and review ledger
-(`frontend/i18n/review/de.json`). It is AI-generated and independently AI-reviewed,
-and every critical warning was back-translated and compared with the English
-(the ledger records each step). No human or native review has taken place.
-German passes `validate.mjs --complete=de` and stays `planned`: its catalog is
-served as a development asset, but no account can choose it until a separate
-activation after WS6.
+**Provenance.** Every target catalog (`frontend/static/i18n/<tag>.json`, every key) has its own termbase
+(`frontend/i18n/terms/<tag>.json`) and review ledger (`frontend/i18n/review/<tag>.json`). Each is
+AI-generated and independently AI-reviewed, and every critical warning was back-translated and compared
+with the English (the ledger records each step). No human or native review has taken place. Each passes
+`validate.mjs --complete=<tag>` on its own.
 
-WS5-A2 adds French, Spanish and Italian the same way, each with its own catalog
-(`frontend/static/i18n/{fr,es,it}.json`), termbase and review ledger: AI-generated,
-independently AI-reviewed, every critical warning back-translated and compared, no
-human or native review. Each passes `validate.mjs --complete=<tag>` on its own and
-stays `planned`.
+**Per-language notes.**
 
-WS5-A3 adds Brazilian Portuguese, European Portuguese and Dutch the same way
-(`frontend/static/i18n/{pt-BR,pt-PT,nl}.json`, each with its own termbase and review
-ledger). The two Portuguese catalogs are separate regional translations from the
-English, not copies of each other: each has its own termbase (for example Configurações /
-Definições, Salvar / Guardar, Excluir / Eliminar, the Brazilian gerund versus *a* +
-infinitive in Portugal). Each passes `validate.mjs --complete=<tag>` on its own and stays
-`planned`.
+- **German, French, Spanish, Italian** (`de`, `fr`, `es`, `it`): nothing beyond the provenance above.
+- **Brazilian Portuguese, European Portuguese, Dutch** (`pt-BR`, `pt-PT`, `nl`). The two Portuguese
+  catalogs are separate regional translations from the English, not copies of each other: each has its
+  own termbase (for example Configurações / Definições, Salvar / Guardar, Excluir / Eliminar, the
+  Brazilian gerund versus *a* + infinitive in Portugal).
+- **Polish, Russian, Ukrainian** (`pl`, `ru`, `uk`): plurals use the CLDR *few* and *many* categories.
+  Russian and Ukrainian are independent translations from the English, neither a variant of the other:
+  each has its own termbase (for example Настройки / Налаштування, Загрузка / Завантаження, Учётная
+  запись / Обліковий запис), and an AI review of the pair confirmed it.
+- **Turkish, Indonesian, Hindi** (`tr`, `id`, `hi`). Turkish keeps dotted İ/i and dotless I/ı distinct
+  and never attaches a suffix to a placeholder; Indonesian is standard Indonesian (not Malay) with plurals
+  in the single `other` category; Hindi is NFC Devanagari, where the `one` category covers both 0 and 1.
+- **Japanese, Korean** (`ja`, `ko`). Both use the single CLDR `other` plural category, with counters
+  (件 / 개) after numbers; Japanese prose uses the polite です・ます form with full-width punctuation,
+  Korean prose the formal polite style with standard spacing and dual particles after placeholders.
+- **Simplified and Traditional Chinese** (`zh-Hans`, `zh-Hant`). The two are translated and reviewed
+  independently from English, never converted from one script to the other: zh-Hans follows mainland
+  software usage (服务器, 用户, 文件夹, “ ” quotes), zh-Hant follows Taiwan software usage (伺服器, 使用者,
+  資料夾, 「」 quotes). Both use the single CLDR `other` plural category with measure words after numbers.
+- **Arabic** (`ar`): Modern Standard Arabic with all six CLDR plural categories (`zero`, `one`, `two`,
+  `few`, `many`, `other`) wherever English varies by count, Arabic punctuation (، ؛ ؟) and « » quotes,
+  Western digits, and Latin-script technical literals kept intact. The catalog carries no Unicode bidi
+  control characters; page direction comes from the manifest (`dir: rtl`).
 
-WS5-B1 adds Polish, Russian and Ukrainian the same way
-(`frontend/static/i18n/{pl,ru,uk}.json`, each with its own termbase and review ledger),
-the first catalogs whose plurals use the CLDR *few* and *many* categories. Russian and
-Ukrainian are independent translations from the English, neither a variant of the other:
-each has its own termbase (for example Настройки / Налаштування, Загрузка / Завантаження,
-Учётная запись / Обліковий запис), and an AI review of the pair confirmed it. Each passes
-`validate.mjs --complete=<tag>` on its own and stays `planned`.
-
-WS5-B2 adds Turkish, Indonesian and Hindi the same way
-(`frontend/static/i18n/{tr,id,hi}.json`, each with its own termbase and review ledger).
-Turkish keeps dotted İ/i and dotless I/ı distinct and never attaches a suffix to a
-placeholder; Indonesian is standard Indonesian (not Malay) with plurals in the single
-`other` category; Hindi is NFC Devanagari, where the `one` category covers both 0 and 1.
-Each passes `validate.mjs --complete=<tag>` on its own and stays `planned`.
-
-WS5-C1 adds Japanese and Korean the same way (`frontend/static/i18n/{ja,ko}.json`, each
-with its own termbase and review ledger). Both use the single CLDR `other` plural
-category, with counters (件 / 개) after numbers; Japanese prose uses the polite です・ます
-form with full-width punctuation, Korean prose the formal polite style with standard
-spacing and dual particles after placeholders. Each passes `validate.mjs --complete=<tag>`
-on its own and stays `planned`.
-
-WS5-C2 adds Simplified and Traditional Chinese (`frontend/static/i18n/{zh-Hans,zh-Hant}.json`,
-each with its own termbase and review ledger). The two are translated and reviewed
-independently from English, never converted from one script to the other: zh-Hans follows
-mainland software usage (服务器, 用户, 文件夹, “ ” quotes), zh-Hant follows Taiwan software
-usage (伺服器, 使用者, 資料夾, 「」 quotes). Both use the single CLDR `other` plural category
-with measure words after numbers. Each passes `validate.mjs --complete=<tag>` on its own and
-stays `planned`.
-
-WS5-D adds Arabic (`frontend/static/i18n/ar.json`, with its own termbase and review ledger):
-Modern Standard Arabic with all six CLDR plural categories (`zero`, `one`, `two`, `few`,
-`many`, `other`) wherever English varies by count, Arabic punctuation (، ؛ ؟) and « » quotes,
-Western digits, and Latin-script technical literals kept intact. The catalog carries no
-Unicode bidi control characters; page direction comes from the manifest (`dir: rtl`), and RTL
-layout and bidi isolation are WS6 qualification work. It passes `validate.mjs --complete=ar`
-and stays `planned`.
-
-Progress: all 18 production targets have complete, reviewed catalogs (de, fr, es, it, pt-BR,
-pt-PT, nl, pl, ru, uk, tr, id, hi, ja, ko, zh-Hans, zh-Hant, ar); all 18 were activated together
-(`supported`) on 2026-11-11, after the language choice landed. WS6 qualified right-to-left layout, CJK typography, dialogs, focus and first paint (WS6-A–C).
-WS7-A shortened six languages' page names, in text only, so that every page title and dock label fits the
-unchanged interface at 320 px. WS7-B reconciled the Help with those names and qualified CI, release-cut
-debt, delivery and fallback (`LOCALIZATION_RELEASE.md`).
+Right-to-left layout, CJK typography, dialogs, focus and first paint are qualified (`LOCALIZATION_RELEASE.md`
+§6). Six languages' page names are shortened, in text only, so that every page title and dock label fits
+the unchanged interface at 320 px, and the Help names those pages by the same words. CI, release-check
+debt, delivery and fallback are covered in `LOCALIZATION_RELEASE.md`.
 
 ## 1. Pieces and owners
 
@@ -154,7 +120,7 @@ debt, delivery and fallback (`LOCALIZATION_RELEASE.md`).
 | Server reads, pseudo, pre-sign-in text, coded errors | `backend/core/localization.py` |
 | Each account's language | `account_appearance.locale` (`services.account_appearance.load_locale` / `set_locale`), `GET/PUT /api/account/locale` |
 | The installation's default language (for accounts without their own) | `AppSettings.default_locale` in `config.json` (`services.account_appearance.default_locale` / `set_default_locale`), `GET/PUT /api/settings/default-locale` (Admin) |
-| First-paint projection | the `window.debridPulseLocale=…` line of `/ui-theme-bootstrap.js` |
+| First-paint projection | the `window.downloadPulseLocale=…` line of `/ui-theme-bootstrap.js` |
 | Validator | `.github/localization/validate.mjs` (sample rendering shared with the review sheet: `messages.mjs`) |
 | Concept register and protected names/literals (English) | `frontend/i18n/terms/en.json` (not served) |
 | A locale's termbase | `frontend/i18n/terms/<tag>.json` (not served) |
@@ -207,7 +173,7 @@ is recorded in `DPI18n.diagnostics()`.
 
 - English (`canonical`), always;
 - a target the manifest marks `supported` that has a readable catalog;
-- the pseudo locales, only with `DEBRIDPULSE_I18N_TEST_LOCALES=1`.
+- the pseudo locales, only with `DOWNLOADPULSE_I18N_TEST_LOCALES=1`.
 
 A `planned` target is never admitted, and the test setting does not admit one.
 Choosing a locale that is not admitted returns 422 and changes nothing. A
@@ -227,7 +193,7 @@ locale.
 
 Both are generated from English: in the browser by an AST transform, and on the
 server by `core.localization.pseudo`. The API accepts them only on a runtime
-started with `DEBRIDPULSE_I18N_TEST_LOCALES=1`, which admits nothing else.
+started with `DOWNLOADPULSE_I18N_TEST_LOCALES=1`, which admits nothing else.
 
 **Before sign-in** the language is English. No account exists yet, and neither
 `Accept-Language` nor the browser's language is read. Sign-in page messages
@@ -235,7 +201,7 @@ started with `DEBRIDPULSE_I18N_TEST_LOCALES=1`, which admits nothing else.
 `pre_sign_in_locale(explicit)` is the hook a future explicit pre-sign-in choice
 would use.
 
-**Errors (WS3e).** The contract API clients keep is unchanged:
+**Errors.** The contract API clients keep is unchanged:
 
 - the HTTP status;
 - the English `detail`;
@@ -304,7 +270,7 @@ Everything below is additive.
 - **Proof.** `backend/tests/test_error_codes.py` and
   `frontend/browser/localization-error-codes.spec.js`.
 
-**Limits (WS3e), recorded for direction:**
+**Limits, recorded for direction:**
 
 - **Persisted English.** An archive-extraction refusal is stored as the
   transfer's `extraction_error` text (shown in Details, the extraction toast
@@ -345,7 +311,7 @@ such identifier, so API clients and a newer server are unaffected:
 
 Provider, integration, palette and plan names are proper names and stay as the
 server sends them. Activity Log event messages are the server's journal text
-and stay English until WS3e gives them codes. So do a server refusal's own
+and stay English (Limits, above). So do a server refusal's own
 words where the interface shows them (a switch failure's `message`, a
 submission claimant's scope label, a route failure's detail).
 
@@ -358,12 +324,12 @@ submission claimant's scope label, a route failure's detail).
 - **Markup an owner rewrites** (a status row, a count line, the page heading)
   keeps its key for the first paint. The owner removes `data-i18n` when it
   writes its own words, so a later `render()` never resets live state.
-- **Every owner re-says its words on `debridpulse:locale-changed`** from the
+- **Every owner re-says its words on `downloadpulse:locale-changed`** from the
   state it already holds: no request, no navigation. It keeps focus, open
   panels and dialogs, drafts, scroll, and open `<details>`. A list re-labels
   its rows in place where rebuilding them would lose the reader's place.
 - **A repaint for the words alone is no news.** Details repaints with
-  `relabel: true` on `debridpulse:detail-rendered`; the Files-header owners
+  `relabel: true` on `downloadpulse:detail-rendered`; the Files-header owners
   (provider, file selection, source switching) then draw again from their
   last answer and an open picker stays open. Owners that re-read Details when
   a list renders ignore a list repaint caused by the language change (a
@@ -417,7 +383,7 @@ submission claimant's scope label, a route failure's detail).
 Translate each concept consistently, using one target term per concept. A
 `[key]` is the catalog key where the term already appears.
 
-| Concept | Meaning in DebridPulse | Use / don't use |
+| Concept | Meaning in DownloadPulse | Use / don't use |
 |---|---|---|
 | Transfer | One requested item, from submission through download to completion. | Not "job" or "task" in UI text. |
 | Download | The local file materialization of a transfer; also the page that lists transfers [`shell.nav.downloads`]. | |
@@ -444,7 +410,7 @@ Translate each concept consistently, using one target term per concept. A
 - The `detail` text of an error, an English API contract kept for API clients. The interface localizes by `code` instead.
 - Verbatim third-party legal documents, whose license terms must not be altered.
 
-## 3. Census (WS0) — snapshot at WS4b
+## 3. Census
 
 Run `python .github/localization/inventory.py --summary` to get the counts, or
 add `--json OUT` for the full register. Each entry carries an ID, the English
@@ -461,43 +427,38 @@ It is a checked key census:
   lists, the localization runtime's own diagnostic kinds, and developer
   errors that are never shown.
 
-**Correction made in WS3e.** The WS0 server census counted only
-keyword `detail=` and `raise X("…")`. It missed positional
+The server census counts keyword `detail=`, `raise X("…")`, positional
 `HTTPException(400, "…")` details and the words of structured refusals under
-`api/` and `main.py`, which it now counts (each with its exception type and
-whether its raise names a code). Corrected, the server baseline is **768**
-entries, not 669.
+`api/` and `main.py` (each with its exception type and whether its raise names
+a code). The frontend census reads plain sentences containing a full stop as
+text, not CSS selectors, and counts the compact-wording attributes
+(`data-short`, `data-shortest`, `data-placeholder-concise`,
+`data-placeholder-minimum`).
 
-**Correction made in WS3a.** The WS0 census read any plain sentence containing
-a full stop as a CSS selector and dropped it. It also missed the compact-wording
-attributes (`data-short`, `data-shortest`, `data-placeholder-concise`,
-`data-placeholder-minimum`). Corrected, the WS0 baseline is **3,719** frontend
-entries (3,038 unique English), not the 3,350 the WS0 packet reported.
+The counts as `inventory.py --summary` and `validate.mjs` report them (2026-11-20):
 
-| Measure | At WS3a | At WS3b | At WS3c | At WS3d | At WS4a | At WS4b |
-|---|---|---|---|---|---|---|
-| Frontend literal entries still outside the catalog | 3,118 (2,581 unique English) | 2,471 (2,093 unique English) | 1,715 (1,478 unique English) | 973 (889 unique English) | 405 (361 unique English) | 0 |
-| … rich text / with placeholders | 444 / 234 | 408 / 176 | 371 / 89 | 341 / 25 | 0 / 0 | 0 / 0 |
-| … critical-warning (destructive, security, data loss) | 231 | 211 | 176 | 98 | 34 | 0 |
-| … long-form Help | 962 | 962 | 962 | 962 | 405 | 0 |
-| Exempt, with reasons (`nonlocalizable.json`) | 29 | 49 | 322 | 349 | 353 | 353 |
-| Server display messages (`detail`) | 669 | 669 | 669 | 669; at WS3e corrected to 768: 278 coded, 490 exempt, 0 outstanding | 768: 278 coded, 490 exempt, 0 outstanding | unchanged |
-| Catalog keys (English) | 690 | 1,214 | 1,599 | 2,197; at WS3e 2,592 (+308 refusal codes, +82 transfer categories, +2 OIDC window) | 3,129 (+537) | 3,467 (+338) |
+| Measure | Count |
+|---|---|
+| Frontend literal entries still outside the catalog | 0 (rich text 0, with placeholders 0, critical-warning 0, long-form Help 0) |
+| Exempt, with reasons (`nonlocalizable.json`) | 361 |
+| Server display messages (`detail`) | 830: 319 coded, 511 exempt, 0 outstanding |
+| Catalog keys (English) | 3,669 (258 critical-warning) |
 
-**WS4 in all.** The 973 Help entries at WS3d (98 critical-warning) are WS4a's
-568 (64 critical) and WS4b's 405 (34 critical): 972 keyed and 1 exempt (an
-internal section id), each listed with its key in the two candidates'
-census reconciliations.
+No owner holds an entry outside the catalog or the exemption register,
+`index.html` holds none, and `ui-settings-page.js` is whole
+(`test_localization_catalogs.py`). The exemptions are mostly the subtitle
+language names (above) and provider and protocol names; the rest include
+request field names, stored default values (the OIDC provider name, the
+Discord sender name), example placeholders, OIDC scope identifiers, *arr and
+download-client names, a legacy mode summary nothing displays, internal
+markers and section ids (`quickstart`), the argument values
+`Authorization: Bearer <token>` and the copyright notice.
 
-**WS4a notes.** The Field Manual's 568 entries (557 in `ui-help-page.js`, 11
-in the License viewer) are 567 keyed and 1 exempt (the internal section id
-`quickstart`); the census also finds 3 new literals, the argument values
-`Authorization: Bearer <token>` (twice) and the copyright notice, exempt with
-their reasons (3 register entries, 4 occurrences in all). 537 new keys: 513 passages and
-titles (`help.<section>.<topic>.<part>`), the section labels (`help.tab.*`),
-the header's identity levels (`help.header.*`) and its accessible name, the
-License viewer's words (`help.legal.*`) and the navigator's tooltip
-(`nav.section.current`). Rules:
+**The Field Manual** (`ui-help-page.js` and the License viewer). Its keys are
+passages and titles (`help.<section>.<topic>.<part>`), the section labels
+(`help.tab.*`), the header's identity levels (`help.header.*`) and its
+accessible name, the License viewer's words (`help.legal.*`) and the
+navigator's tooltip (`nav.section.current`). Rules:
 
 - The reader's context decides which passages exist; each wording of a
   passage that differs by reader is its own message, named for the condition
@@ -516,13 +477,13 @@ License viewer's words (`help.legal.*`) and the navigator's tooltip
 - The License viewer's own words are keyed; the document's text and its own
   title are the bundled English, shown exactly.
 
-**WS4b notes.** Settings Help's 405 entries (34 critical-warning) are all
-keyed: 375 in 336 new keys (`help.topic.<topic>.<section>.<part>`; headings
-used by several topics are `help.topic.heading.*`, and words several topics
-share are `help.topic.shared.*`), 30 by Settings' own keys with the same words
+**Settings Help** (`ui-settings-help.js`). Its keys are
+`help.topic.<topic>.<section>.<part>` (headings used by several topics are
+`help.topic.heading.*`, and words several topics share are
+`help.topic.shared.*`); some parts use Settings' own keys with the same words
 and meaning -- each topic's title is its card's title (`settings.*.title`,
 `settings.tuning.title` with the card's own method label), and the role
-names are `settings.role.*` -- and the role table's own words
+names are `settings.role.*` -- and the role table has its own words
 (`help.roles.*`, with its two answers `help.roles.yes` / `help.roles.no`).
 Rules:
 
@@ -546,53 +507,42 @@ Rules:
   token sentences (beyond `error.account.tokens_integration_only`). The
   contract tests still check that Help names what Settings and the server say.
 
-No WS3a–WS3d or WS4 owner holds an entry outside the catalog or the exemption
-register, `index.html` holds none, and `ui-settings-page.js` is whole
-(`test_localization_catalogs.py`). The 272 WS3c exemptions are mostly the 223
-subtitle language names (above) and provider and protocol names. WS3d's 742
-entries (683 in `ui-settings-page.js`, 44 in the Backups manager, 11 in
-persistence, 4 in the OIDC verification window) are 709 keyed and 33 exempt
-(21 new register entries; 27 occurrences remain in the source today):
-request field names, stored default values (the OIDC provider name, the
-Discord sender name), example placeholders, OIDC scope identifiers, *arr and
-download-client names, a legacy mode summary nothing displays, and two
-internal markers.
+**The OIDC verification window and the Backups manager.** The OIDC
+verification window loads no catalog: it is said in the opener's language
+through the opener's runtime, and it names the key its outcome is said from.
+The OIDC test popup is another document written once, in the shown language.
+Backups manager dates follow the shown language (`DPI18n.intlLocale()`); an
+open manager redraws its inventory on a language change, keeping its
+selection and focus.
 
-**WS3d notes.** The OIDC verification window loads no catalog: it is said in
-the opener's language through the opener's runtime, and it names the key its
-outcome is said from. The OIDC test popup is another document written once, in
-the shown language. Backups manager dates follow the shown language
-(`DPI18n.intlLocale()`); an open manager redraws its inventory on a language
-change, keeping its selection and focus.
+**Help dependencies.** Help repeats some Settings and server words, and its
+contract tests tie them together. Help says them from the same keys:
 
-**Help dependencies (WS4).** Settings Help repeats some of these words, and
-its contract tests tie them together: the live-tuning sentence
-(`ui-settings-help.js`, "Changes also apply to existing downloads…"), the
-Media Downloads control labels it names, and the Settings locations it
-points at. WS4 must say them from the same keys (or keep the tests' check
-that Help names what Settings shows). WS3d adds (checked against
-`ui-settings-help.js`): Help names the role names (`settings.role.*`, e.g.
-"ReadOnly User") and these cards' titles and control labels -- Deployment
-Type, Integration Delivery Profiles, Merge, Backups & Retention, Backup Folder,
-Run Backup, Allow Database Reset, Activity Log Page Size, Primary Webhook, OIDC
-Callback URL, Default Role for New OIDC Users (`settings.deployment.*`, `settings.backups.*`,
-`settings.reset.*`, `settings.events.*`, `settings.webhook.*`,
-`settings.oidc.*`). WS4 says them from the same keys. WS3e adds (checked against the Help sources): Help repeats two
-refusals' words -- "Only Integration accounts hold API tokens"
-(`error.account.tokens_integration_only`) and "… is not a supported link"
-(`error.submit.link_unsupported`) -- which WS4 says from the same keys.
+- the live-tuning sentence (`ui-settings-help.js`, "Changes also apply to
+  existing downloads…"), the Media Downloads control labels it names, and the
+  Settings locations it points at;
+- the role names (`settings.role.*`, e.g. "ReadOnly User") and these cards'
+  titles and control labels -- Deployment Type, Integration Delivery Profiles,
+  Merge, Backups & Retention, Backup Folder, Run Backup, Allow Database Reset,
+  Activity Log Page Size, Primary Webhook, OIDC Callback URL, Default Role for
+  New OIDC Users (`settings.deployment.*`, `settings.backups.*`,
+  `settings.reset.*`, `settings.events.*`, `settings.webhook.*`,
+  `settings.oidc.*`);
+- two refusals' words -- "Only Integration accounts hold API tokens"
+  (`error.account.tokens_integration_only`) and "… is not a supported link"
+  (`error.submit.link_unsupported`).
 
-*As done in WS4:* topic titles and the role names are said from these same
-keys. A label or a message named inside a Help sentence stays part of that
-sentence (a passage is translated whole); the contract tests keep checking
-that Help names what Settings and the server say, and WS5 checks the
-translations' terms against the interface's.
+Topic titles and the role names are said from these same keys. A label or a
+message named inside a Help sentence stays part of that sentence (a passage
+is translated whole); the contract tests keep checking that Help names what
+Settings and the server say, and the validator checks the translations' terms
+against the interface's (§4).
 
 **Expansion-risk map.** Under `en-XA` these surfaces need the most care:
 
 - the handheld dock's five 64 px slots, which currently ellipsize;
 - every Settings master header, which must stay one row from 320 px;
-- the My Account header at 320 px. Its title already wraps to two lines under `en-XA` at 390 px (a WS6 geometry finding);
+- the My Account header at 320 px. Its title already wraps to two lines under `en-XA` at 390 px;
 - table headers and status chips;
 - the sidebar's collapsed rail tooltips.
 
@@ -638,7 +588,7 @@ each listed apart.
 A word that is intentionally the same as English still needs a recorded `sources`
 hash. Once recorded, it is no longer debt.
 
-### WS5 translation checks
+### Translation checks
 
 For each target translation the validator also renders the message at sample
 values (counts 0 1 2 3 5 11 21 101 1.5, every select case) and hard-fails:
@@ -681,9 +631,9 @@ warning need review, and the ledger's provenance (`ai-generated`, `ai-review`,
 `ai-back-translation`, or `human-*` with reviewer and evidence) says which review
 happened.
 
-**A termbase** is `{"schema": "debridpulse-terms/1", "locale", "register", "terms":
+**A termbase** is `{"schema": "downloadpulse-terms/1", "locale", "register", "terms":
 {concept: {"target", "forms"?, "forbidden"?}}}`. **A ledger** is `{"schema":
-"debridpulse-review/1", "locale", "entries": {key: {"source", "translation",
+"downloadpulse-review/1", "locale", "entries": {key: {"source", "translation",
 "provenance", "backTranslation"?, "human"?: {"reviewer", "evidence"}, "findings"?:
 [{"kind", "note", "status", "resolution"?}], "identical"?, "terms"?, "labels"?}}}`,
 where `source` and `translation` are the sha256[:16] of the English and the translation reviewed.
@@ -698,7 +648,7 @@ shows the locale on an instance's own reader and fails on catalog or semantic
 defects: English left where the locale translates it, keys shown, debt, runtime
 notes, critical text in English, Help control labels, or a change in what exists
 (navigation, Settings tabs, Help passages, every topic's parts and the role answers
-for twelve reader contexts). It records geometry at 320 px for WS6 without failing,
+for twelve reader contexts). It records geometry at 320 px without failing,
 and marks an unloadable catalog `INFRASTRUCTURE`. With `DP_PROBE_OUT` it writes its
 findings as JSON. It sees only what that reader is shown.
 
@@ -768,7 +718,7 @@ Both use the contract below.
      an inheriting account gets it on its next read or cold load. An Admin who
      inherits it applies the new `locale` after a successful PUT.
 4. **Apply.** Call `DPI18n.setLocale(tag, {catalog: '/i18n/<tag>.js?v=<version>',
-   dir})`. Owners re-render on `debridpulse:locale-changed`. There is no reload,
+   dir})`. Owners re-render on `downloadpulse:locale-changed`. There is no reload,
    and every unsaved field is kept.
 5. **Failure.**
    - If the PUT fails, say so (`error.<code>`, else `detail`) and keep showing

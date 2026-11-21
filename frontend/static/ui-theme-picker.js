@@ -1,4 +1,4 @@
-/* DebridPulse theme picker: the chevron beside the mode toggle and its menu
+/* DownloadPulse theme picker: the chevron beside the mode toggle and its menu
  * of the active mode's palettes. ui-theme-bootstrap.js (window.DPTheme) owns
  * the catalog, the choices and their application; this file only presents
  * them. The menu is a popover in the top layer, so opening it never moves the
@@ -75,8 +75,8 @@
   function rows() { return Array.from(list.querySelectorAll('.dp-theme-picker-option')); }
 
   // ── the Login Theme (an Admin's menu only) ───────────────────────────────
-  const authority = window.debridPulseAuthority || {};
-  const auth = window.debridPulseAuth;
+  const authority = window.downloadPulseAuthority || {};
+  const auth = window.downloadPulseAuth;
   // Not on a Standalone installation: there the sign-in page follows the one
   // person's own theme as it is saved (DPTheme.loginFollows), nothing to publish.
   const login = auth && authority.authenticated && Array.isArray(authority.capabilities)
@@ -90,9 +90,9 @@
   let note = '';                 // a catalog key ('' for none)
   const t = (key, values) => window.DPI18n.t(key, values);
   // A palette's name: the third-party schemes' own names as the server lists
-  // them; DebridPulse's native palette in the page's language.
+  // them; DownloadPulse's native palette in the page's language.
   function paletteName(mode, item) {
-    return item.id === (mode === 'light' ? 'debridpulse-light' : 'debridpulse-dark') ? t('theme.palette.native') : item.label;
+    return item.id === (mode === 'light' ? 'downloadpulse-light' : 'downloadpulse-dark') ? t('theme.palette.native') : item.label;
   }
 
   function loginSection() {
@@ -210,10 +210,10 @@
     note = '';
     readPublished();
   });
-  document.addEventListener('debridpulse:theme-changed', paintLogin);
+  document.addEventListener('downloadpulse:theme-changed', paintLogin);
   // A language change: the list and the login section are said again.
   // Rows are renamed in place, so an open menu keeps its focused row.
-  document.addEventListener('debridpulse:locale-changed', function () {
+  document.addEventListener('downloadpulse:locale-changed', function () {
     const mode = theme.mode();
     document.getElementById('theme-picker-title').textContent = t(mode === 'light' ? 'theme.picker.title_light' : 'theme.picker.title_dark');
     document.getElementById('theme-picker-note').textContent = t(mode === 'light' ? 'theme.picker.note_light' : 'theme.picker.note_dark');

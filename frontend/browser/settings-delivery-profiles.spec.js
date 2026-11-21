@@ -149,7 +149,7 @@ test('Create: defaults, suggested and custom categories, an API token created in
   const disclosure = form.locator('.dp-token-disclosure');
   await expect(disclosure).toBeVisible();
   await expect(disclosure.locator('.dp-token-disclosure-warning'))
-    .toHaveText('Copy this token now. DebridPulse will not display it again.');
+    .toHaveText('Copy this token now. DownloadPulse will not display it again.');
   const token = await disclosure.locator('input').inputValue();
   expect(token.startsWith('dp_')).toBe(true);
   const account = (await (await page.request.get('/api/accounts')).json()).accounts.find(item => item.display_name === name);

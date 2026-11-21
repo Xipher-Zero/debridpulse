@@ -7,7 +7,7 @@ installation has). The provider issues it as the neutral depth in its
 ``DiscoveryRequest``; the rsync EXECUTOR alone realizes it, with rsync's own
 sender-side filter engine: a directory below the requested depth is excluded
 by the invocation itself, so the sender never opens it -- nothing is listed
-and then discarded by DebridPulse.
+and then discarded by DownloadPulse.
 
 Everything native runs the installed rsync binary against a real rsync
 daemon and a real ``rsync --server`` behind an SSH origin.

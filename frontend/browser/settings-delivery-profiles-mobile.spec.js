@@ -49,9 +49,9 @@ async function open(browser, data = BASIC, viewport = {width: 1280, height: 900}
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await adminSession.signIn(page);
   await expect(page).not.toHaveURL(/\/login/);
-  await page.waitForFunction(() => Boolean(window.debridPulseAuth?.authority?.account_id)
+  await page.waitForFunction(() => Boolean(window.downloadPulseAuth?.authority?.account_id)
     && typeof window.nav === 'function' && typeof window.loadSettings === 'function');
-  const self = await page.evaluate(() => window.debridPulseAuth.authority.account_id);
+  const self = await page.evaluate(() => window.downloadPulseAuth.authority.account_id);
   const accounts = [{id: self, role: 'admin', enabled: true, protected: '', username: 'browser', display_name: 'Browser Admin',
     has_password: true, oidc_identities: 0, email: ''}, ...ACCOUNTS];
   await page.route(url => url.pathname.startsWith('/api/'), route => {

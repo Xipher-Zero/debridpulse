@@ -1,15 +1,16 @@
-# DebridPulse — Project Notes for Claude Code
+# DownloadPulse — Project Notes for Claude Code
 
 Reference notes for future sessions. Verify against the live tree before relying on
-specifics — line numbers and counts drift. Branch of record for active work: **`1.0.14`**
-(`main` is the released `v1.0.13`). Last substantive update: 2026-10-22.
+specifics — line numbers and counts drift. DownloadPulse 1.0.0 is the first public release.
+Its repository, `Xipher-Zero/downloadpulse`, starts with fresh history at 1.0.0; until it exists,
+work happens on the `rebrand` branch. Last substantive update: 2026-11-20.
 
 ---
 
 ## 1. What this is
 
-GPL-2.0-or-later fork of [`kroeberd/alldebrid-client`](https://github.com/kroeberd/alldebrid-client)
-(originally MIT). Self-hosted transfer manager. Flow:
+Self-hosted transfer manager, GPL-2.0-or-later (third-party and derived-code notices: `NOTICE`).
+Flow:
 
 ```
 direct link / magnet / .torrent / NZB / Metalink / link file
@@ -26,7 +27,7 @@ post-processing belong to the **Universal Transfer Core** (`backend/transfers/`)
 any provider or executor. Providers resolve sources into canonical candidates and expose
 neutral applicability facts; executors execute; the classifier is provider-neutral.
 
-**Executor contract (1.0.13 Universal Executor Leveling).** Core speaks one generalized
+**Executor contract (Universal Executor Leveling).** Core speaks one generalized
 contract (`transfers/contracts.py` `Executor`: `claim`, `footprint`, `prepare`, `start`,
 `observe_many`, `cancel`, `health` + declared `ExecutorCapabilities`). Executor selection
 is the one claim router `IntegrationRegistry.claimants(ExecutionSubject)` /
@@ -42,12 +43,11 @@ fixed native queue width). Materialization verify/cleanup: `transfers/filesystem
 application via `integrations/definition.py` `ManagedIntegration`/`AdministeredIntegration`
 — `application/composition.py` names no executor. Non-aria2 proofs: `tests/executor_fakes.py`.
 
-`VERSION` = `1.0.14` (development; `CHANGELOG.md` `[1.0.14] — Development` is open). The 1.0.13
-release-identity commit retitled `CHANGELOG.md` `[1.0.13]` (no longer `Development`) and moved README,
-`docker-compose.yml` and `index.html` to `v1.0.13`; while a top entry
-is titled `Development`, those install references must keep naming the newest released image (pinned
-by the documentation contract tests; see `docs/RELEASE_PROCESS.md` → Release identity). Tagging,
-GitHub Release, `latest` and `main` stay operator actions.
+`VERSION` = `1.0.0`; `CHANGELOG.md` starts at `[1.0.0] — First public release`. README,
+`docker-compose.yml` and `index.html` name `v1.0.0`. While a top entry is titled `Development`, those
+install references must keep naming the newest released image (pinned by the documentation contract
+tests; see `docs/RELEASE_PROCESS.md` → Release identity). Tagging, GitHub Release, `latest` and `main`
+stay operator actions.
 
 ---
 
@@ -60,7 +60,7 @@ GitHub Release, `latest` and `main` stay operator actions.
 | `frontend/browser/` | Separate Playwright contract-test suite (`*.spec.js`), own `package.json` (`@playwright/test` only). |
 | `frontend/host-icons.parts/` | 44 base64 chunks of a zipped host-logo archive, reassembled + SHA-256-verified at image build time. |
 | `index.html` (repo root) | **Standalone marketing/landing page. NOT the app.** Not copied into the image. The real shell is `frontend/static/index.html`. |
-| `docs/` | Architecture (`docs/architecture/*.md`, e.g. `UNIVERSAL_TRANSFER_CORE.md`, `MULTI_PROVIDER_HTTP_SLICE.md`) and UI docs (`docs/UI_FRONTEND_ARCHITECTURE.md`, `UI_DESIGN_TOKENS.md`, `UI_ICON_SYSTEM.md`). |
+| `docs/` | Architecture (`docs/architecture/*.md`, e.g. `UNIVERSAL_TRANSFER_CORE.md`, `PROVIDER_APPLICABILITY.md`) and UI docs (`docs/UI_FRONTEND_ARCHITECTURE.md`, `UI_DESIGN_TOKENS.md`, `UI_ICON_SYSTEM.md`). |
 | `Dockerfile`, `entrypoint.sh`, `docker-compose.yml` | Packaging (see §5). |
 | `release.py`, `CHANGELOG.md` (~257 KB), `licenses/` + `LICENSES/` + `NOTICE` | Release + dependency-license bookkeeping (enforced in CI). |
 | `.github/workflows/` | 10 workflows (see §7). |
@@ -158,7 +158,7 @@ before the session-issuing one) — ordered registration, not route-list surgery
   `ui-settings-archive-passwords.js`.
 - Global processing pause is **operational state**: the durable application state
   (`TransferRepository.globally_paused()`) is the only authority. `AppSettings` has no `paused`;
-  a pre-1.0.12 `config.json` value is a one-shot migration input (`legacy_paused_input()` →
+  an older `config.json` value is a one-shot migration input (`legacy_paused_input()` →
   `db/migrations/v112.py`). `/stats`, pause/resume results and SSE project from it; the frontend
   keeps a non-persisted `processingPaused` (never in `settingsData`).
 - `NormalizedError.recovery` / `operator_action_required` are **output-only** projections stamped by
@@ -218,7 +218,7 @@ compiled out; built by `aria2-package.yml`) and `ghcr.io/xipher-zero/debridpulse
 §4a/§4b. Ordered layers:
 
 1. **OS packages** — enable the `non-free` component, a *named* `--only-upgrade` list for
-   base-image CVE fixes, then install the DebridPulse aria2 and ffmpeg `.deb`s plus
+   base-image CVE fixes, then install the DownloadPulse aria2 and ffmpeg `.deb`s plus
    `rsync curl gosu zstd par2 unrar 7zip 7zip-rar`, and run each package's feature
    verifier. `dpkg` `path-include` rules (`zz-` prefixed) re-add the license/notice files
    (e.g. `7zip-rar`, `unrar`) that the slim base strips.
@@ -254,14 +254,14 @@ storage-health checks can diagnose bad mounts — chmods `700` config/data, `600
 
 `.dockerignore` excludes `.git`, caches, venvs, `data/`, `config/`, `docs/LOGO.md`.
 `docker-compose.yml` is an Unraid-style example naming the current release image
-(`ghcr.io/xipher-zero/debridpulse:v1.0.13`); it moves only in a release-identity commit.
+(`ghcr.io/xipher-zero/downloadpulse:v1.0.0`); it moves only in a release-identity commit.
 
 ### Local image testing
 
-A push to `1.0.14` triggers **Fork Image** which publishes a write-once
-`ghcr.io/xipher-zero/debridpulse:sha-<full 40-char sha>` multi-arch image (amd64 + arm64,
+A push to `1.0.0` triggers **Image** which publishes a write-once
+`ghcr.io/xipher-zero/downloadpulse:sha-<full 40-char sha>` multi-arch image (amd64 + arm64,
 provenance + SBOM). Pull that tag into a local compose file to verify a change before it
-gets a release tag. The image is pullable once Fork Image's "Build, smoke test and publish
+gets a release tag. The image is pullable once Image's "Build, smoke test and publish
 immutable image" job (`publish`) completes; Container Security and Candidate Runtime Qualification then run against
 that exact digest.
 
@@ -299,10 +299,8 @@ weighted by the committed `.github/qualification/pytest_seconds.json`: 8 contrac
 A test needing an executable carries `real_runtime`; any skip fails its layer. Blocking budget:
 20 min wall-clock.
 
-`post_audit_qualification.txt` and `two_provider_checkpoint_qualification.txt` are
-**historical records** of what qualified v1.0.12 — not executed; every test they name runs once
-in the maintained suite. New regressions go into the canonical invariant owner, never into a
-new list. `ws3p1_adversarial_qualification.txt` is still the input of the separate, non-required
+New regressions go into the canonical invariant owner, never into a new list.
+`ws3p1_adversarial_qualification.txt` is the input of the separate, non-required
 `ws3-adversarial.yml`.
 
 Contract tests that read source files as strings (`test_settings_*`, `test_ui_*`) break on
@@ -335,9 +333,9 @@ require the adversarial preflight in that document *before* production edits.
 
 ## 7. GitHub Actions workflows (`.github/workflows/`)
 
-The qualification workflows gate on `main`, `1.0.11`, `1.0.12`, `1.0.13`, `1.0.14`, mostly
+The qualification workflows gate on `main`, `1.0.0`, mostly
 `staging/**` (CodeQL's push trigger omits it), some `audit/**`, plus `v*` / `internal-v*` tags (Release Promotion: `main` and tags only;
-the two package workflows: `main`, `1.0.13`, `1.0.14`, `staging/**`, path-filtered). All `uses:` are
+the two package workflows: `main`, `1.0.0`, `staging/**`, path-filtered). All `uses:` are
 SHA-pinned. `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`.
 
 | Workflow | What it does |
@@ -345,12 +343,12 @@ SHA-pinned. `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`.
 | **tests.yml** (`Tests`) | One matrix job `test` (contract 1/8–8/8 + runtime 1/3–3/3, partitioned by test node id, duration-weighted), each entry: resolves + publishes `QUALIFICATION_ANCHOR_SHA` (checkout `fetch-depth: 0`); Python 3.12; runs its layer of `pytest tests/` exactly once (junit XML + `--durations`), then the classifier decides the entry (bounded isolated candidate + anchor runs of only the failing node ids, anchor in its own venv), then an accounting step (counts, timings, slowest cases; any skip fails). Runtime entries install `openssl`, the ffmpeg packages from the pinned package image, and the patched aria2 packages and pinned rsync 3.4.1, the last two cached by what they are built from (a miss rebuilds; either way the prerequisite assertions verify them). Contract shard 1/8 also runs `ruff check … --select F821,F822,F823`, `python -m compileall -q .` and `node --check` on every `frontend/static/*.js` + `playwright.config.js` + `*.spec.js`, and takes the test inventory. Job `inventory` (needs `test`, every attempt's artifacts): every collected test ran exactly once in its own shard, else it fails. Job `security` (runs beside `test`): `pip-audit -r requirements.txt` + `bandit -r . --exclude ./tests --severity-level high --confidence-level high`. |
 | **browser-runtime.yml** (`Browser Runtime`) | Matrix of 9 runners (one Playwright worker each), each running the whole spec files `shard_inventory.py browser-plan` assigns it (duration-weighted, `PW_SHARD`); each builds the real candidate image; runs two containers (open + password-auth, config generated via the image's own `auth.passwords.hash_password`); waits on `/api/health`; `npm ci --ignore-scripts` + `npm audit --audit-level=high` + `playwright install --with-deps chromium` (Chromium and its Ubuntu packages cached by the lock file); runs the Playwright suite exactly once (`retries: 0`, JSON + line reporters); on failure the classifier drives bounded failing-case runs on a fresh candidate pair and on the anchor's own image/specs (ports 8082/8083); inventory must reconcile (`discovered == running == passed + failed`), and a final `inventory` job proves every listed case ran exactly once in the shard owning its spec file. Uploads traces, classification evidence + `checkpoint-*.png`. |
 | **codeql.yml** (`CodeQL`) | `security-and-quality` queries for `python`, `javascript-typescript`, `actions`. Weekly cron (Thu 20:17 UTC). |
-| **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). Two event-exclusive jobs: `build-and-smoke-test` (pull requests and non-publishing dispatches; read-only token) and `publish` ("Build, smoke test and publish immutable image"), which runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.14` publishes — and runs the same smoke steps (YAML aliases) on its own runner before publishing, so publication never waits for a second runner. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
+| **image.yml** (`Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). Two event-exclusive jobs: `build-and-smoke-test` (pull requests and non-publishing dispatches; read-only token) and `publish` ("Build, smoke test and publish immutable image"), which runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.0` publishes — and runs the same smoke steps (YAML aliases) on its own runner before publishing, so publication never waits for a second runner. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/downloadpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
 | **container-security.yml** (`Container Security`) | Never rebuilds. Waits for the exact `sha-<full-sha>` digest, resolves per-arch child digests, runs **Trivy** twice per arch (report all MEDIUM+, then fail on fixable HIGH/CRITICAL), writes + signs a `container-security/v1` attestation to the registry. Weekly cron (Tue 19:31 UTC). |
 | **candidate-runtime-qualification.yml** (`Candidate Runtime Qualification`) | Pulls the published amd64 + arm64 children by digest (arm64 via QEMU), verifies OCI labels, non-root runtime (uid/gid 99/100), writable `/app/data` `/app/config` `/download`, `/api/health` version, AllDebrid integration status, a live `GeneralHttpProvider.resolve()` call, and a 7z+RAR round-trip; signs a `candidate-runtime/v1` attestation. |
-| **release-promotion.yml** (`Release Promotion`) | On push to `main` (→ `latest`) or a `v*`/`internal-v*` tag: waits for all **6 required workflows** green for the exact SHA — `Tests`, `Browser Runtime`, `CodeQL`, `Container Security`, `Candidate Runtime Qualification`, `Fork Image` — re-verifies both signed attestations target that digest, then `docker buildx imagetools create` to move the mutable tag to the already-qualified digest. **No rebuild. `WS3 Adversarial` is not in the required set.** Does not run for plain `1.0.14` pushes. |
-| **ws3-adversarial.yml** (`WS3 Adversarial`) | `1.0.12`, `1.0.13` and `1.0.14` branches. Runs `ws3p1_adversarial_qualification.txt`. Not a Release Promotion requirement. |
-| **aria2-package.yml** / **ffmpeg-package.yml** | Build DebridPulse's own aria2 and FFmpeg Debian packages per architecture from `packaging/aria2/` and `packaging/ffmpeg/`, publish them write-once as `ghcr.io/xipher-zero/debridpulse-aria2` / `-ffmpeg`, which the Dockerfile consumes by digest. Path-filtered; not release gates. |
+| **release-promotion.yml** (`Release Promotion`) | On push to `main` (→ `latest`) or a `v*`/`internal-v*` tag: waits for all **6 required workflows** green for the exact SHA — `Tests`, `Browser Runtime`, `CodeQL`, `Container Security`, `Candidate Runtime Qualification`, `Image` — re-verifies both signed attestations target that digest, then `docker buildx imagetools create` to move the mutable tag to the already-qualified digest. **No rebuild. `WS3 Adversarial` is not in the required set.** Does not run for plain `1.0.0` pushes. |
+| **ws3-adversarial.yml** (`WS3 Adversarial`) | The `1.0.0` branch. Runs `ws3p1_adversarial_qualification.txt`. Not a Release Promotion requirement. |
+| **aria2-package.yml** / **ffmpeg-package.yml** | Build DownloadPulse's own aria2 and FFmpeg Debian packages per architecture from `packaging/aria2/` and `packaging/ffmpeg/`, publish them write-once as `ghcr.io/xipher-zero/downloadpulse-aria2` / `-ffmpeg`, which the Dockerfile consumes by digest. Path-filtered; not release gates. |
 
 Supporting config: `.github/dependabot.yml` (weekly pip updates for `/backend`, grouped
 minor/patch; weekly Actions updates), issue templates (incl. `source_request.yml` for
@@ -396,9 +394,9 @@ not `AppSettings` fields; they are read only by `integrations.configuration.migr
 while `core.config.load_settings()` loads a file, and `GET /settings` derives them read-only
 (`api/legacy_settings_view.py`, named in `compatibility_fields`). `PUT /settings` never writes a
 canonical namespace (it carries `previous` forward); use `PATCH /integrations/{id}/configuration`,
-`PATCH /transfer-policy`, `PATCH /execution/runtime-limits`. aria2 has one topology: DebridPulse
+`PATCH /transfer-policy`, `PATCH /execution/runtime-limits`. aria2 has one topology: DownloadPulse
 runs the daemon (`executors.aria2.runtime.Aria2Runtime`), which owns the loopback RPC endpoint/secret
-and constructs the client (`rpc_service`); the client never reads settings. Metrics are `debridpulse_*`.
+and constructs the client (`rpc_service`); the client never reads settings. Metrics are `downloadpulse_*`.
 
 ## 9. Presentation-owner consolidation — status
 
@@ -437,13 +435,12 @@ mutating the same DOM — could recur in other settings panels. Check
 
 ## 10. Working notes for sessions
 
-- The maintainer historically worked directly on GitHub (no local clone); now clones
-  locally. Active branch: **`1.0.14`**. Direct pushes to `1.0.14` are the established
-  pattern for this dev branch (no PR, no merge to `main`, no force-push).
+- The maintainer works from a local clone. Until the new repository exists, the active branch
+  is **`rebrand`**; pushing it runs no workflow. Direct pushes (no PR, no force-push).
 - Honor **"explore and report, don't change anything yet"** literally when given.
 - For local verification, prefer building/pulling a Docker image (or running
   `uvicorn main:app` from a 3.12 venv with a temp `CONFIG_PATH`/`DB_PATH`) before pushing
   and triggering the full GitHub image pipeline.
-- Known-flaky-test folklore is retired: the mirror-failover test and the WS1-P2 / WS2-P1 /
-  Details-refresh browser cases were made deterministic (2026-09-19). A failure there is a
-  real signal; classify it per §6a instead of rerunning.
+- There is no known-flaky-test list: the mirror-failover test and the Details-refresh browser
+  cases are deterministic. A failure there is a real signal; classify it per §6a instead of
+  rerunning.

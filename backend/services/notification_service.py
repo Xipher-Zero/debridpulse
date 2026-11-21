@@ -1,4 +1,4 @@
-"""Application notification boundary for DebridPulse.
+"""Application notification boundary for DownloadPulse.
 
 ONE owner for the four facts every notification surface needs, so the runtime,
 the scheduler, the Test routes and the Settings status projection can never

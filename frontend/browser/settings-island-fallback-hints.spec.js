@@ -162,17 +162,17 @@ test('a hint out of view is said by its own title, by hover and by keyboard, and
     expect(field.touch, field.label).toBe(true);
     expect(field.tabindex, field.label).toBe('0');
   }
-  expect(narrow.fields[0].tooltip).toBe('Where DebridPulse saves downloads.');
-  expect(narrow.fields[1].tooltip).toBe('Maximum downloads DebridPulse runs at once.');
+  expect(narrow.fields[0].tooltip).toBe('Where DownloadPulse saves downloads.');
+  expect(narrow.fields[1].tooltip).toBe('Maximum downloads DownloadPulse runs at once.');
 
   // Hover: each title its own text.
   const folderTitle = page.locator(`${ISLAND} .dp-settings-download-folder-field .form-label`);
   const limitTitle = page.locator(`${ISLAND} .dp-settings-download-limit-field .form-label`);
   await folderTitle.hover();
   await expect(tooltip(page)).toBeVisible();
-  await expect(tooltip(page)).toHaveText('Where DebridPulse saves downloads.');
+  await expect(tooltip(page)).toHaveText('Where DownloadPulse saves downloads.');
   await limitTitle.hover();
-  await expect(tooltip(page)).toHaveText('Maximum downloads DebridPulse runs at once.');
+  await expect(tooltip(page)).toHaveText('Maximum downloads DownloadPulse runs at once.');
   await page.mouse.move(2, 2);
   await expect(tooltip(page)).toBeHidden();
 
@@ -181,7 +181,7 @@ test('a hint out of view is said by its own title, by hover and by keyboard, and
   await page.locator('[data-setting="download_folder"]').focus();
   await page.keyboard.press('Shift+Tab');
   await expect(folderTitle).toBeFocused();
-  await expect(tooltip(page)).toHaveText('Where DebridPulse saves downloads.');
+  await expect(tooltip(page)).toHaveText('Where DownloadPulse saves downloads.');
   await expect(folderTitle).toHaveAttribute('aria-describedby', /dp-tooltip/);
   await page.keyboard.press('Escape');
   await expect(tooltip(page)).toBeHidden();
@@ -203,7 +203,7 @@ test('a hint out of view is said by its own title, by hover and by keyboard, and
   // And again on the way back down: the same, never stale.
   await resize(page, 320);
   expect((await settings(page, ISLAND)).fields.map(field => field.tooltip))
-    .toEqual(['Where DebridPulse saves downloads.', 'Maximum downloads DebridPulse runs at once.']);
+    .toEqual(['Where DownloadPulse saves downloads.', 'Maximum downloads DownloadPulse runs at once.']);
   // Leaving the tab takes a shown tooltip with it.
   await folderTitle.hover();
   await expect(tooltip(page)).toBeVisible();
@@ -261,7 +261,7 @@ test.describe('on a touch screen', () => {
     await expect(tooltip(page)).toBeVisible();
     // A tap on the other title shows its own.
     await page.locator('.dp-settings-extraction-concurrency-field .form-label').tap();
-    await expect(tooltip(page)).toHaveText('Maximum extraction jobs DebridPulse runs at once.');
+    await expect(tooltip(page)).toHaveText('Maximum extraction jobs DownloadPulse runs at once.');
     // A tap elsewhere dismisses it.
     await page.locator('#view-settings [data-panel="extraction"] .dp-settings-extraction-password-field > .form-label').tap();
     await expect(tooltip(page)).toBeHidden();

@@ -343,7 +343,7 @@ async def test_paused_established_writer_is_not_resumed_by_alternate_arrival(can
     primary = (await pair.repository.artifacts(first.id))[0]
     handle = primary.execution
     await pair.engine.pause(first.id)
-    # DebridPulse pause fences the writer: none remains authorized.
+    # DownloadPulse pause fences the writer: none remains authorized.
     assert pair.executor.jobs[handle.attempt_id].state == ExecutionState.CANCELLED
     assert (await pair.repository.artifacts(first.id))[0].execution is None
 

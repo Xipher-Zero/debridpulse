@@ -51,7 +51,7 @@ class AllDebridProvider:
     # supported-host snapshot. Magnet/torrent remain descriptor request types.
     applicability = ProviderApplicability()
 
-    def __init__(self, api_key: str = "", agent: str = "DebridPulse", *, client=None,
+    def __init__(self, api_key: str = "", agent: str = "DownloadPulse", *, client=None,
                  rate_limit_per_minute: int = 60, prepare_backup_torrents: bool = False,
                  max_active_torrents: int | None = None):
         self.client = client if client is not None else AllDebridService(
@@ -80,7 +80,7 @@ class AllDebridProvider:
         """Active magnets: AllDebrid's documented maximum, lowered by the
         operator's "Maximum Active Torrents" when set; occupancy is every
         magnet on the account still processing (statusCode 0-3), including
-        ones DebridPulse did not add. Unknown -- never zero -- when the
+        ones DownloadPulse did not add. Unknown -- never zero -- when the
         account's magnet list cannot be read or is not a well-formed list.
         Not a torrent: ``None``."""
         if request.kind not in BITTORRENT_REQUEST_KINDS or request.kind not in self.descriptor.request_types:

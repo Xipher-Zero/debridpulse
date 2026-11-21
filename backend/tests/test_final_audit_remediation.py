@@ -273,7 +273,7 @@ async def test_generic_transfer_added_notification_is_provider_neutral(monkeypat
 
 def test_application_metadata_owns_the_multi_provider_runtime(monkeypatch):
     main = _main(monkeypatch)
-    assert main.logger.name == "debridpulse.main"
+    assert main.logger.name == "downloadpulse.main"
     description = main.app.description
     assert "Universal Transfer Core" in description
     assert "AllDebrid" in description

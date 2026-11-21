@@ -19,7 +19,7 @@ def test_oidc_client_secret_is_excluded_from_model_serialization():
 def test_oidc_client_secret_survives_validation_without_becoming_serializable():
     cfg = AppSettings(
         auth_oidc_enabled=True,
-        oidc_issuer_url="https://id.example/application/o/debridpulse",
+        oidc_issuer_url="https://id.example/application/o/downloadpulse",
         oidc_client_id="client",
         oidc_client_secret="super-secret",
         public_base_url="https://pulse.example",

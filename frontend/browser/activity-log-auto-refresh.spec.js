@@ -4,7 +4,7 @@ const { test, expect } = require('@playwright/test');
  * itself (the GET /events cursor contract over a journal whose newest edge the
  * test moves), and the application's one live stream is either held or answered
  * here; nothing is written to the shared backend. A hint is what app.js
- * forwards from the stream (debridpulse:activity-journal-changed); the stream's
+ * forwards from the stream (downloadpulse:activity-journal-changed); the stream's
  * state is what app.js publishes (data-dp-pulse and the pulse events). */
 
 const LIMIT = 50;
@@ -55,14 +55,14 @@ async function open(page, {stream, startOff = false} = {}) {
 // What app.js does when its one stream connects, loses its connection, or forwards a hint.
 const connected = page => page.evaluate(() => {
   document.documentElement.dataset.dpPulse = 'connected';
-  document.dispatchEvent(new CustomEvent('debridpulse:pulse-connected'));
+  document.dispatchEvent(new CustomEvent('downloadpulse:pulse-connected'));
 });
 const lost = page => page.evaluate(() => {
   document.documentElement.dataset.dpPulse = 'lost';
-  document.dispatchEvent(new CustomEvent('debridpulse:pulse-lost'));
+  document.dispatchEvent(new CustomEvent('downloadpulse:pulse-lost'));
 });
 const hint = (page, latest) => page.evaluate(value =>
-  document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed', {detail: {latest: value}})), latest);
+  document.dispatchEvent(new CustomEvent('downloadpulse:activity-journal-changed', {detail: {latest: value}})), latest);
 // Longer than the owner's coalescing window: anything it would fetch has been asked for.
 const settle = page => page.waitForTimeout(1200);
 const rows = page => page.locator('#event-list .dp-activity-row');
@@ -313,7 +313,7 @@ test('Auto Refresh: app.js forwards the stream\'s journal hint from the one Even
   const gate = new Promise(resolve => { release = resolve; });
   await page.addInitScript(() => {
     window.__hints = [];
-    document.addEventListener('debridpulse:activity-journal-changed', event => window.__hints.push(event.detail));
+    document.addEventListener('downloadpulse:activity-journal-changed', event => window.__hints.push(event.detail));
   });
   const {requests} = await open(page, {startOff: true, stream: async route => {
     await gate;

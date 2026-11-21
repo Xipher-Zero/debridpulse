@@ -448,7 +448,7 @@ def test_no_excluded_native_setting_is_projected():
         assert not re.search(rf"\b{forbidden}\b", admin), forbidden
 
 
-def test_the_acquisition_service_remains_debridpulse_private():
+def test_the_acquisition_service_remains_downloadpulse_private():
     runtime = (BACKEND / "executors" / "sabnzbd" / "runtime.py").read_text()
     assert 'SERVICE_HOST = "127.0.0.1"' in runtime
     # Nothing in the browser ever addresses the native service directly. Help
@@ -461,7 +461,7 @@ def test_the_acquisition_service_remains_debridpulse_private():
         if path.name != "ui-help-page.js":
             assert "sabnzbd" not in body.lower(), path.name
     help_page = _js("ui-help-page.js")
-    assert not re.search(r"\bfetch\(|XMLHttpRequest|EventSource|debridPulseAuth\.fetch|\brequest\(", help_page)
+    assert not re.search(r"\bfetch\(|XMLHttpRequest|EventSource|downloadPulseAuth\.fetch|\brequest\(", help_page)
 
 
 def test_the_canonical_server_id_still_owns_server_mutation():

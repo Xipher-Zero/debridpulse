@@ -148,7 +148,7 @@ async def test_a_healthy_running_service_is_left_alone():
 async def test_an_application_restart_while_disabled_still_serves_durable_work():
     """Composition calls start() on boot, not maintain().
 
-    Restarting DebridPulse while Usenet is switched off must still bring the
+    Restarting DownloadPulse while Usenet is switched off must still bring the
     service up when a durable execution belongs to it -- otherwise the restart
     is exactly when an in-flight download becomes permanently unobservable.
     """

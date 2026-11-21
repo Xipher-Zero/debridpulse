@@ -4,7 +4,7 @@ Process startup (``main.lifespan``) and a restore's replacement universe both
 start an application through ``start_application`` -- schema bootstrap and
 startup material reconciliation, then integrations and the scheduler, whose
 first cycles are the startup recovery -- so restored state is reconciled by
-exactly the machinery that reconciles any state DebridPulse starts with.
+exactly the machinery that reconciles any state DownloadPulse starts with.
 Provider and executor readiness are never part of what makes an application
 available: they converge after it is.
 
@@ -23,10 +23,10 @@ from core import scheduler
 from core.localization import Coded
 from core.logging_utils import sanitize_exception
 
-logger = logging.getLogger("debridpulse.lifetime")
+logger = logging.getLogger("downloadpulse.lifetime")
 
 _RESTORE_LOCK = asyncio.Lock()
-_UNCHANGED = "The current DebridPulse state was left unchanged."
+_UNCHANGED = "The current DownloadPulse state was left unchanged."
 
 
 class RestoreFailed(Coded, Exception):
@@ -55,7 +55,7 @@ class RestoreUnresolved(RestoreFailed):
     def __init__(self):
         self.status_code = 503
         self.message = ("Backup could not be restored, and the previous state could not be put back yet. "
-                        "DebridPulse has stopped using its stored state; restart it to put the previous state back.")
+                        "DownloadPulse has stopped using its stored state; restart it to put the previous state back.")
         Exception.__init__(self, self.message)
         self.display_code, self.display_params = "restore.unresolved", {}
 
@@ -118,7 +118,7 @@ async def prepare_settings_and_migrate():
 async def start_application(application):
     """Start one application; it is servable when this returns.
 
-    Only DebridPulse-owned core state blocks: the repository and engine with
+    Only DownloadPulse-owned core state blocks: the repository and engine with
     startup material reconciliation, and interrupted post-processing. Every
     integration is then begun off this path, and the scheduler started. The
     scheduler loops that need started integrations wait for them, and their
@@ -191,7 +191,7 @@ def _seal_unresolved(application, why: str) -> None:
 
     database_maintenance_gate.seal()
     application.seal_admission()
-    logger.critical("%s; DebridPulse has stopped using its stored state. Restart it to put the previous state "
+    logger.critical("%s; DownloadPulse has stopped using its stored state. Restart it to put the previous state "
                     "back.", why)
 
 
@@ -220,7 +220,7 @@ async def _journal_restore(event_type: str, severity: str, message: str, point_i
 
 
 async def restore_backup(state, point_id: str) -> dict:
-    """Replace the current DebridPulse state with one restore point.
+    """Replace the current DownloadPulse state with one restore point.
 
     ``state`` is the ASGI application state holding the live ``application``
     (and, for tests, an alternative ``compose``)."""
@@ -338,7 +338,7 @@ async def restore_backup(state, point_id: str) -> dict:
                         # The previous state is whole again (nothing to seal),
                         # but its application stays stopped until a restart.
                         logger.critical("Restore was interrupted after its rollback; the previous state is back. "
-                                        "Restart DebridPulse to resume processing.")
+                                        "Restart DownloadPulse to resume processing.")
                         raise asyncio.CancelledError
                     previous = await _start_composed(state)
                     await previous.restore_pause_intent(intent)

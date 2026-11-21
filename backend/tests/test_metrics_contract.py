@@ -1,7 +1,7 @@
 """Provider-neutral application metrics contract (DP 1.0.12 final audit).
 
 ``/api/metrics`` reports universal transfer and scheduler state, so every
-metric lives in the ``debridpulse_`` namespace. The obsolete ``alldebrid_*``
+metric lives in the ``downloadpulse_`` namespace. The obsolete ``alldebrid_*``
 application family is not published in parallel: v1.0.12 is unreleased, so no
 compatibility shim keeps the old names alive.
 """
@@ -49,13 +49,13 @@ def scrape(monkeypatch):
 
 
 EXPECTED_VALUES = {
-    "debridpulse_transfers_total": 10,
-    "debridpulse_active_downloads": 3,
-    "debridpulse_completed_downloads": 4,
-    "debridpulse_error_transfers": 3,
-    "debridpulse_pending_files": 5,
-    "debridpulse_sse_subscribers": 2,
-    "debridpulse_downloaded_bytes_total": 123456,
+    "downloadpulse_transfers_total": 10,
+    "downloadpulse_active_downloads": 3,
+    "downloadpulse_completed_downloads": 4,
+    "downloadpulse_error_transfers": 3,
+    "downloadpulse_pending_files": 5,
+    "downloadpulse_sse_subscribers": 2,
+    "downloadpulse_downloaded_bytes_total": 123456,
 }
 
 
@@ -67,7 +67,7 @@ async def test_scrape_publishes_the_neutral_family_with_the_same_values(scrape):
         assert f"# TYPE {name} gauge" in body, name
     # Label cardinality is unchanged: one series per status, one label.
     for status, count in {"queued": 2, "downloading": 1, "completed": 4, "error": 3}.items():
-        assert f'debridpulse_transfers_by_status{{status="{status}"}} {count}' in body
+        assert f'downloadpulse_transfers_by_status{{status="{status}"}} {count}' in body
 
 
 @pytest.mark.asyncio
@@ -100,14 +100,14 @@ async def test_no_universal_help_text_claims_provider_or_executor_ownership(scra
 
 
 @pytest.mark.asyncio
-async def test_every_metric_is_in_the_debridpulse_namespace(scrape):
+async def test_every_metric_is_in_the_downloadpulse_namespace(scrape):
     body = await scrape()
     names = {
         re.match(r"([A-Za-z_:][A-Za-z0-9_:]*)", line).group(1)
         for line in body.splitlines()
         if line and not line.startswith("#")
     }
-    assert names and all(name.startswith("debridpulse_") for name in names), names
+    assert names and all(name.startswith("downloadpulse_") for name in names), names
 
 
 def test_scrape_endpoint_keeps_its_path_and_prometheus_text_format(monkeypatch):
@@ -119,4 +119,4 @@ def test_scrape_endpoint_keeps_its_path_and_prometheus_text_format(monkeypatch):
     response = TestClient(main.app).get("/api/metrics")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/plain; version=0.0.4")
-    assert "debridpulse_transfers_total" in response.text
+    assert "downloadpulse_transfers_total" in response.text

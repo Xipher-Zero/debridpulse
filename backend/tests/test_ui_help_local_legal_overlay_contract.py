@@ -70,7 +70,7 @@ def test_overlay_identifies_bundled_snapshot_and_exposes_only_explicit_latest_li
 
     # 1.0.14: the viewer's words are the catalog's (the document itself stays as bundled).
     assert "say(document.createElement('span'), 'help.legal.bundled', {version})" in runtime
-    assert english("help.legal.bundled") == "This is the copy bundled with DebridPulse {version}."
+    assert english("help.legal.bundled") == "This is the copy bundled with DownloadPulse {version}."
     assert "say(link, 'help.legal.latest');" in runtime
     assert english("help.legal.latest") == "View the latest version on GitHub."
     assert "link.target = '_blank';" in runtime

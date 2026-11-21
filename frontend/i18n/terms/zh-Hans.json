@@ -1,5 +1,5 @@
 {
- "schema": "debridpulse-terms/1",
+ "schema": "downloadpulse-terms/1",
  "locale": "zh-Hans",
  "register": "Simplified Chinese (mainland China software usage). Simplified characters only. Help prose and messages are neutral, polite written Chinese addressing the reader as 您 where address is needed; buttons and menu commands use the short verb or verb-object forms standard in Chinese software (保存, 取消, 删除, 重试); headings and labels use nouns. Full-width Chinese punctuation (，。、：；！？（）“”) in Chinese text; half-width for Latin literals, numbers and units; a half-width space between Chinese and Latin words or numbers is optional — use none, consistently. Mainland IT vocabulary (服务器, 用户, 文件夹, 网络, 设置, 默认, 信息).",
  "terms": {
